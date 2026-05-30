@@ -1,0 +1,7 @@
+{
+  "name": "mpl-website",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ]
+}

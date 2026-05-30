@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#009eed">
+    <link rel="icon" href="//static.domainesia.com/assets/images/favicon/favicon.ico">
+    <link rel="icon" href="//static.domainesia.com/assets/images/favicon/favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="//static.domainesia.com/assets/images/favicon/apple-touch-icon-180.png">
+    <meta name="description" content="Your website is ready to be launched. Hosted by DomaiNesia.">
+    <title>Hosted by DomaiNesia - Your website is ready to be launched</title>
+    <link rel="preload" href="//static.domainesia.com/assets/fonts/842623/7F38FB22E551161E9.css" as="style" onload="this.onload=null;this.rel='stylesheet'" />
+    <link href="//static.domainesia.com/assets/slots/webcdn/cpanel/css/framework.min.css" rel="stylesheet">
+</head>
+<body class="overflow-x-hidden bg-brown mx-auto max-w-[2000px] h-svh">
+    <div class="parallax relative">
+        <div class="bg-gradient-to-b from-blue-600 to-blue-400 aspect-[16/8]">
+            <span class="absolute top-10 left-10 w-56"><img src="//static.domainesia.com/assets/slots/webcdn/cpanel/img/landing/domainesia-logo.svg" alt="DomaiNesia Logo"></span>
+            <span value="4" class="move absolute" style="top:-6%;"><img src="//static.domainesia.com/assets/slots/webcdn/cpanel/img/landing/bg-milky-way.svg" alt="DomaiNesia Milky Way"></span>
+            <span value="2" class="move absolute" style="top:30%;"><img src="//static.domainesia.com/assets/slots/webcdn/cpanel/img/landing/bg-hills-v2.svg" alt="DomaiNesia Hills"></span>
+            <span class="absolute" style="top:14%;"><img src="//static.domainesia.com/assets/slots/webcdn/cpanel/img/landing/ground-ready-to-launch.svg" alt="DomaiNesia Moon"></span>
+            <span class="absolute animate-fadeandmove -left-10" style="top:9%;"><img src="//static.domainesia.com/assets/slots/webcdn/cpanel/img/landing/clouds.svg" alt="DomaiNesia Clouds"></span>
+        </div>
+        <div class="absolute left-1/2 transform -translate-x-1/2 text-center text-white block z-50 w-full px-8 top-[95%] md:top-[91%] font-sans">
+            <div class="container mx-auto">
+                <div class="mb-4 md:mb-8">
+                    <p class="text-xs md:text-sm lg:text-base font-light">Halaman ini merupakan halaman bawaan. Silakan upload konten website Anda. <br class="hidden md:block"> Luncurkan Aplikasi Web dengan Cloud VPS Berperforma Tinggi. <br> DomaiNesia Penyedia Web Hosting Murah Terbaik di Indonesia. Daftar & <a class="text-blue-500 hover:text-blue-600" href="//www.domainesia.com/domain/" target="_blank" rel="noopener noreferrer">Cek Domain</a> dengan Mudah.</p>
+                </div>
+                <div class="mb-16">
+                    <a href="https://deneva.co.id" target="_blank" rel="noopener noreferrer"><img class="mx-auto h-8 md:h-10" src="//static.domainesia.com/assets/slots/webcdn/cpanel/img/landing/deneva-logo.svg" alt="Deneva"></a>
+                    <p class="my-2 md:my-4 text-xs md:text-sm lg:text-base font-light">PT Deneva merupakan perusahaan induk yang menaungi brand-brand berikut ini:</p>
+                    <div class="grid grid-cols-4 md:grid-cols-4 gap-2 md:gap-8 mx-auto justify-items-center max-w-xl">
+                        <a href="https://www.domainesia.com" target="_blank" rel="noopener noreferrer"><img class="h-6" src="//static.domainesia.com/assets/slots/webcdn/cpanel/img/landing/domainesia-logo.svg" alt="DomaiNesia"></a>
+                        <a href="https://nevacloud.com" target="_blank" rel="noopener noreferrer"><img class="h-6" src="//static.domainesia.com/assets/slots/webcdn/cpanel/img/landing/nevacloud-logo.svg" alt="Nevacloud"></a>
+                        <a href="https://rna.id" target="_blank" rel="noopener noreferrer"><img class="h-6" src="//static.domainesia.com/assets/slots/webcdn/cpanel/img/landing/rna-logo.svg" alt="RNA.id"></a>
+                        <a href="https://nevaweb.id" target="_blank" rel="noopener noreferrer"><img class="h-5" src="//static.domainesia.com/assets/slots/webcdn/cpanel/img/landing/nevaweb-logo.svg" alt="Nevaweb"></a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener("mousemove", parallax);
+        function parallax(event) {
+            this.querySelectorAll(".parallax .move").forEach((shift) => {
+                const position = shift.getAttribute("value");
+                const x = (window.innerWidth - event.pageX * position) / 80;
+                const y = (window.innerHeight - event.pageY * position) / 80;
+
+                shift.style.transform = `translateX(${x}px) translateY(${y}px)`;
+            });
+        }
+    </script>
+</body>
+</html>

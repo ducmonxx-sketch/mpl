@@ -1,0 +1,57 @@
+# ===================================================
+# MAINTENANCE MODE — .htaccess
+# ===================================================
+# HOW TO USE:
+#   1. To ENABLE  maintenance mode:
+#      Rename this file from ".htaccess.maintenance" to ".htaccess"
+#      and upload it to your cPanel public_html folder.
+#
+#   2. To DISABLE maintenance mode:
+#      Rename ".htaccess" back to ".htaccess.maintenance"
+#      or simply delete it from public_html.
+#
+# HOW IT WORKS:
+#   - All requests (except for the maintenance page assets
+#     like images, CSS, fonts, and the logo) are redirected
+#     to maintenance.html with a 503 "Service Unavailable"
+#     status code.
+#   - The 503 status tells search engines the outage is
+#     temporary, so your SEO rankings are not impacted.
+#   - You can whitelist your own IP to bypass maintenance
+#     mode and test the site while it's live.
+# ===================================================
+
+RewriteEngine On
+
+# ---------------------------------------------------
+# OPTIONAL: Whitelist your IP address
+# ---------------------------------------------------
+# Uncomment the line below and replace 123.456.789.0
+# with YOUR IP address to bypass maintenance mode.
+# You can find your IP at: https://whatismyip.com
+#
+# RewriteCond %{REMOTE_ADDR} !^123\.456\.789\.0$
+
+# ---------------------------------------------------
+# Don't redirect these files (assets needed by maintenance.html)
+# ---------------------------------------------------
+RewriteCond %{REQUEST_URI} !^/maintenance\.html$
+RewriteCond %{REQUEST_URI} !^/mpl_logo_proto\.svg$
+RewriteCond %{REQUEST_URI} !\.(css|js|jpg|jpeg|png|gif|svg|ico|woff|woff2|ttf|eot)$
+
+# ---------------------------------------------------
+# Redirect everything else to maintenance.html
+# ---------------------------------------------------
+RewriteRule ^(.*)$ /maintenance.html [R=503,L]
+
+# ---------------------------------------------------
+# Set proper 503 error document
+# ---------------------------------------------------
+ErrorDocument 503 /maintenance.html
+
+# ---------------------------------------------------
+# Tell browsers/proxies not to cache during maintenance
+# ---------------------------------------------------
+Header Set Cache-Control "no-cache, no-store, must-revalidate"
+Header Set Pragma "no-cache"
+Header Set Expires "0"

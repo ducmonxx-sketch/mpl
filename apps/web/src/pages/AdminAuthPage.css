@@ -1,0 +1,223 @@
+/* ═══════════════════════════════════════════════════════
+   ADMIN AUTH PAGE — PT Mahkota Putra Logistik
+   Mirrors ClientAuthPage.css with admin branding
+   ═══════════════════════════════════════════════════════ */
+
+@keyframes admFadeUp {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes admFadeRight {
+  from { opacity: 0; transform: translateX(30px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes admShake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(3px); }
+}
+
+/* ─── Page ─── */
+.adm-auth-page {
+  position: relative; min-height: 100vh; display: flex; flex-direction: column;
+  overflow: hidden; font-family: 'Work Sans', sans-serif;
+  background-color: #0a1628;
+}
+
+/* ─── Background ─── */
+.adm-auth-bg { position: fixed; inset: 0; z-index: 0; }
+.adm-auth-bg__overlay {
+  position: absolute; inset: 0;
+  background: radial-gradient(circle at 50% -20%, #162d50 0%, #0a1628 70%);
+}
+
+/* ─── Content ─── */
+.adm-auth-content {
+  position: relative; z-index: 10; flex: 1;
+  display: flex; align-items: center; justify-content: center; padding: 2rem 1rem;
+}
+
+/* ─── Card ─── */
+.adm-auth-card {
+  display: grid; grid-template-columns: 1fr 1fr; max-width: 960px; width: 100%;
+  border-radius: 20px; overflow: hidden;
+  box-shadow: 0 25px 60px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06);
+  animation: admFadeUp 0.8s ease-out both;
+}
+.adm-auth-card--single {
+  grid-template-columns: 1fr; max-width: 480px;
+}
+
+/* ─── Left: Branding ─── */
+.adm-auth-brand {
+  position: relative; padding: 3rem 2.5rem;
+  display: flex; flex-direction: column; justify-content: space-between;
+  background: linear-gradient(160deg, rgba(10,22,40,0.95) 0%, rgba(13,31,60,0.9) 100%);
+  backdrop-filter: blur(24px) saturate(1.2); -webkit-backdrop-filter: blur(24px) saturate(1.2);
+  border-right: 1px solid rgba(255,255,255,0.06); min-height: 560px;
+}
+.adm-auth-brand__logo { display: flex; align-items: center; gap: 0.625rem; margin-bottom: 2.5rem; }
+.adm-auth-brand__logo img { height: 32px; width: 32px; border-radius: 8px; object-fit: contain; }
+.adm-auth-brand__logo-text { font-size: 1.05rem; font-weight: 700; color: #fec330; letter-spacing: 0.02em; }
+
+.adm-auth-brand__heading {
+  font-size: 2.5rem; font-weight: 800; line-height: 1.15; color: #fff;
+  margin-bottom: 1.5rem; animation: admFadeUp 0.8s ease-out 0.2s both;
+}
+.adm-auth-brand__heading em { font-style: normal; color: #fec330; }
+
+.adm-auth-brand__desc {
+  font-family: 'Noto Sans', sans-serif; font-size: 0.95rem; line-height: 1.7;
+  color: rgba(255,255,255,0.55); max-width: 320px; animation: admFadeUp 0.8s ease-out 0.35s both;
+}
+
+.adm-auth-brand__bottom { margin-top: auto; padding-top: 2rem; }
+.adm-auth-brand__badge {
+  display: flex; align-items: center; gap: 0.75rem;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px; padding: 0.75rem 1rem; margin-bottom: 1.5rem;
+  animation: admFadeUp 0.8s ease-out 0.5s both;
+}
+.adm-auth-brand__badge-icon {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: linear-gradient(135deg, #fec330 0%, #e6a600 100%);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.adm-auth-brand__badge-icon svg { color: #0a1628; }
+.adm-auth-brand__badge-text { font-size: 0.85rem; font-weight: 600; color: rgba(255,255,255,0.85); }
+
+.adm-auth-brand__established {
+  display: flex; align-items: center; gap: 1rem;
+  font-size: 0.75rem; font-weight: 600; letter-spacing: 0.18em;
+  text-transform: uppercase; color: rgba(255,255,255,0.35);
+  animation: admFadeUp 0.8s ease-out 0.6s both;
+}
+.adm-auth-brand__established::before { content: ''; display: block; width: 32px; height: 1px; background: rgba(255,255,255,0.25); }
+
+/* ─── Right: Form ─── */
+.adm-auth-form-panel {
+  padding: 3rem 2.5rem;
+  background: linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(248,249,250,0.98) 100%);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  display: flex; flex-direction: column; justify-content: center;
+  animation: admFadeRight 0.8s ease-out 0.15s both;
+}
+.adm-auth-form-panel__title { font-size: 1.75rem; font-weight: 800; color: #0a1628; margin-bottom: 0.375rem; }
+.adm-auth-form-panel__subtitle {
+  font-family: 'Noto Sans', sans-serif; font-size: 0.875rem;
+  color: #6b7280; margin-bottom: 2rem; line-height: 1.5;
+}
+
+.adm-auth-brand-mini {
+  display: flex; align-items: center; gap: 0.5rem; margin-bottom: 2rem;
+  font-size: 0.9rem; font-weight: 700; color: #0a1628;
+}
+.adm-auth-brand-mini img { border-radius: 6px; }
+
+/* ─── Form ─── */
+.adm-auth-form { display: flex; flex-direction: column; gap: 0; }
+.adm-auth-field { margin-bottom: 1.25rem; }
+.adm-auth-field__label {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: #1f2937; margin-bottom: 0.5rem;
+}
+.adm-auth-field__input-wrap { position: relative; display: flex; align-items: center; }
+.adm-auth-field__icon {
+  position: absolute; left: 14px; color: #9ca3af; pointer-events: none;
+  display: flex; transition: color 0.25s;
+}
+.adm-auth-field__input-wrap:focus-within .adm-auth-field__icon { color: #0a1628; }
+.adm-auth-field__input {
+  width: 100%; padding: 0.875rem 1rem 0.875rem 2.75rem;
+  font-family: 'Noto Sans', sans-serif; font-size: 0.9rem; color: #1f2937;
+  background: rgba(243,244,246,0.8); border: 1.5px solid rgba(209,213,219,0.5);
+  border-radius: 12px; outline: none;
+  transition: border-color 0.25s, box-shadow 0.25s, background 0.25s;
+}
+.adm-auth-field__input::placeholder { color: #9ca3af; }
+.adm-auth-field__input:focus { border-color: #0a1628; background: #fff; box-shadow: 0 0 0 3px rgba(10,22,40,0.08); }
+
+.adm-auth-field__input--error { border-color: #dc2626 !important; background: #fef2f2 !important; animation: admShake 0.4s ease-out; }
+.adm-auth-field__input--error:focus { box-shadow: 0 0 0 3px rgba(220,38,38,0.1) !important; }
+.adm-auth-field__input-wrap--error .adm-auth-field__icon { color: #dc2626; }
+
+.adm-auth-field__toggle {
+  position: absolute; right: 14px; background: none; border: none;
+  color: #9ca3af; cursor: pointer; display: flex; padding: 4px; transition: color 0.2s;
+}
+.adm-auth-field__toggle:hover { color: #6b7280; }
+
+.adm-auth-error {
+  margin-top: 0.375rem; font-family: 'Noto Sans', sans-serif;
+  font-size: 0.78rem; color: #dc2626; display: flex; align-items: center; gap: 0.25rem;
+}
+
+/* ─── Forgot notice ─── */
+.adm-auth-forgot {
+  display: flex; align-items: center; gap: 0.4rem; margin-bottom: 1.5rem;
+  font-size: 0.78rem; color: #9ca3af;
+}
+
+/* ─── PW Rules ─── */
+.adm-auth-pw-rules {
+  padding: 0.875rem; background: rgba(0,36,66,0.03); border-radius: 10px;
+  border: 1px solid rgba(0,36,66,0.06); margin-bottom: 1.5rem;
+}
+.adm-auth-pw-rules p { font-size: 0.7rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 0.5rem; }
+.adm-auth-pw-rules ul { margin: 0; padding-left: 1rem; }
+.adm-auth-pw-rules li { font-size: 0.75rem; color: #64748b; line-height: 1.8; }
+
+/* ─── Submit ─── */
+.adm-auth-submit {
+  width: 100%; padding: 0.9375rem 1.5rem;
+  font-family: 'Work Sans', sans-serif; font-size: 1rem; font-weight: 700;
+  color: #0a1628; background: linear-gradient(135deg, #fec330 0%, #ffd449 50%, #fec330 100%);
+  background-size: 200% auto; border: none; border-radius: 14px;
+  cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+  transition: transform 0.2s, box-shadow 0.25s, background-position 0.4s;
+  box-shadow: 0 4px 16px rgba(254,195,48,0.3);
+}
+.adm-auth-submit:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(254,195,48,0.45); background-position: right center; }
+.adm-auth-submit:active { transform: translateY(0); box-shadow: 0 2px 8px rgba(254,195,48,0.25); }
+.adm-auth-submit svg { transition: transform 0.25s; }
+.adm-auth-submit:hover svg { transform: translateX(4px); }
+
+/* ─── Footer ─── */
+.adm-auth-footer {
+  position: relative; z-index: 10;
+  background: rgba(10,22,40,0.95); border-top: 1px solid rgba(255,255,255,0.06);
+  padding: 1.25rem 2rem;
+}
+.adm-auth-footer__inner {
+  max-width: 960px; margin: 0 auto;
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;
+}
+.adm-auth-footer__brand {
+  display: flex; align-items: center; gap: 0.5rem;
+  font-size: 0.8rem; font-weight: 700; color: rgba(255,255,255,0.7);
+}
+.adm-auth-footer__brand img { height: 20px; width: 20px; border-radius: 4px; object-fit: contain; }
+.adm-auth-footer__copy { font-family: 'Noto Sans', sans-serif; font-size: 0.75rem; color: rgba(255,255,255,0.35); }
+
+/* ─── Responsive ─── */
+@media (max-width: 768px) {
+  .adm-auth-card { grid-template-columns: 1fr; max-width: 480px; }
+  .adm-auth-brand { min-height: auto; padding: 2rem 1.75rem 1.5rem; }
+  .adm-auth-brand__heading { font-size: 1.75rem; }
+  .adm-auth-brand__desc { display: none; }
+  .adm-auth-form-panel { padding: 2rem 1.75rem; }
+  .adm-auth-footer__inner { flex-direction: column; text-align: center; }
+}
+
+@media (max-width: 480px) {
+  .adm-auth-content { padding: 1rem 0.75rem; }
+  .adm-auth-brand { padding: 1.5rem 1.25rem 1rem; }
+  .adm-auth-brand__heading { font-size: 1.5rem; }
+  .adm-auth-form-panel { padding: 1.5rem 1.25rem; }
+  .adm-auth-footer { padding: 1rem; }
+}

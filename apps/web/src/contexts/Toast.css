@@ -1,0 +1,82 @@
+/* c:/Users/Biz/Documents/MPL Website 2/apps/web/src/contexts/Toast.css */
+.toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 9999;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  min-width: 300px;
+  max-width: 400px;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #1e293b;
+  transform: translateY(100%);
+  opacity: 0;
+  animation: toastSlideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  border-left: 4px solid transparent;
+}
+
+@keyframes toastSlideUp {
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.toast--success {
+  border-left-color: #10b981;
+}
+
+.toast--success .material-symbols-rounded:first-child {
+  color: #10b981;
+}
+
+.toast--error {
+  border-left-color: #ef4444;
+}
+
+.toast--error .material-symbols-rounded:first-child {
+  color: #ef4444;
+}
+
+.toast--info {
+  border-left-color: #3b82f6;
+}
+
+.toast--info .material-symbols-rounded:first-child {
+  color: #3b82f6;
+}
+
+.toast__close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.toast__close:hover {
+  background: rgba(0,0,0,0.05);
+  color: #475569;
+}

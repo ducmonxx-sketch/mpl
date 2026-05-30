@@ -1,0 +1,83 @@
+# Maintenance Page — Implementation Walkthrough
+
+## Files Created
+
+### [maintenance.html](file:///c:/Users/Biz/Documents/MPL%20Website%202/apps/web/public/maintenance.html)
+Standalone maintenance page placed in `public/` — gets copied to `dist/` during build.
+
+### [.htaccess.maintenance](file:///c:/Users/Biz/Documents/MPL%20Website%202/apps/web/public/.htaccess.maintenance)
+Apache redirect rules for cPanel — forces a 503 status code (preserves SEO).
+
+---
+
+## Screenshots
+
+````carousel
+![Full two-column layout showing illustration + progress on left, maintenance message on right](C:\Users\Biz\.gemini\antigravity\brain\23766f06-dd02-406e-8fa7-70d3c7a3ccb8\maintenance_page_full_view_1774843482755.png)
+<!-- slide -->
+![Status popup showing "Langkah 2 dari 3: Running Updates — 50% selesai"](C:\Users\Biz\.gemini\antigravity\brain\23766f06-dd02-406e-8fa7-70d3c7a3ccb8\maintenance_status_popup_view_1774843496885.png)
+````
+
+---
+
+## Design Consistency
+
+The page matches the main site's design system:
+- **Colors**: `#1b3b5f` (primary), `#f2b824` (secondary), `#152332` (footer-bg)
+- **Fonts**: Work Sans + Noto Sans (loaded from Google Fonts)
+- **Header**: Same dark blue bar + logo layout as `Header.jsx`
+- **Footer**: Same style as `Footer.jsx`
+- **WhatsApp button**: Exact same SVG, styling, colors, and link as `WhatsAppButton.jsx`
+
+---
+
+## ✅ Working Progress Tracker
+
+The progress bar and step labels are driven by **two simple variables** at the top of the `<script>` section in `maintenance.html`:
+
+```javascript
+const STEPS = [
+  'Optimization',
+  'Running Updates',
+  'Deployment',
+];
+
+// 👉 Change this number to advance the progress bar:
+//    0 = Optimization (first step)
+//    1 = Running Updates
+//    2 = Deployment
+//    3 = All done (100%)
+const CURRENT_STEP = 1;
+```
+
+### How to update progress
+
+| What you want | Change `CURRENT_STEP` to |
+|---|---|
+| Starting (Optimization phase) | `0` |
+| Running Updates phase | `1` |
+| Deployment phase | `2` |
+| All done (100% bar) | `3` |
+
+You can also **add/remove/rename steps** by editing the `STEPS` array. The progress bar and labels adjust automatically.
+
+> [!TIP]
+> You only need to edit the `CURRENT_STEP` number and re-upload the file to cPanel. No rebuild needed since it's a standalone HTML file.
+
+---
+
+## How to Enable Maintenance Mode on cPanel
+
+1. **Build** your site as usual: `npm run build`
+2. Upload the `dist/` folder contents to `public_html` on cPanel
+3. The `maintenance.html` file will already be in `dist/` (since it's in `public/`)
+4. Upload `.htaccess.maintenance` to `public_html`
+5. **Rename** `.htaccess.maintenance` → `.htaccess` on cPanel
+
+All visitors will now see the maintenance page (with a proper 503 status code).
+
+### To disable maintenance mode:
+Simply **delete or rename** the `.htaccess` file back to `.htaccess.maintenance`.
+
+> [!IMPORTANT]
+> You can whitelist your own IP to bypass maintenance mode. Edit the `.htaccess` file and uncomment the `RewriteCond %{REMOTE_ADDR}` line, replacing the IP with yours.

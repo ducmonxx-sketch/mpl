@@ -1,0 +1,143 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  scroll-behavior: smooth;
+}
+
+
+.fade-in-section {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.7s ease-out, transform 0.7s ease-out;
+}
+
+.fade-in-section.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+
+/* ═══════════════════════════════════════════
+   Animated Burger Icon
+   ═══════════════════════════════════════════ */
+.burger-icon {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  width: 22px;
+  height: 18px;
+  position: relative;
+}
+
+.burger-bar {
+  display: block;
+  width: 22px;
+  height: 2px;
+  background-color: #fff;
+  border-radius: 2px;
+  position: absolute;
+  left: 0;
+  transition: transform 0.35s cubic-bezier(0.68, -0.6, 0.32, 1.6),
+              opacity 0.25s ease;
+}
+
+.burger-bar--top {
+  top: 0;
+}
+
+.burger-bar--mid {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.burger-bar--bot {
+  bottom: 0;
+}
+
+/* Animate to X */
+.burger-bar--top.burger-bar--open {
+  top: 50%;
+  transform: translateY(-50%) rotate(45deg);
+}
+
+.burger-bar--mid.burger-bar--open {
+  opacity: 0;
+  transform: translateY(-50%) scaleX(0);
+}
+
+.burger-bar--bot.burger-bar--open {
+  bottom: auto;
+  top: 50%;
+  transform: translateY(-50%) rotate(-45deg);
+}
+
+
+/* ═══════════════════════════════════════════
+   Mobile Backdrop
+   ═══════════════════════════════════════════ */
+.mobile-backdrop {
+  position: fixed;
+  inset: 0;
+  top: 80px; /* below header */
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s ease;
+  z-index: 40;
+}
+
+.mobile-backdrop--visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (min-width: 1024px) {
+  .mobile-backdrop {
+    display: none;
+  }
+}
+
+
+/* ═══════════════════════════════════════════
+   Mobile Menu Panel
+   ═══════════════════════════════════════════ */
+.mobile-menu {
+  max-height: 0;
+  overflow: hidden;
+  background: #1b3b5f;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  z-index: 45;
+}
+
+.mobile-menu--open {
+  max-height: 420px;
+}
+
+@media (min-width: 1024px) {
+  .mobile-menu {
+    display: none;
+  }
+}
+
+
+/* ═══════════════════════════════════════════
+   Mobile Nav Links – staggered entrance
+   ═══════════════════════════════════════════ */
+.mobile-nav-link {
+  opacity: 0;
+  transform: translateX(-12px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  padding: 10px 0;
+}
+
+.mobile-menu--open .mobile-nav-link {
+  opacity: 1;
+  transform: translateX(0);
+}

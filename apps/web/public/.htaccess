@@ -1,0 +1,114 @@
+# ===================================================
+# PT Mahkota Putra Logistik — Production .htaccess
+# ===================================================
+# Upload this file to public_html on cPanel alongside
+# the contents of the dist/ folder.
+#
+# MAINTENANCE MODE:
+#   To enable  → rename .htaccess.maintenance to .htaccess
+#   To disable → rename it back to .htaccess.maintenance
+#                and restore this file as .htaccess
+# ===================================================
+
+RewriteEngine On
+
+# ---------------------------------------------------
+# Force HTTPS (Cloudflare-compatible)
+# ---------------------------------------------------
+# Uses X-Forwarded-Proto instead of %{HTTPS} to avoid
+# redirect loops when Cloudflare SSL is set to Flexible.
+RewriteCond %{HTTP:X-Forwarded-Proto} !https
+RewriteCond %{HTTPS} off
+RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# ---------------------------------------------------
+# Remove www (optional — uncomment if using non-www)
+# ---------------------------------------------------
+# RewriteCond %{HTTP_HOST} ^www\.(.+)$ [NC]
+# RewriteRule ^(.*)$ https://%1/$1 [L,R=301]
+
+# ---------------------------------------------------
+# SPA Routing — React Router support
+# ---------------------------------------------------
+# If the requested file or directory doesn't exist,
+# serve index.html so React Router handles the route.
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.html [QSA,L]
+
+# ---------------------------------------------------
+# Security Headers
+# ---------------------------------------------------
+<IfModule mod_headers.c>
+  # HSTS — enforce HTTPS for 1 year + subdomains
+  Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+
+  # Prevent clickjacking
+  Header always set X-Frame-Options "DENY"
+
+  # Prevent MIME-type sniffing
+  Header always set X-Content-Type-Options "nosniff"
+
+  # Control referrer information
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+  # Disable unused browser features
+  Header always set Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+
+  # Content Security Policy
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://api.mahkotaputralogistik.com https://api.mahkotaputralogistik.id; frame-src https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'; form-action 'self'"
+
+  # Prevent cross-site scripting via embedding
+  Header always set X-XSS-Protection "1; mode=block"
+</IfModule>
+
+# ---------------------------------------------------
+# Compression — gzip/brotli for faster loading
+# ---------------------------------------------------
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html
+  AddOutputFilterByType DEFLATE text/css
+  AddOutputFilterByType DEFLATE text/javascript
+  AddOutputFilterByType DEFLATE application/javascript
+  AddOutputFilterByType DEFLATE application/json
+  AddOutputFilterByType DEFLATE image/svg+xml
+</IfModule>
+
+# ---------------------------------------------------
+# Cache Control — aggressive caching for hashed assets
+# ---------------------------------------------------
+<IfModule mod_expires.c>
+  ExpiresActive On
+
+  # Hashed assets (JS, CSS from Vite) — cache 1 year
+  <FilesMatch "\.(js|css)$">
+    ExpiresDefault "access plus 1 year"
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+
+  # Images — cache 1 month
+  <FilesMatch "\.(jpg|jpeg|png|gif|svg|webp|ico)$">
+    ExpiresDefault "access plus 1 month"
+    Header set Cache-Control "public, max-age=2592000"
+  </FilesMatch>
+
+  # Fonts — cache 1 year
+  <FilesMatch "\.(woff|woff2|ttf|eot)$">
+    ExpiresDefault "access plus 1 year"
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+
+  # HTML — no cache (always serve fresh)
+  <FilesMatch "\.html$">
+    ExpiresDefault "access plus 0 seconds"
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+    Header set Pragma "no-cache"
+  </FilesMatch>
+</IfModule>
+
+# ---------------------------------------------------
+# Block access to sensitive files
+# ---------------------------------------------------
+<FilesMatch "(^\.env|\.example$|\.maintenance$)">
+  Require all denied
+</FilesMatch>
