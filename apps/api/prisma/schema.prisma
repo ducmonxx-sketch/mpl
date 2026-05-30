@@ -1,0 +1,283 @@
+// prisma/schema.prisma
+//
+// Prisma 7 schema — notice two key differences from v6:
+//   1. datasource db has NO url field — that moved to prisma.config.ts
+//   2. generator uses "prisma-client" (not "prisma-client-js")
+//      and outputs to a local folder, not node_modules
+//
+// Commands:
+//   npx prisma migrate dev --name init   → create/update DB tables
+//   npx prisma generate                  → regenerate TS client
+//   npx prisma studio                    → visual DB browser
+//   npx prisma db seed                   → run seed file
+//   npx prisma migrate reset             → ⚠️ wipe DB (dev only)
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma/"  // generated types go here, not node_modules
+}
+
+// In Prisma 7, the datasource block only declares the provider.
+// The actual URL is in prisma.config.ts → datasource.url
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum AdminRole {
+  SUPERADMIN
+  OPERATIONS
+  SUPPORT
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum DriverStatus {
+  ACTIVE
+  UNAVAILABLE
+}
+
+enum VehicleStatus {
+  AVAILABLE
+  IN_USE
+  MAINTENANCE
+}
+
+enum ShipmentStatus {
+  PENDING      // created, not yet processed
+  TRANSIT      // currently being delivered
+  DELIVERED    // successfully delivered
+  FAILED       // delivery failed
+  CANCELLED    // cancelled before pickup
+}
+
+enum EventStatus {
+  UPCOMING     // not yet reached this stop
+  ACTIVE       // currently at this stop
+  DONE         // already passed this stop
+}
+
+enum AuditActionType {
+  VERIFY_USER
+  REJECT_USER
+  CREATE_DRIVER
+  UPDATE_DRIVER
+  DELETE_DRIVER
+  CREATE_VEHICLE
+  UPDATE_VEHICLE
+  DELETE_VEHICLE
+  CREATE_SHIPMENT
+  UPDATE_SHIPMENT
+  ASSIGN_DRIVER
+  ASSIGN_VEHICLE
+  UPDATE_STATUS
+  ADD_SHIPMENT_EVENT
+}
+
+// ============================================================
+// ADMINS
+// ============================================================
+
+model Admin {
+  id           String    @id @default(uuid())
+  fullName     String
+  email        String    @unique
+  passwordHash String
+  role         AdminRole @default(OPERATIONS)
+  createdAt    DateTime  @default(now())
+
+  verifiedUsers     User[]          @relation("VerifiedByAdmin")
+  managedDrivers    Driver[]        @relation("DriverManagedBy")
+  managedVehicles   Vehicle[]       @relation("VehicleManagedBy")
+  createdShipments  Shipment[]      @relation("ShipmentCreatedBy")
+  updatedShipments  Shipment[]      @relation("ShipmentUpdatedBy")
+  shipmentEvents    ShipmentEvent[] @relation("EventCreatedBy")
+  sentNotifications Notification[]  @relation("NotificationSentBy")
+  auditLogs         AdminAuditLog[]
+
+  @@map("admins")
+}
+
+// ============================================================
+// ADMIN AUDIT LOGS
+// ============================================================
+
+model AdminAuditLog {
+  id             String          @id @default(uuid())
+  actionType     AuditActionType
+  targetTable    String
+  targetRecordId String
+  changesSummary String?
+  timestamp      DateTime        @default(now())
+
+  adminId String
+  admin   Admin  @relation(fields: [adminId], references: [id])
+
+  @@map("admin_audit_logs")
+}
+
+// ============================================================
+// USERS (Clients)
+// ============================================================
+
+model User {
+  id                 String             @id @default(uuid())
+  fullName           String
+  companyName        String?
+  email              String             @unique
+  passwordHash       String
+  phoneNumber        String?
+  verificationStatus VerificationStatus @default(PENDING)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  verifiedByAdminId String?
+  verifiedByAdmin   Admin?  @relation("VerifiedByAdmin", fields: [verifiedByAdminId], references: [id])
+
+  settings      UserSettings?
+  shipments     Shipment[]
+  notifications Notification[]
+
+  @@map("users")
+}
+
+// ============================================================
+// USER SETTINGS
+// ============================================================
+
+model UserSettings {
+  id                    String  @id @default(uuid())
+  emailNotifications    Boolean @default(true)
+  whatsappNotifications Boolean @default(true)
+  language              String  @default("id")
+  theme                 String  @default("light")
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_settings")
+}
+
+// ============================================================
+// DRIVERS
+// ============================================================
+
+model Driver {
+  id          String       @id @default(uuid())
+  fullName    String
+  phoneNumber String?
+  status      DriverStatus @default(ACTIVE)
+
+  lastUpdatedByAdminId String?
+  lastUpdatedByAdmin   Admin?  @relation("DriverManagedBy", fields: [lastUpdatedByAdminId], references: [id])
+
+  shipments Shipment[]
+
+  @@map("drivers")
+}
+
+// ============================================================
+// VEHICLES
+// ============================================================
+
+model Vehicle {
+  id           String        @id @default(uuid())
+  type         String
+  licensePlate String        @unique
+  status       VehicleStatus @default(AVAILABLE)
+
+  lastUpdatedByAdminId String?
+  lastUpdatedByAdmin   Admin?  @relation("VehicleManagedBy", fields: [lastUpdatedByAdminId], references: [id])
+
+  shipments Shipment[]
+
+  @@map("vehicles")
+}
+
+// ============================================================
+// SHIPMENTS
+// ID format: #MPL-00001-JKT (generated in route code)
+// ============================================================
+
+model Shipment {
+  id                     String         @id
+  packageType            String
+  weightKg               Decimal        @db.Decimal(10, 2)
+  serviceLevel           String
+  originLocation         String
+  destinationLocation    String
+  specialNotes           String?
+  status                 ShipmentStatus @default(PENDING)
+  currentProgressPercent Int            @default(0)
+  pickupDate             DateTime?
+  completionDate         DateTime?
+  createdAt              DateTime       @default(now())
+
+  clientId String
+  client   User   @relation(fields: [clientId], references: [id])
+
+  driverId String?
+  driver   Driver? @relation(fields: [driverId], references: [id])
+
+  vehicleId String?
+  vehicle   Vehicle? @relation(fields: [vehicleId], references: [id])
+
+  createdByAdminId String?
+  createdByAdmin   Admin?  @relation("ShipmentCreatedBy", fields: [createdByAdminId], references: [id])
+
+  lastUpdatedByAdminId String?
+  lastUpdatedByAdmin   Admin?  @relation("ShipmentUpdatedBy", fields: [lastUpdatedByAdminId], references: [id])
+
+  events ShipmentEvent[]
+
+  @@map("shipments")
+}
+
+// ============================================================
+// SHIPMENT EVENTS (Manual tracking timeline)
+// ============================================================
+
+model ShipmentEvent {
+  id             String      @id @default(uuid())
+  stepName       String
+  location       String
+  status         EventStatus @default(UPCOMING)
+  driverNotes    String?
+  eventTimestamp DateTime
+  createdAt      DateTime    @default(now())
+
+  shipmentId String
+  shipment   Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  createdByAdminId String?
+  createdByAdmin   Admin?  @relation("EventCreatedBy", fields: [createdByAdminId], references: [id])
+
+  @@map("shipment_events")
+}
+
+// ============================================================
+// NOTIFICATIONS
+// ============================================================
+
+model Notification {
+  id        String   @id @default(uuid())
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  sentByAdminId String?
+  sentByAdmin   Admin?  @relation("NotificationSentBy", fields: [sentByAdminId], references: [id])
+
+  @@map("notifications")
+}

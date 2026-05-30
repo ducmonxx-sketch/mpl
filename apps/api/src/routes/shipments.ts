@@ -1,0 +1,260 @@
+// src/routes/shipments.ts
+//
+//   GET    /api/shipments            → list shipments (client: own, admin: all)
+//   GET    /api/shipments/stats      → dashboard stats by period
+//   GET    /api/shipments/:id        → single shipment detail
+//   POST   /api/shipments            → create shipment request
+//   PATCH  /api/shipments/:id/assign → admin assigns driver & vehicle
+//   PATCH  /api/shipments/:id/status → admin updates status & progress
+
+import { Router, Response } from "express"
+import prisma from "../lib/prisma"
+import { authenticate, adminOnly, AuthRequest } from "../middleware/auth"
+
+const router = Router()
+
+// ── Helper: generate shipment ID ─────────────────────────────
+// Format: #MPL-00001-JKT
+const generateShipmentId = async (): Promise<string> => {
+  const count = await prisma.shipment.count()
+  const number = String(count + 1).padStart(5, "0")
+  return `#MPL-${number}-JKT`
+}
+
+// ── GET /api/shipments ────────────────────────────────────────
+router.get("/", authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { status, from, to } = req.query
+    const isAdmin = req.user?.type === "admin"
+
+    const shipments = await prisma.shipment.findMany({
+      where: {
+        ...(!isAdmin && { clientId: req.user!.id }),
+        ...(status && { status: status as any }),
+        ...(from || to
+          ? {
+              createdAt: {
+                ...(from && { gte: new Date(from as string) }),
+                ...(to   && { lte: new Date(to as string) }),
+              },
+            }
+          : {}),
+      },
+      include: {
+        client:  { select: { fullName: true, companyName: true } },
+        driver:  { select: { fullName: true, phoneNumber: true } },
+        vehicle: { select: { type: true, licensePlate: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    })
+
+    res.json({ shipments })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to fetch shipments." })
+  }
+})
+
+// ── GET /api/shipments/stats ──────────────────────────────────
+// Dashboard stats — used in the client's Dashboard page
+// ?period=daily|weekly|monthly|yearly
+router.get("/stats", authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { period = "monthly" } = req.query
+    const isAdmin = req.user?.type === "admin"
+    const now = new Date()
+
+    const startDate = new Date()
+    if (period === "daily")   startDate.setDate(now.getDate() - 1)
+    if (period === "weekly")  startDate.setDate(now.getDate() - 7)
+    if (period === "monthly") startDate.setMonth(now.getMonth() - 1)
+    if (period === "yearly")  startDate.setFullYear(now.getFullYear() - 1)
+
+    const where = {
+      ...(!isAdmin && { clientId: req.user!.id }),
+      createdAt: { gte: startDate },
+    }
+
+    // Run all counts in parallel — faster than sequential awaits
+    const [total, delivered, transit, failed, pending, cancelled] =
+      await Promise.all([
+        prisma.shipment.count({ where }),
+        prisma.shipment.count({ where: { ...where, status: "DELIVERED"  } }),
+        prisma.shipment.count({ where: { ...where, status: "TRANSIT"    } }),
+        prisma.shipment.count({ where: { ...where, status: "FAILED"     } }),
+        prisma.shipment.count({ where: { ...where, status: "PENDING"    } }),
+        prisma.shipment.count({ where: { ...where, status: "CANCELLED"  } }),
+      ])
+
+    res.json({ period, total, delivered, transit, failed, pending, cancelled })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to fetch stats." })
+  }
+})
+
+// ── GET /api/shipments/:id ────────────────────────────────────
+router.get("/:id", authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const shipment = await prisma.shipment.findUnique({
+      where: { id: req.params.id },
+      include: {
+        client:  { select: { fullName: true, companyName: true, email: true } },
+        driver:  { select: { fullName: true, phoneNumber: true } },
+        vehicle: { select: { type: true, licensePlate: true } },
+        events:  { orderBy: { eventTimestamp: "asc" } },
+      },
+    })
+
+    if (!shipment) {
+      return res.status(404).json({ message: "Shipment not found." })
+    }
+
+    // Clients can only view their own shipments
+    if (req.user?.type === "user" && shipment.clientId !== req.user.id) {
+      return res.status(403).json({ message: "Access denied." })
+    }
+
+    res.json({ shipment })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to fetch shipment." })
+  }
+})
+
+// ── POST /api/shipments ───────────────────────────────────────
+router.post("/", authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const {
+      packageType,
+      weightKg,
+      serviceLevel,
+      originLocation,
+      destinationLocation,
+      specialNotes,
+      pickupDate,
+    } = req.body
+
+    const isAdmin  = req.user?.type === "admin"
+    const clientId = isAdmin ? req.body.clientId : req.user!.id
+    const id       = await generateShipmentId()
+
+    const shipment = await prisma.shipment.create({
+      data: {
+        id,
+        packageType,
+        weightKg,
+        serviceLevel,
+        originLocation,
+        destinationLocation,
+        specialNotes,
+        pickupDate:       pickupDate ? new Date(pickupDate) : null,
+        clientId,
+        createdByAdminId: isAdmin ? req.user!.id : null,
+      },
+    })
+
+    // Notify the client
+    await prisma.notification.create({
+      data: {
+        userId:  clientId,
+        title:   "Shipment Request Received",
+        message: `Your shipment ${id} has been received and is pending assignment.`,
+      },
+    })
+
+    res.status(201).json({ message: "Shipment created successfully.", shipment })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to create shipment." })
+  }
+})
+
+// ── PATCH /api/shipments/:id/assign ──────────────────────────
+// Admin assigns driver and vehicle
+router.patch("/:id/assign", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+  try {
+    const { driverId, vehicleId } = req.body
+
+    const shipment = await prisma.shipment.update({
+      where: { id: req.params.id },
+      data: {
+        driverId,
+        vehicleId,
+        status:               "TRANSIT",
+        lastUpdatedByAdminId: req.user!.id,
+      },
+    })
+
+    await prisma.adminAuditLog.create({
+      data: {
+        adminId:        req.user!.id,
+        actionType:     "ASSIGN_DRIVER",
+        targetTable:    "shipments",
+        targetRecordId: shipment.id,
+        changesSummary: `Assigned driver ${driverId} and vehicle ${vehicleId}`,
+      },
+    })
+
+    await prisma.notification.create({
+      data: {
+        userId:        shipment.clientId,
+        title:         "Driver Assigned",
+        message:       `A driver has been assigned to your shipment ${shipment.id}.`,
+        sentByAdminId: req.user!.id,
+      },
+    })
+
+    res.json({ message: "Driver and vehicle assigned.", shipment })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to assign shipment." })
+  }
+})
+
+// ── PATCH /api/shipments/:id/status ──────────────────────────
+// Admin updates shipment status and progress percent
+router.patch("/:id/status", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+  try {
+    const { status, currentProgressPercent } = req.body
+
+    const shipment = await prisma.shipment.update({
+      where: { id: req.params.id },
+      data: {
+        status,
+        currentProgressPercent,
+        ...(status === "DELIVERED" && { completionDate: new Date() }),
+        lastUpdatedByAdminId: req.user!.id,
+      },
+    })
+
+    await prisma.adminAuditLog.create({
+      data: {
+        adminId:        req.user!.id,
+        actionType:     "UPDATE_STATUS",
+        targetTable:    "shipments",
+        targetRecordId: shipment.id,
+        changesSummary: `Status updated to ${status}`,
+      },
+    })
+
+    // Notify client on key status changes
+    if (["TRANSIT", "DELIVERED", "FAILED"].includes(status)) {
+      await prisma.notification.create({
+        data: {
+          userId:        shipment.clientId,
+          title:         `Shipment ${status}`,
+          message:       `Your shipment ${shipment.id} is now ${status}.`,
+          sentByAdminId: req.user!.id,
+        },
+      })
+    }
+
+    res.json({ message: "Status updated.", shipment })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to update status." })
+  }
+})
+
+export default router
