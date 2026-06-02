@@ -7,7 +7,7 @@ node_modules/
 .env.local
 
 # Prisma
-/apps/api/src/generated/
+src/generated/
 *.db
 *.db-journal
 

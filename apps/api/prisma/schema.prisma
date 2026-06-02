@@ -79,6 +79,18 @@ enum AuditActionType {
   ASSIGN_VEHICLE
   UPDATE_STATUS
   ADD_SHIPMENT_EVENT
+  CREATE_INVOICE
+  SEND_INVOICE
+  MARK_INVOICE_PAID
+  CANCEL_INVOICE
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  CANCELLED
 }
 
 // ============================================================
@@ -101,6 +113,7 @@ model Admin {
   shipmentEvents    ShipmentEvent[] @relation("EventCreatedBy")
   sentNotifications Notification[]  @relation("NotificationSentBy")
   auditLogs         AdminAuditLog[]
+  createdInvoices   Invoice[]       @relation("InvoiceCreatedBy")
 
   @@map("admins")
 }
@@ -144,6 +157,7 @@ model User {
   settings      UserSettings?
   shipments     Shipment[]
   notifications Notification[]
+  invoices      Invoice[]
 
   @@map("users")
 }
@@ -235,7 +249,8 @@ model Shipment {
   lastUpdatedByAdminId String?
   lastUpdatedByAdmin   Admin?  @relation("ShipmentUpdatedBy", fields: [lastUpdatedByAdminId], references: [id])
 
-  events ShipmentEvent[]
+  events  ShipmentEvent[]
+  invoice Invoice?
 
   @@map("shipments")
 }
@@ -280,4 +295,34 @@ model Notification {
   sentByAdmin   Admin?  @relation("NotificationSentBy", fields: [sentByAdminId], references: [id])
 
   @@map("notifications")
+}
+
+// ============================================================
+// INVOICES
+// ============================================================
+
+model Invoice {
+  id            String        @id @default(uuid())
+  invoiceNumber String        @unique
+  subtotal      Decimal       @db.Decimal(12, 2)
+  taxRate       Decimal       @db.Decimal(5, 2)  @default(11)
+  taxAmount     Decimal       @db.Decimal(12, 2)
+  totalAmount   Decimal       @db.Decimal(12, 2)
+  status        InvoiceStatus @default(DRAFT)
+  dueDate       DateTime
+  paidAt        DateTime?
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  shipmentId String   @unique
+  shipment   Shipment @relation(fields: [shipmentId], references: [id])
+
+  clientId String
+  client   User   @relation(fields: [clientId], references: [id])
+
+  createdByAdminId String?
+  createdByAdmin   Admin?  @relation("InvoiceCreatedBy", fields: [createdByAdminId], references: [id])
+
+  @@map("invoices")
 }
