@@ -10,11 +10,12 @@ import OverviewSection from './AdminComponents/OverviewSection'
 import ShipmentsSection from './AdminComponents/ShipmentsSection'
 import ClientsSection from './AdminComponents/ClientsSection'
 import DriversSection from './AdminComponents/DriversSection'
+import ArmadaSection from './AdminComponents/ArmadaSection'
 import InvoicesSection from './AdminComponents/InvoicesSection'
 import UsersSection from './AdminComponents/UsersSection'
 import TrackingSection from './dashboard/TrackingSection'
 
-// Styles — imports CSS variables from client dashboard + admin-specific styles
+// Styles
 import './ClientDashboardPage.css'
 import './AdminDashboardPage.css'
 
@@ -22,7 +23,8 @@ const NAV_ITEMS = [
   { id: 'overview', label: 'Beranda', icon: 'dashboard' },
   { id: 'shipments', label: 'Pengiriman', icon: 'local_shipping' },
   { id: 'clients', label: 'Klien', icon: 'people' },
-  { id: 'drivers', label: 'Driver & Armada', icon: 'directions_car' },
+  { id: 'drivers', label: 'Driver', icon: 'person' },
+  { id: 'armada', label: 'Armada', icon: 'directions_car' },
   { id: 'invoices', label: 'Faktur', icon: 'receipt' },
   { id: 'users', label: 'Pengguna', icon: 'admin_panel_settings' },
   { id: 'tracking', label: 'Pelacakan', icon: 'location_on' },
@@ -81,6 +83,7 @@ export default function AdminDashboardPage() {
       case 'shipments': return <ShipmentsSection onTrackFull={navigateToTracking} />
       case 'clients': return <ClientsSection />
       case 'drivers': return <DriversSection />
+      case 'armada': return <ArmadaSection />
       case 'invoices': return <InvoicesSection />
       case 'users': return <UsersSection />
       case 'tracking': return <TrackingSection initialSearchQuery={trackingId} isAdmin={true} />
@@ -88,7 +91,6 @@ export default function AdminDashboardPage() {
     }
   }
 
-  // Admin display name from auth context
   const displayName = user?.fullName || 'Admin Utama'
   const displayRole = user?.role || 'Super Admin'
 
@@ -148,9 +150,9 @@ export default function AdminDashboardPage() {
               <span className="dash-topbar__search-icon">
                 <Icon name="search" size={16} />
               </span>
-              <input 
-                type="text" 
-                placeholder="Cari..." 
+              <input
+                type="text"
+                placeholder="Cari..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />

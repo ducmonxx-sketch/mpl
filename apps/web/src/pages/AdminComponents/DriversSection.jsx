@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Icon from '../../components/Icon'
 import { useToast } from '../../contexts/ToastContext'
 import AdminDataTable from './components/AdminDataTable'
@@ -8,151 +8,332 @@ import AdminModal from './components/AdminModal'
 import AdminFormField from './components/AdminFormField'
 import { fleetAPI } from '../../lib/api'
 
+const formatDate = (dateStr) => {
+  if (!dateStr) return '-'
+  try {
+    return new Date(dateStr).toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    })
+  } catch {
+    return '-'
+  }
+}
+
+const mapDriverStatus = (apiStatus) => {
+  if (!apiStatus) return 'inactive'
+  const s = apiStatus.toUpperCase()
+  if (s === 'ACTIVE') return 'available'
+  if (s === 'UNAVAILABLE') return 'inactive'
+  return apiStatus.toLowerCase()
+}
+
 export default function DriversSection() {
   const { showToast } = useToast()
+
+  // List state
+  const [drivers, setDrivers] = useState([])
+  const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
-  const [selectedDriver, setSelectedDriver] = useState(null)
-  const [showCreateModal, setShowCreateModal] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
-  const [DRIVERS, setDRIVERS] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [selectedDriver, setSelectedDriver] = useState(null)
+
+  // Create modal state
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [fullName, setFullName] = useState('')
+  const [phoneNumber, setPhoneNumber] = useState('')
+  const [licenseNumber, setLicenseNumber] = useState('')
+  const [licenseType, setLicenseType] = useState('')
+  const [licenseExpiry, setLicenseExpiry] = useState('')
+
+  const fetchDrivers = useCallback(async () => {
+    setLoading(true)
+    try {
+      const data = await fleetAPI.getDrivers()
+      const mapped = (data.drivers || []).map((d) => ({
+        id: d.id,
+        name: d.fullName || '-',
+        phone: d.phoneNumber || '-',
+        licenseNumber: d.licenseNumber || '-',
+        licenseType: d.licenseType || '-',
+        licenseExpiry: formatDate(d.licenseExpiry),
+        status: mapDriverStatus(d.status),
+        assignments: d._count?.shipments ?? 0,
+      }))
+      setDrivers(mapped)
+    } catch (err) {
+      console.error('Failed to fetch drivers:', err)
+      showToast(err.message || 'Gagal memuat data driver.', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }, [showToast])
 
   useEffect(() => {
-    async function fetchDrivers() {
-      setLoading(true)
-      try {
-        const data = await fleetAPI.getDrivers()
-        const mapped = (data.drivers || []).map(d => ({
-          id: d.id,
-          name: d.fullName,
-          phone: d.phoneNumber || '-',
-          licenseNumber: d.licenseNumber || '-',
-          licenseExpiry: '-', // Add to DB later
-          vehicleType: '-', // Fetch from vehicle join later
-          vehiclePlate: '-',
-          status: d.status.toLowerCase() === 'active' ? 'available' : d.status.toLowerCase(), // basic mapping
-          isActive: d.status === 'ACTIVE',
-          notes: '',
-          assignments: 0,
-        }))
-        setDRIVERS(mapped)
-      } catch (err) {
-        console.error('Failed to fetch drivers:', err)
-      } finally {
-        setLoading(false)
-      }
-    }
     fetchDrivers()
-  }, [])
+  }, [fetchDrivers])
 
-  const filtered = DRIVERS.filter(d => {
-    const matchFilter = filter === 'all' || d.status === filter
-    const matchSearch = !searchQuery || d.name.toLowerCase().includes(searchQuery.toLowerCase())
-    return matchFilter && matchSearch
-  })
+  const resetForm = () => {
+    setFullName('')
+    setPhoneNumber('')
+    setLicenseNumber('')
+    setLicenseType('')
+    setLicenseExpiry('')
+  }
 
-  const activeCount = DRIVERS.filter(d => d.isActive).length
-  const onDutyCount = DRIVERS.filter(d => d.status === 'on_duty').length
-  const availableCount = DRIVERS.filter(d => d.status === 'available').length
+  const handleOpenCreateModal = () => {
+    resetForm()
+    setShowCreateModal(true)
+  }
+
+  const handleCloseCreateModal = () => {
+    setShowCreateModal(false)
+    resetForm()
+  }
+
+  const handleCreateDriver = async () => {
+    if (!fullName.trim() || !phoneNumber.trim() || !licenseNumber.trim() || !licenseType || !licenseExpiry) {
+      showToast('Harap lengkapi semua field yang wajib diisi.', 'error')
+      return
+    }
+    setSubmitting(true)
+    try {
+      await fleetAPI.addDriver({ fullName, phoneNumber, licenseNumber, licenseType, licenseExpiry })
+      showToast('Driver baru berhasil ditambahkan!', 'success')
+      setShowCreateModal(false)
+      resetForm()
+      await fetchDrivers()
+    } catch (err) {
+      showToast(err.message || 'Gagal menambah driver.', 'error')
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   const filters = [
     { id: 'all', label: 'Semua' },
     { id: 'available', label: 'Tersedia' },
-    { id: 'on_duty', label: 'Bertugas' },
     { id: 'inactive', label: 'Tidak Aktif' },
   ]
 
-  const columns = [
-    { key: 'name', label: 'Nama Driver', render: (v) => <span className="adm-table__cell-main">{v}</span> },
-    { key: 'vehiclePlate', label: 'No. Kendaraan' },
-    { key: 'vehicleType', label: 'Jenis' },
-    { key: 'phone', label: 'Telepon' },
-    { key: 'status', label: 'Status', render: (v) => <AdminStatusBadge status={v} type="driver" /> },
-    { key: 'actions', label: '', render: (_, row) => (
-      <div className="adm-actions">
-        <button className="adm-action-btn" title="Detail" onClick={(e) => { e.stopPropagation(); setSelectedDriver(row) }}>
-          <Icon name="visibility" size={16} />
-        </button>
-        <button className="adm-action-btn" title="Edit" onClick={(e) => { e.stopPropagation(); showToast('Fitur edit driver dalam pengembangan.', 'info') }}>
-          <Icon name="edit" size={16} />
-        </button>
-      </div>
-    )},
-  ]
+  const filtered = drivers.filter((d) => {
+    const matchFilter = filter === 'all' || d.status === filter
+    const matchSearch =
+      !searchQuery ||
+      d.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      d.phone.includes(searchQuery) ||
+      d.licenseNumber.toLowerCase().includes(searchQuery.toLowerCase())
+    return matchFilter && matchSearch
+  })
 
-  const handleCreateDriver = () => {
-    showToast('Driver baru berhasil ditambahkan!', 'success')
-    setShowCreateModal(false)
-  }
+  const availableCount = drivers.filter((d) => d.status === 'available').length
+  const inactiveCount = drivers.filter((d) => d.status === 'inactive').length
+
+  const columns = [
+    {
+      key: 'name',
+      label: 'Nama Driver',
+      render: (v) => <span className="adm-table__cell-main">{v}</span>,
+    },
+    { key: 'phone', label: 'No. Telepon' },
+    { key: 'licenseNumber', label: 'No. SIM' },
+    { key: 'licenseType', label: 'Jenis SIM' },
+    { key: 'licenseExpiry', label: 'Masa Berlaku SIM' },
+    {
+      key: 'status',
+      label: 'Status',
+      render: (v) => <AdminStatusBadge status={v} type="driver" />,
+    },
+    {
+      key: 'actions',
+      label: '',
+      render: (_, row) => (
+        <div className="adm-actions">
+          <button
+            className="adm-action-btn"
+            title="Lihat Detail"
+            onClick={(e) => {
+              e.stopPropagation()
+              setSelectedDriver(row)
+            }}
+          >
+            <Icon name="visibility" size={16} />
+          </button>
+          <button
+            className="adm-action-btn"
+            title="Edit"
+            onClick={(e) => {
+              e.stopPropagation()
+              showToast('Fitur edit driver dalam tahap pengembangan.', 'info')
+            }}
+          >
+            <Icon name="edit" size={16} />
+          </button>
+        </div>
+      ),
+    },
+  ]
 
   return (
     <div className="dash-content">
+      {/* Header */}
       <section className="dash-header">
         <div>
-          <h2 className="dash-header__title">Driver & Armada</h2>
-          <p className="dash-header__subtitle">Kelola driver, kendaraan, dan ketersediaan armada.</p>
+          <h2 className="dash-header__title">Driver</h2>
+          <p className="dash-header__subtitle">Kelola data driver dan informasi SIM.</p>
         </div>
         <div className="adm-section-actions">
-          <button className="adm-create-btn" onClick={() => setShowCreateModal(true)}>
+          <button className="adm-create-btn" onClick={handleOpenCreateModal}>
             <Icon name="add" size={18} /> Tambah Driver
           </button>
         </div>
       </section>
 
+      {/* Search */}
       <div className="adm-search-bar">
         <Icon name="search" size={18} />
-        <input type="text" placeholder="Cari nama driver..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+        <input
+          type="text"
+          placeholder="Cari nama driver, telepon, atau no. SIM..."
+          value={searchQuery}
+          onChange={(e) => {
+            setSearchQuery(e.target.value)
+            setCurrentPage(1)
+          }}
+        />
       </div>
 
+      {/* Filters */}
       <div className="adm-filters" style={{ marginTop: '1rem' }}>
-        {filters.map(f => {
-          const count = f.id === 'all' ? DRIVERS.length : DRIVERS.filter(d => d.status === f.id).length
+        {filters.map((f) => {
+          const count =
+            f.id === 'all'
+              ? drivers.length
+              : drivers.filter((d) => d.status === f.id).length
           return (
-            <button key={f.id} className={`adm-filter-tab${filter === f.id ? ' adm-filter-tab--active' : ''}`} onClick={() => setFilter(f.id)}>
+            <button
+              key={f.id}
+              className={`adm-filter-tab${filter === f.id ? ' adm-filter-tab--active' : ''}`}
+              onClick={() => {
+                setFilter(f.id)
+                setCurrentPage(1)
+              }}
+            >
               {f.label} <span className="adm-filter-count">{count}</span>
             </button>
           )
         })}
       </div>
 
+      {/* Table */}
       <div style={{ marginTop: '1.25rem' }}>
-        <AdminDataTable columns={columns} data={filtered} onRowClick={setSelectedDriver} />
-        <AdminPagination currentPage={currentPage} totalPages={1} totalItems={filtered.length} itemsPerPage={20} onPageChange={setCurrentPage} />
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--dash-text-muted)' }}>
+            <Icon name="sync" size={28} />
+            <p style={{ marginTop: '0.75rem', fontSize: '0.9rem' }}>Memuat data driver...</p>
+          </div>
+        ) : (
+          <>
+            <AdminDataTable columns={columns} data={filtered} onRowClick={setSelectedDriver} />
+            <AdminPagination
+              currentPage={currentPage}
+              totalPages={Math.max(1, Math.ceil(filtered.length / 20))}
+              totalItems={filtered.length}
+              itemsPerPage={20}
+              onPageChange={setCurrentPage}
+            />
+          </>
+        )}
       </div>
 
       {/* Summary Bar */}
       <div className="adm-driver-summary">
-        <span><strong>{activeCount}</strong> Driver Aktif</span>
+        <span>
+          <strong>{drivers.length}</strong> Total Driver
+        </span>
         <span>|</span>
-        <span><strong>{onDutyCount}</strong> Bertugas</span>
+        <span>
+          <strong>{availableCount}</strong> Tersedia
+        </span>
         <span>|</span>
-        <span><strong>{availableCount}</strong> Tersedia</span>
+        <span>
+          <strong>{inactiveCount}</strong> Tidak Aktif
+        </span>
       </div>
 
       {/* Detail Panel */}
       {selectedDriver && (
         <div className="adm-detail-panel glass-card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              marginBottom: '1.5rem',
+            }}
+          >
             <div>
               <AdminStatusBadge status={selectedDriver.status} type="driver" />
-              <h3 style={{ fontSize: '1.35rem', fontWeight: 900, color: 'var(--dash-primary)', margin: '0.5rem 0 0' }}>{selectedDriver.name}</h3>
+              <h3
+                style={{
+                  fontSize: '1.35rem',
+                  fontWeight: 900,
+                  color: 'var(--dash-primary)',
+                  margin: '0.5rem 0 0',
+                }}
+              >
+                {selectedDriver.name}
+              </h3>
             </div>
-            <button className="adm-action-btn" onClick={() => setSelectedDriver(null)}><Icon name="close" size={18} /></button>
+            <button className="adm-action-btn" onClick={() => setSelectedDriver(null)}>
+              <Icon name="close" size={18} />
+            </button>
           </div>
+
           <div className="adm-detail-grid">
             <div className="adm-detail-section">
-              <h4 className="adm-detail-section__title"><Icon name="person" size={16} /> Informasi Driver</h4>
-              <div className="adm-detail-row"><span className="adm-detail-label">Telepon</span><span className="adm-detail-value">{selectedDriver.phone}</span></div>
-              <div className="adm-detail-row"><span className="adm-detail-label">No. SIM</span><span className="adm-detail-value">{selectedDriver.licenseNumber}</span></div>
-              <div className="adm-detail-row"><span className="adm-detail-label">SIM Expired</span><span className="adm-detail-value">{selectedDriver.licenseExpiry}</span></div>
-              <div className="adm-detail-row"><span className="adm-detail-label">Total Penugasan</span><span className="adm-detail-value">{selectedDriver.assignments}</span></div>
+              <h4 className="adm-detail-section__title">
+                <Icon name="person" size={16} /> Informasi Driver
+              </h4>
+              <div className="adm-detail-row">
+                <span className="adm-detail-label">Nama</span>
+                <span className="adm-detail-value">{selectedDriver.name}</span>
+              </div>
+              <div className="adm-detail-row">
+                <span className="adm-detail-label">Telepon</span>
+                <span className="adm-detail-value">{selectedDriver.phone}</span>
+              </div>
+              <div className="adm-detail-row">
+                <span className="adm-detail-label">Status</span>
+                <span className="adm-detail-value">
+                  <AdminStatusBadge status={selectedDriver.status} type="driver" />
+                </span>
+              </div>
+              <div className="adm-detail-row">
+                <span className="adm-detail-label">Total Penugasan</span>
+                <span className="adm-detail-value">{selectedDriver.assignments}</span>
+              </div>
             </div>
+
             <div className="adm-detail-section">
-              <h4 className="adm-detail-section__title"><Icon name="directions_car" size={16} /> Informasi Kendaraan</h4>
-              <div className="adm-detail-row"><span className="adm-detail-label">Jenis</span><span className="adm-detail-value">{selectedDriver.vehicleType}</span></div>
-              <div className="adm-detail-row"><span className="adm-detail-label">No. Plat</span><span className="adm-detail-value">{selectedDriver.vehiclePlate}</span></div>
-              {selectedDriver.notes && <div className="adm-detail-row"><span className="adm-detail-label">Catatan</span><span className="adm-detail-value">{selectedDriver.notes}</span></div>}
+              <h4 className="adm-detail-section__title">
+                <Icon name="badge" size={16} /> Informasi SIM
+              </h4>
+              <div className="adm-detail-row">
+                <span className="adm-detail-label">No. SIM</span>
+                <span className="adm-detail-value">{selectedDriver.licenseNumber}</span>
+              </div>
+              <div className="adm-detail-row">
+                <span className="adm-detail-label">Jenis SIM</span>
+                <span className="adm-detail-value">{selectedDriver.licenseType}</span>
+              </div>
+              <div className="adm-detail-row">
+                <span className="adm-detail-label">Masa Berlaku SIM</span>
+                <span className="adm-detail-value">{selectedDriver.licenseExpiry}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -160,17 +341,62 @@ export default function DriversSection() {
 
       {/* Create Modal */}
       {showCreateModal && (
-        <AdminModal title="Tambah Driver Baru" subtitle="Isi data driver dan kendaraan." onClose={() => setShowCreateModal(false)} onSubmit={handleCreateDriver} submitLabel="Simpan Driver">
+        <AdminModal
+          title="Tambah Driver Baru"
+          subtitle="Isi data lengkap driver dan informasi SIM."
+          onClose={handleCloseCreateModal}
+          onSubmit={handleCreateDriver}
+          submitLabel={submitting ? 'Menyimpan...' : 'Simpan Driver'}
+        >
           <div className="adm-form-grid">
-            <AdminFormField label="Nama Lengkap" required><input type="text" placeholder="Cth: Ahmad Fauzi" /></AdminFormField>
-            <AdminFormField label="No. Telepon" required><input type="text" placeholder="0813-xxxx-xxxx" /></AdminFormField>
-            <AdminFormField label="Nomor SIM" required><input type="text" placeholder="SIM B2 - 1234567890" /></AdminFormField>
-            <AdminFormField label="SIM Berlaku Hingga" required><input type="date" /></AdminFormField>
-            <AdminFormField label="Jenis Kendaraan" required>
-              <select defaultValue=""><option value="" disabled>Pilih...</option><option>Truk Box</option><option>Pickup</option><option>Truk Kontainer</option><option>Van</option></select>
+            <AdminFormField label="Nama Lengkap" required fullWidth>
+              <input
+                type="text"
+                placeholder="Cth: Ahmad Fauzi"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+              />
             </AdminFormField>
-            <AdminFormField label="No. Plat Kendaraan" required><input type="text" placeholder="B 1234 XY" /></AdminFormField>
-            <AdminFormField label="Catatan" fullWidth><textarea placeholder="Catatan internal..." /></AdminFormField>
+
+            <AdminFormField label="No. Telepon" required>
+              <input
+                type="text"
+                placeholder="0813-xxxx-xxxx"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+              />
+            </AdminFormField>
+
+            <AdminFormField label="Nomor SIM" required>
+              <input
+                type="text"
+                placeholder="Cth: 1234567890"
+                value={licenseNumber}
+                onChange={(e) => setLicenseNumber(e.target.value)}
+              />
+            </AdminFormField>
+
+            <AdminFormField label="Jenis SIM" required>
+              <select
+                value={licenseType}
+                onChange={(e) => setLicenseType(e.target.value)}
+              >
+                <option value="" disabled>
+                  Pilih Jenis SIM...
+                </option>
+                <option value="A">A</option>
+                <option value="B1">B1</option>
+                <option value="B2">B2</option>
+              </select>
+            </AdminFormField>
+
+            <AdminFormField label="Masa Berlaku SIM" required>
+              <input
+                type="date"
+                value={licenseExpiry}
+                onChange={(e) => setLicenseExpiry(e.target.value)}
+              />
+            </AdminFormField>
           </div>
         </AdminModal>
       )}

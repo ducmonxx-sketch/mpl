@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import Icon from '../../components/Icon'
 import { useToast } from '../../contexts/ToastContext'
 import AdminDataTable from './components/AdminDataTable'
@@ -15,47 +15,56 @@ const ROLE_LABELS = {
   client: 'Klien',
 }
 
-const COMPANIES = ['PT Sinar Jaya', 'CV Maju Bersama', 'PT Nusantara Lestari', 'PT Karya Mandiri', 'CV Sejahtera', 'PT Abadi Sentosa']
-
 export default function UsersSection() {
   const { showToast } = useToast()
-  const [showCreateModal, setShowCreateModal] = useState(false)
-  const [selectedUser, setSelectedUser] = useState(null)
-  
+
   const [USERS, setUSERS] = useState([])
   const [loading, setLoading] = useState(true)
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [selectedUser, setSelectedUser] = useState(null)
+  const [userType, setUserType] = useState('all') // 'all' | 'internal' | 'client'
 
-  // Filter toggle
-  const [userType, setUserType] = useState('all') // 'all', 'internal', 'client'
-
-  // Form states
+  // Create form state (controlled)
+  const [formName, setFormName] = useState('')
+  const [formEmail, setFormEmail] = useState('')
   const [formRole, setFormRole] = useState('')
   const [formCompany, setFormCompany] = useState('')
+  const [formPassword, setFormPassword] = useState('')
+
+  // Magic link state
+  const [showMagicLinkSection, setShowMagicLinkSection] = useState(false)
+  const [magicLink, setMagicLink] = useState('')
+  const [magicLinkCopied, setMagicLinkCopied] = useState(false)
+
+  const fetchUsers = useCallback(async () => {
+    setLoading(true)
+    try {
+      const data = await usersAPI.listAll()
+      // /api/users only returns User records (clients), all mapped as 'client' role
+      const mapped = (data.users || []).map(u => ({
+        id: u.id,
+        name: u.fullName,
+        email: u.email,
+        role: 'client',
+        company: u.companyName || u.fullName,
+        isActive: u.verificationStatus === 'VERIFIED',
+        lastLogin: '-',
+        createdAt: u.createdAt
+          ? new Date(u.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
+          : '-',
+      }))
+      setUSERS(mapped)
+    } catch (err) {
+      console.error('Failed to fetch users:', err)
+      showToast('Gagal memuat data pengguna.', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }, [showToast])
 
   useEffect(() => {
-    async function fetchUsers() {
-      setLoading(true)
-      try {
-        const data = await usersAPI.listAll()
-        const mapped = (data.users || []).map(u => ({
-          id: u.id,
-          name: u.fullName,
-          email: u.email,
-          role: u.role.toLowerCase(),
-          company: u.companyName || 'PT Mahkota Putra Logistik',
-          isActive: u.status === 'ACTIVE',
-          lastLogin: u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-',
-          createdAt: new Date(u.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }),
-        }))
-        setUSERS(mapped)
-      } catch (err) {
-        console.error('Failed to fetch users:', err)
-      } finally {
-        setLoading(false)
-      }
-    }
     fetchUsers()
-  }, [])
+  }, [fetchUsers])
 
   const filteredUsers = useMemo(() => {
     if (userType === 'internal') return USERS.filter(u => u.role !== 'client')
@@ -63,108 +72,216 @@ export default function UsersSection() {
     return USERS
   }, [userType, USERS])
 
-  // Company count check
-  const getCompanyUserCount = (companyName) => {
-    return USERS.filter(u => u.role === 'client' && u.company === companyName).length
-  }
-
-  const columns = [
-    { key: 'name', label: 'Nama', render: (v, row) => (
-      <div>
-        <span className="adm-table__cell-main">{v}</span>
-        {row.role === 'client' && <div className="adm-table__cell-sub"><Icon name="business" size={12} style={{ verticalAlign: 'middle', marginRight: '4px' }}/>{row.company}</div>}
-      </div>
-    )},
-    { key: 'email', label: 'Email', render: (v) => <span style={{ fontSize: '0.78rem', color: '#64748b' }}>{v}</span> },
-    { key: 'role', label: 'Role', render: (v) => (
-      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: v === 'client' ? '#00430d' : 'var(--dash-primary)', background: v === 'client' ? 'rgba(0,67,13,0.06)' : 'rgba(0,36,66,0.06)', padding: '0.2rem 0.6rem', borderRadius: '6px' }}>
-        {ROLE_LABELS[v] || v}
-      </span>
-    )},
-    { key: 'isActive', label: 'Aktif', render: (v) => <AdminStatusBadge status={v ? 'active' : 'inactive'} type="user" /> },
-    { key: 'lastLogin', label: 'Login Terakhir', render: (v) => <span style={{ fontSize: '0.78rem', color: '#64748b' }}>{v}</span> },
-    { key: 'actions', label: '', render: (_, row) => (
-      <div className="adm-actions">
-        <button className="adm-action-btn" title="Detail" onClick={(e) => { e.stopPropagation(); setSelectedUser(row) }}>
-          <Icon name="edit" size={16} />
-        </button>
-        <button className="adm-action-btn" title="Reset Password" onClick={(e) => { e.stopPropagation(); showToast(`Password untuk ${row.name} telah direset.`, 'success') }}>
-          <Icon name="key" size={16} />
-        </button>
-        {row.role !== 'super_admin' && (
-          <button className="adm-action-btn adm-action-btn--danger" title="Nonaktifkan" onClick={(e) => { e.stopPropagation(); showToast(`${row.name} telah dinonaktifkan.`, 'info') }}>
-            <Icon name="block" size={16} />
-          </button>
-        )}
-      </div>
-    )},
-  ]
-
-  const handleCreateUser = (e) => {
-    e.preventDefault()
-    if (formRole === 'client' && formCompany) {
-      const count = getCompanyUserCount(formCompany)
-      if (count >= 2) {
-        showToast(`Gagal: ${formCompany} sudah mencapai batas maksimal 2 akun pengguna.`, 'error')
-        return
-      }
-    }
-    showToast('Pengguna baru berhasil dibuat! Password sementara telah disiapkan.', 'success')
-    setShowCreateModal(false)
+  const resetModal = () => {
+    setFormName('')
+    setFormEmail('')
     setFormRole('')
     setFormCompany('')
+    setFormPassword('')
+    setShowMagicLinkSection(false)
+    setMagicLink('')
+    setMagicLinkCopied(false)
+  }
+
+  const handleCreateUser = async () => {
+    if (!formName.trim() || !formEmail.trim()) {
+      showToast('Nama Lengkap dan Email wajib diisi.', 'error')
+      return
+    }
+    try {
+      const res = await usersAPI.createUser({
+        fullName: formName,
+        email: formEmail,
+        companyName: formCompany || undefined,
+        phoneNumber: '',
+        password: formPassword || undefined,
+      })
+      showToast(
+        'Pengguna baru berhasil dibuat!' + (res.tempPassword ? ' Password sementara: ' + res.tempPassword : ''),
+        'success'
+      )
+      setShowCreateModal(false)
+      resetModal()
+      fetchUsers()
+    } catch (err) {
+      showToast(err.message || 'Gagal membuat pengguna.', 'error')
+    }
   }
 
   const handleGenerateMagicLink = () => {
-    const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
-    const magicLink = `https://dashboard.mpl.co.id/admin/register?token=${token}`
-    showToast(`Magic Link: ${magicLink} (Tersalin ke clipboard. Berlaku 1x pakai)`, 'success')
-    navigator.clipboard.writeText(magicLink).catch(() => {})
+    const token =
+      Math.random().toString(36).substring(2, 15) +
+      Math.random().toString(36).substring(2, 15)
+    setMagicLink('https://mpl.co.id/auth/magic?token=' + token)
+    setShowMagicLinkSection(true)
+    setMagicLinkCopied(false)
   }
+
+  const handleCopyMagicLink = () => {
+    navigator.clipboard.writeText(magicLink).catch(() => {})
+    setMagicLinkCopied(true)
+    setTimeout(() => setMagicLinkCopied(false), 2000)
+  }
+
+  const handleModalSubmit = () => {
+    if (showMagicLinkSection) {
+      // Admin has their link, just close
+      setShowCreateModal(false)
+      resetModal()
+    } else {
+      handleCreateUser()
+    }
+  }
+
+  const columns = [
+    {
+      key: 'name',
+      label: 'Nama',
+      render: (v, row) => (
+        <div>
+          <span className="adm-table__cell-main">{v}</span>
+          {row.role === 'client' && (
+            <div className="adm-table__cell-sub">
+              <Icon name="business" size={12} style={{ verticalAlign: 'middle', marginRight: '4px' }} />
+              {row.company}
+            </div>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'email',
+      label: 'Email',
+      render: (v) => <span style={{ fontSize: '0.78rem', color: '#64748b' }}>{v}</span>,
+    },
+    {
+      key: 'role',
+      label: 'Role',
+      render: (v) => (
+        <span
+          style={{
+            fontSize: '0.75rem',
+            fontWeight: 700,
+            color: v === 'client' ? '#00430d' : 'var(--dash-primary)',
+            background: v === 'client' ? 'rgba(0,67,13,0.06)' : 'rgba(0,36,66,0.06)',
+            padding: '0.2rem 0.6rem',
+            borderRadius: '6px',
+          }}
+        >
+          {ROLE_LABELS[v] || v}
+        </span>
+      ),
+    },
+    {
+      key: 'isActive',
+      label: 'Aktif',
+      render: (v) => <AdminStatusBadge status={v ? 'active' : 'inactive'} type="user" />,
+    },
+    {
+      key: 'lastLogin',
+      label: 'Login Terakhir',
+      render: (v) => <span style={{ fontSize: '0.78rem', color: '#64748b' }}>{v}</span>,
+    },
+    {
+      key: 'actions',
+      label: '',
+      render: (_, row) => (
+        <div className="adm-actions">
+          <button
+            className="adm-action-btn"
+            title="Detail"
+            onClick={(e) => { e.stopPropagation(); setSelectedUser(row) }}
+          >
+            <Icon name="edit" size={16} />
+          </button>
+          <button
+            className="adm-action-btn"
+            title="Reset Password"
+            onClick={(e) => { e.stopPropagation(); showToast(`Password untuk ${row.name} telah direset.`, 'success') }}
+          >
+            <Icon name="key" size={16} />
+          </button>
+          {row.role !== 'super_admin' && (
+            <button
+              className="adm-action-btn adm-action-btn--danger"
+              title="Nonaktifkan"
+              onClick={(e) => { e.stopPropagation(); showToast(`${row.name} telah dinonaktifkan.`, 'info') }}
+            >
+              <Icon name="block" size={16} />
+            </button>
+          )}
+        </div>
+      ),
+    },
+  ]
 
   return (
     <div className="dash-content">
       <section className="dash-header">
         <div>
           <h2 className="dash-header__title">Manajemen Pengguna</h2>
-          <p className="dash-header__subtitle">Kelola akses staf internal dan akun klien (Maks. 2 akun per klien).</p>
+          <p className="dash-header__subtitle">Kelola akses staf internal dan akun klien.</p>
         </div>
-        <div className="adm-section-actions" style={{ display: 'flex', gap: '0.75rem' }}>
-          <button className="adm-action-btn" onClick={handleGenerateMagicLink} style={{ padding: '0.6rem 1rem', background: '#eab308', color: '#fff', borderRadius: '8px', fontWeight: 700, border: 'none' }}>
-            <Icon name="link" size={18} style={{ marginRight: '6px' }} /> Magic Button
-          </button>
-          <button className="adm-create-btn" onClick={() => setShowCreateModal(true)}>
+        <div className="adm-section-actions">
+          <button className="adm-create-btn" onClick={() => { resetModal(); setShowCreateModal(true) }}>
             <Icon name="group_add" size={18} /> Tambah Pengguna
           </button>
         </div>
       </section>
 
       <div className="adm-filters" style={{ marginTop: '1.5rem' }}>
-        <button className={`adm-filter-tab ${userType === 'all' ? 'adm-filter-tab--active' : ''}`} onClick={() => setUserType('all')}>Semua <span className="adm-filter-count">{USERS.length}</span></button>
-        <button className={`adm-filter-tab ${userType === 'internal' ? 'adm-filter-tab--active' : ''}`} onClick={() => setUserType('internal')}>Internal <span className="adm-filter-count">{USERS.filter(u => u.role !== 'client').length}</span></button>
-        <button className={`adm-filter-tab ${userType === 'client' ? 'adm-filter-tab--active' : ''}`} onClick={() => setUserType('client')}>Klien <span className="adm-filter-count">{USERS.filter(u => u.role === 'client').length}</span></button>
+        <button
+          className={`adm-filter-tab ${userType === 'all' ? 'adm-filter-tab--active' : ''}`}
+          onClick={() => setUserType('all')}
+        >
+          Semua <span className="adm-filter-count">{USERS.length}</span>
+        </button>
+        <button
+          className={`adm-filter-tab ${userType === 'internal' ? 'adm-filter-tab--active' : ''}`}
+          onClick={() => setUserType('internal')}
+        >
+          Internal <span className="adm-filter-count">{USERS.filter(u => u.role !== 'client').length}</span>
+        </button>
+        <button
+          className={`adm-filter-tab ${userType === 'client' ? 'adm-filter-tab--active' : ''}`}
+          onClick={() => setUserType('client')}
+        >
+          Klien <span className="adm-filter-count">{USERS.filter(u => u.role === 'client').length}</span>
+        </button>
       </div>
 
-      <div style={{ marginTop: '1rem' }}>
-        <AdminDataTable columns={columns} data={filteredUsers} onRowClick={setSelectedUser} />
-      </div>
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>Memuat data pengguna...</div>
+      ) : (
+        <div style={{ marginTop: '1rem' }}>
+          <AdminDataTable columns={columns} data={filteredUsers} onRowClick={setSelectedUser} />
+        </div>
+      )}
 
       {/* Detail Panel */}
       {selectedUser && (
         <div className="adm-detail-panel glass-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
             <div>
-              <h3 style={{ fontSize: '1.35rem', fontWeight: 900, color: 'var(--dash-primary)', margin: 0 }}>{selectedUser.name}</h3>
-              <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '4px 0 0' }}>{ROLE_LABELS[selectedUser.role]} • {selectedUser.company}</p>
+              <h3 style={{ fontSize: '1.35rem', fontWeight: 900, color: 'var(--dash-primary)', margin: 0 }}>
+                {selectedUser.name}
+              </h3>
+              <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '4px 0 0' }}>
+                {ROLE_LABELS[selectedUser.role]} • {selectedUser.company}
+              </p>
             </div>
-            <button className="adm-action-btn" onClick={() => setSelectedUser(null)}><Icon name="close" size={18} /></button>
+            <button className="adm-action-btn" onClick={() => setSelectedUser(null)}>
+              <Icon name="close" size={18} />
+            </button>
           </div>
           <div className="adm-detail-grid">
             <div className="adm-detail-section">
               <h4 className="adm-detail-section__title"><Icon name="account_circle" size={16} /> Informasi Akun</h4>
               <div className="adm-detail-row"><span className="adm-detail-label">Email</span><span className="adm-detail-value">{selectedUser.email}</span></div>
               <div className="adm-detail-row"><span className="adm-detail-label">Role</span><span className="adm-detail-value">{ROLE_LABELS[selectedUser.role]}</span></div>
-              {selectedUser.role === 'client' && <div className="adm-detail-row"><span className="adm-detail-label">Perusahaan</span><span className="adm-detail-value">{selectedUser.company}</span></div>}
+              {selectedUser.role === 'client' && (
+                <div className="adm-detail-row"><span className="adm-detail-label">Perusahaan</span><span className="adm-detail-value">{selectedUser.company}</span></div>
+              )}
               <div className="adm-detail-row"><span className="adm-detail-label">Status</span><span className="adm-detail-value">{selectedUser.isActive ? 'Aktif' : 'Nonaktif'}</span></div>
             </div>
             <div className="adm-detail-section">
@@ -176,49 +293,192 @@ export default function UsersSection() {
         </div>
       )}
 
-      {/* Create Modal */}
+      {/* Create Modal — two modes: Manual Form | Magic Link */}
       {showCreateModal && (
-        <AdminModal title="Tambah Pengguna Baru" subtitle="Akun baru akan memerlukan ganti password pada login pertama." onClose={() => setShowCreateModal(false)} onSubmit={handleCreateUser} submitLabel="Buat Akun">
-          <div className="adm-form-grid">
-            <AdminFormField label="Nama Lengkap" required><input type="text" placeholder="Cth: Rudi Hartono" required /></AdminFormField>
-            <AdminFormField label="Email" required><input type="email" placeholder="nama@perusahaan.com" required /></AdminFormField>
-            <AdminFormField label="Role / Jabatan" required>
-              <select value={formRole} onChange={(e) => setFormRole(e.target.value)} required>
-                <option value="" disabled>Pilih Role...</option>
-                <option value="client">Klien (Akses Eksternal)</option>
-                <option value="ops">Operasional (Internal)</option>
-                <option value="finance">Keuangan (Internal)</option>
-                <option value="cs">Layanan Pelanggan (Internal)</option>
-                <option value="super_admin">Super Admin (Internal)</option>
-              </select>
-            </AdminFormField>
+        <AdminModal
+          title="Tambah Pengguna Baru"
+          subtitle={showMagicLinkSection ? 'Bagikan link pendaftaran kepada klien.' : 'Isi data akun atau gunakan magic link.'}
+          onClose={() => { setShowCreateModal(false); resetModal() }}
+          onSubmit={handleModalSubmit}
+          submitLabel={showMagicLinkSection ? 'Selesai' : 'Buat Akun'}
+        >
+          {!showMagicLinkSection ? (
+            /* ── Mode 1: Manual form ── */
+            <div>
+              <div className="adm-form-grid">
+                <AdminFormField label="Nama Lengkap" required>
+                  <input
+                    type="text"
+                    placeholder="Cth: Rudi Hartono"
+                    value={formName}
+                    onChange={(e) => setFormName(e.target.value)}
+                  />
+                </AdminFormField>
+                <AdminFormField label="Email" required>
+                  <input
+                    type="email"
+                    placeholder="nama@perusahaan.com"
+                    value={formEmail}
+                    onChange={(e) => setFormEmail(e.target.value)}
+                  />
+                </AdminFormField>
+                <AdminFormField label="Nama Perusahaan">
+                  <input
+                    type="text"
+                    placeholder="Cth: PT Sinar Jaya"
+                    value={formCompany}
+                    onChange={(e) => setFormCompany(e.target.value)}
+                  />
+                </AdminFormField>
+                <AdminFormField label="Password Sementara">
+                  <input
+                    type="text"
+                    placeholder="Kosongkan untuk auto-generate"
+                    value={formPassword}
+                    onChange={(e) => setFormPassword(e.target.value)}
+                  />
+                </AdminFormField>
+              </div>
 
-            {formRole === 'client' && (
-              <AdminFormField label="Perusahaan Klien" required>
-                <select value={formCompany} onChange={(e) => setFormCompany(e.target.value)} required>
-                  <option value="" disabled>Pilih Perusahaan...</option>
-                  {COMPANIES.map(c => {
-                    const count = getCompanyUserCount(c)
-                    const isFull = count >= 2
-                    return (
-                      <option key={c} value={c} disabled={isFull}>
-                        {c} ({count}/2 Akun) {isFull ? '- PENUH' : ''}
-                      </option>
-                    )
-                  })}
-                </select>
-              </AdminFormField>
-            )}
+              {/* Divider */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', margin: '1.25rem 0' }}>
+                <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
+                <span style={{ fontSize: '0.78rem', color: '#94a3b8', fontWeight: 600 }}>atau</span>
+                <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
+              </div>
 
-            <AdminFormField label="Password Sementara" required={false} className={formRole === 'client' ? "adm-form-field--full" : ""}>
-              <input type="text" placeholder="Akan di-generate otomatis jika kosong" />
-            </AdminFormField>
-          </div>
-          <div style={{ marginTop: '1rem', padding: '0.875rem', background: 'rgba(254,195,48,0.06)', borderRadius: '10px', border: '1px solid rgba(254,195,48,0.12)' }}>
-            <p style={{ fontSize: '0.75rem', color: '#795900', margin: 0, lineHeight: 1.6 }}>
-              <strong>⚠️ Catatan:</strong> Bagikan credential melalui WhatsApp. Setiap klien maksimal <strong>2 akun pengguna</strong> yang berwenang.
-            </p>
-          </div>
+              <div style={{ display: 'flex', justifyContent: 'center' }}>
+                <button
+                  type="button"
+                  onClick={() => { setShowMagicLinkSection(true) }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '0.65rem 1.25rem',
+                    background: '#eab308',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontWeight: 700,
+                    fontSize: '0.875rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Icon name="link" size={18} /> Gunakan Magic Link
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* ── Mode 2: Magic Link ── */
+            <div>
+              <div
+                style={{
+                  padding: '1.25rem',
+                  background: 'rgba(234,179,8,0.06)',
+                  border: '1px solid rgba(234,179,8,0.2)',
+                  borderRadius: '12px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1rem' }}>
+                  <Icon name="link" size={18} style={{ color: '#eab308' }} />
+                  <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--dash-primary)' }}>
+                    Magic Link Pendaftaran
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleGenerateMagicLink}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '0.55rem 1rem',
+                    background: 'var(--dash-primary)',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontWeight: 600,
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                    marginBottom: magicLink ? '1rem' : '0',
+                  }}
+                >
+                  <Icon name="autorenew" size={16} />
+                  {magicLink ? 'Regenerate Link' : 'Generate Magic Link'}
+                </button>
+
+                {magicLink && (
+                  <div>
+                    <div
+                      style={{
+                        padding: '0.75rem',
+                        background: '#fff',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '8px',
+                        fontFamily: 'monospace',
+                        fontSize: '0.78rem',
+                        wordBreak: 'break-all',
+                        color: '#334155',
+                        marginBottom: '0.75rem',
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      {magicLink}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCopyMagicLink}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '0.5rem 1rem',
+                        background: magicLinkCopied ? '#16a34a' : '#f1f5f9',
+                        color: magicLinkCopied ? '#fff' : 'var(--dash-primary)',
+                        border: '1px solid ' + (magicLinkCopied ? '#16a34a' : '#cbd5e1'),
+                        borderRadius: '8px',
+                        fontWeight: 600,
+                        fontSize: '0.85rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                      }}
+                    >
+                      <Icon name={magicLinkCopied ? 'check' : 'content_copy'} size={16} />
+                      {magicLinkCopied ? 'Tersalin!' : 'Salin Link'}
+                    </button>
+                  </div>
+                )}
+
+                <p style={{ fontSize: '0.75rem', color: '#78716c', margin: '0.75rem 0 0', lineHeight: 1.6 }}>
+                  ℹ️ Link berlaku 1x pakai. Bagikan ke klien untuk registrasi mandiri.
+                </p>
+              </div>
+
+              <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-start' }}>
+                <button
+                  type="button"
+                  onClick={() => { setShowMagicLinkSection(false); setMagicLink('') }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '0.5rem 1rem',
+                    background: 'none',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '8px',
+                    fontWeight: 600,
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                    color: '#64748b',
+                  }}
+                >
+                  <Icon name="arrow_back" size={16} /> Kembali ke Form Manual
+                </button>
+              </div>
+            </div>
+          )}
         </AdminModal>
       )}
     </div>

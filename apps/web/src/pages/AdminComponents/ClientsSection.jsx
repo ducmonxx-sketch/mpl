@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Icon from '../../components/Icon'
 import { useToast } from '../../contexts/ToastContext'
 import AdminDataTable from './components/AdminDataTable'
@@ -6,9 +6,6 @@ import AdminPagination from './components/AdminPagination'
 import AdminModal from './components/AdminModal'
 import AdminFormField from './components/AdminFormField'
 import { usersAPI } from '../../lib/api'
-
-// We will fetch this from API instead
-// const CLIENTS = ...
 
 export default function ClientsSection() {
   const { showToast } = useToast()
@@ -19,34 +16,75 @@ export default function ClientsSection() {
   const [CLIENTS, setCLIENTS] = useState([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    async function fetchClients() {
-      setLoading(true)
-      try {
-        const data = await usersAPI.listAll()
-        const users = data.users || []
-        const clients = users.filter(u => u.role === 'CLIENT')
-        
-        const mapped = clients.map(c => ({
-          id: c.id,
-          companyName: c.companyName || c.fullName,
-          address: '-', // Not stored in API currently
-          city: '-',
-          npwp: '-',
-          isActive: c.status === 'ACTIVE',
-          notes: '',
-          shipmentCount: 0, // Would need separate API call or backend inclusion
-          pics: [{ name: c.fullName, phone: c.phoneNumber || '-', email: c.email }],
-        }))
-        setCLIENTS(mapped)
-      } catch (err) {
-        console.error('Failed to fetch clients:', err)
-      } finally {
-        setLoading(false)
-      }
+  // Form state (controlled)
+  const [formCompanyName, setFormCompanyName] = useState('')
+  const [formPicName, setFormPicName] = useState('')
+  const [formPhone, setFormPhone] = useState('')
+  const [formEmail, setFormEmail] = useState('')
+  const [formCity, setFormCity] = useState('')
+  const [formAddress, setFormAddress] = useState('')
+  const [formNpwp, setFormNpwp] = useState('')
+
+  const fetchClients = useCallback(async () => {
+    setLoading(true)
+    try {
+      const data = await usersAPI.listAll()
+      const users = data.users || []
+      // Show ALL users — no role filter (User model has no role field)
+      const mapped = users.map(u => ({
+        id: u.id,
+        companyName: u.companyName || u.fullName,
+        isActive: u.verificationStatus === 'VERIFIED',
+        shipmentCount: u._count?.shipments || 0,
+        pics: [{ name: u.fullName, phone: u.phoneNumber || '-', email: u.email }],
+        notes: '',
+        address: '-',
+        city: '-',
+        npwp: '-',
+      }))
+      setCLIENTS(mapped)
+    } catch (err) {
+      console.error('Failed to fetch clients:', err)
+      showToast('Gagal memuat data klien.', 'error')
+    } finally {
+      setLoading(false)
     }
+  }, [showToast])
+
+  useEffect(() => {
     fetchClients()
-  }, [])
+  }, [fetchClients])
+
+  const resetForm = () => {
+    setFormCompanyName('')
+    setFormPicName('')
+    setFormPhone('')
+    setFormEmail('')
+    setFormCity('')
+    setFormAddress('')
+    setFormNpwp('')
+  }
+
+  const handleCreateClient = async () => {
+    if (!formCompanyName.trim() || !formPicName.trim() || !formPhone.trim() || !formEmail.trim()) {
+      showToast('Harap isi semua field yang wajib diisi.', 'error')
+      return
+    }
+    try {
+      await usersAPI.createUser({
+        fullName: formPicName,
+        companyName: formCompanyName,
+        email: formEmail,
+        phoneNumber: formPhone,
+      })
+      showToast('Klien baru berhasil ditambahkan!', 'success')
+      setShowCreateModal(false)
+      resetForm()
+      fetchClients()
+    } catch (err) {
+      showToast(err.message || 'Gagal menambah klien.', 'error')
+    }
+  }
 
   const filtered = CLIENTS.filter(c =>
     !searchQuery ||
@@ -55,32 +93,68 @@ export default function ClientsSection() {
   )
 
   const columns = [
-    { key: 'expand', label: '', width: '40px', render: (_, __, { toggleRow, isExpanded }) => (
-      <button className="adm-action-btn" onClick={toggleRow} style={{ padding: '0.2rem', margin: 0, width: 'auto', background: isExpanded ? 'rgba(254,195,48,0.1)' : 'transparent' }} title="Lihat semua PIC">
-        <Icon name={isExpanded ? "keyboard_arrow_up" : "keyboard_arrow_down"} size={20} />
-      </button>
-    )},
-    { key: 'companyName', label: 'Nama Perusahaan', render: (v) => <span className="adm-table__cell-main">{v}</span> },
+    {
+      key: 'expand',
+      label: '',
+      width: '40px',
+      render: (_, __, { toggleRow, isExpanded }) => (
+        <button
+          className="adm-action-btn"
+          onClick={toggleRow}
+          style={{ padding: '0.2rem', margin: 0, width: 'auto', background: isExpanded ? 'rgba(254,195,48,0.1)' : 'transparent' }}
+          title="Lihat semua PIC"
+        >
+          <Icon name={isExpanded ? 'keyboard_arrow_up' : 'keyboard_arrow_down'} size={20} />
+        </button>
+      ),
+    },
+    {
+      key: 'companyName',
+      label: 'Nama Perusahaan',
+      render: (v) => <span className="adm-table__cell-main">{v}</span>,
+    },
     { key: 'picName', label: 'PIC Utama', render: (_, row) => row.pics[0].name },
     { key: 'phone', label: 'Telepon', render: (_, row) => row.pics[0].phone },
-    { key: 'email', label: 'Email', render: (_, row) => <span style={{ fontSize: '0.78rem', color: '#64748b' }}>{row.pics[0].email}</span> },
-    { key: 'isActive', label: 'Aktif', render: (v) => v ? <span style={{ color: 'var(--dash-tertiary-light)', fontWeight: 700 }}>✅ Ya</span> : <span style={{ color: 'var(--dash-error)', fontWeight: 700 }}>❌ Tidak</span> },
-    { key: 'actions', label: '', render: (_, row) => (
-      <div className="adm-actions">
-        <button className="adm-action-btn" title="Lihat Detail" onClick={(e) => { e.stopPropagation(); setSelectedClient(row) }}>
-          <Icon name="visibility" size={16} />
-        </button>
-        <button className="adm-action-btn" title="Edit" onClick={(e) => { e.stopPropagation(); showToast('Fitur edit klien dalam pengembangan.', 'info') }}>
-          <Icon name="edit" size={16} />
-        </button>
-      </div>
-    )},
+    {
+      key: 'email',
+      label: 'Email',
+      render: (_, row) => (
+        <span style={{ fontSize: '0.78rem', color: '#64748b' }}>{row.pics[0].email}</span>
+      ),
+    },
+    {
+      key: 'isActive',
+      label: 'Aktif',
+      render: (v) =>
+        v ? (
+          <span style={{ color: 'var(--dash-tertiary-light)', fontWeight: 700 }}>✅ Ya</span>
+        ) : (
+          <span style={{ color: 'var(--dash-error)', fontWeight: 700 }}>❌ Tidak</span>
+        ),
+    },
+    {
+      key: 'actions',
+      label: '',
+      render: (_, row) => (
+        <div className="adm-actions">
+          <button
+            className="adm-action-btn"
+            title="Lihat Detail"
+            onClick={(e) => { e.stopPropagation(); setSelectedClient(row) }}
+          >
+            <Icon name="visibility" size={16} />
+          </button>
+          <button
+            className="adm-action-btn"
+            title="Edit"
+            onClick={(e) => { e.stopPropagation(); showToast('Fitur edit klien dalam pengembangan.', 'info') }}
+          >
+            <Icon name="edit" size={16} />
+          </button>
+        </div>
+      ),
+    },
   ]
-
-  const handleCreateClient = () => {
-    showToast('Klien baru berhasil ditambahkan!', 'success')
-    setShowCreateModal(false)
-  }
 
   return (
     <div className="dash-content">
@@ -98,45 +172,73 @@ export default function ClientsSection() {
 
       <div className="adm-search-bar">
         <Icon name="search" size={18} />
-        <input type="text" placeholder="Cari nama perusahaan atau PIC..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+        <input
+          type="text"
+          placeholder="Cari nama perusahaan atau PIC..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
       </div>
 
-      <div style={{ marginTop: '1.25rem' }}>
-        <AdminDataTable 
-          columns={columns} 
-          data={filtered} 
-          onRowClick={setSelectedClient}
-          expandableContent={(row) => (
-            <div>
-              <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.85rem', color: 'var(--dash-primary)' }}>Kontak Person In Charge (PIC)</h4>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-                {row.pics.map((pic, idx) => (
-                  <div key={idx} style={{ padding: '0.75rem', backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.25rem', color: 'var(--dash-text)' }}>{pic.name}</div>
-                    <div style={{ fontSize: '0.75rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
-                      <Icon name="phone" size={12} /> {pic.phone}
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>Memuat data klien...</div>
+      ) : (
+        <div style={{ marginTop: '1.25rem' }}>
+          <AdminDataTable
+            columns={columns}
+            data={filtered}
+            onRowClick={setSelectedClient}
+            expandableContent={(row) => (
+              <div>
+                <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.85rem', color: 'var(--dash-primary)' }}>
+                  Kontak Person In Charge (PIC)
+                </h4>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+                  {row.pics.map((pic, idx) => (
+                    <div
+                      key={idx}
+                      style={{ padding: '0.75rem', backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0' }}
+                    >
+                      <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.25rem', color: 'var(--dash-text)' }}>
+                        {pic.name}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
+                        <Icon name="phone" size={12} /> {pic.phone}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Icon name="email" size={12} /> {pic.email}
+                      </div>
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <Icon name="email" size={12} /> {pic.email}
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
-        />
-        <AdminPagination currentPage={currentPage} totalPages={1} totalItems={filtered.length} itemsPerPage={20} onPageChange={setCurrentPage} />
-      </div>
+            )}
+          />
+          <AdminPagination
+            currentPage={currentPage}
+            totalPages={1}
+            totalItems={filtered.length}
+            itemsPerPage={20}
+            onPageChange={setCurrentPage}
+          />
+        </div>
+      )}
 
       {/* Detail Panel */}
       {selectedClient && (
         <div className="adm-detail-panel glass-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
             <div>
-              <h3 style={{ fontSize: '1.35rem', fontWeight: 900, color: 'var(--dash-primary)', margin: 0 }}>{selectedClient.companyName}</h3>
-              <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '4px 0 0' }}>PIC Utama: {selectedClient.pics[0].name}</p>
+              <h3 style={{ fontSize: '1.35rem', fontWeight: 900, color: 'var(--dash-primary)', margin: 0 }}>
+                {selectedClient.companyName}
+              </h3>
+              <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '4px 0 0' }}>
+                PIC Utama: {selectedClient.pics[0].name}
+              </p>
             </div>
-            <button className="adm-action-btn" onClick={() => setSelectedClient(null)}><Icon name="close" size={18} /></button>
+            <button className="adm-action-btn" onClick={() => setSelectedClient(null)}>
+              <Icon name="close" size={18} />
+            </button>
           </div>
           <div className="adm-detail-grid">
             <div className="adm-detail-section">
@@ -150,8 +252,10 @@ export default function ClientsSection() {
             <div className="adm-detail-section">
               <h4 className="adm-detail-section__title"><Icon name="local_shipping" size={16} /> Riwayat Pengiriman</h4>
               <div className="adm-detail-row"><span className="adm-detail-label">Total Pengiriman</span><span className="adm-detail-value">{selectedClient.shipmentCount}</span></div>
-              <div className="adm-detail-row"><span className="adm-detail-label">Status Akun</span><span className="adm-detail-value">{selectedClient.isActive ? 'Aktif' : 'Nonaktif'}</span></div>
-              {selectedClient.notes && <div className="adm-detail-row"><span className="adm-detail-label">Catatan</span><span className="adm-detail-value">{selectedClient.notes}</span></div>}
+              <div className="adm-detail-row"><span className="adm-detail-label">Status Akun</span><span className="adm-detail-value">{selectedClient.isActive ? 'Terverifikasi' : 'Belum Terverifikasi'}</span></div>
+              {selectedClient.notes && (
+                <div className="adm-detail-row"><span className="adm-detail-label">Catatan</span><span className="adm-detail-value">{selectedClient.notes}</span></div>
+              )}
             </div>
           </div>
         </div>
@@ -159,16 +263,70 @@ export default function ClientsSection() {
 
       {/* Create Modal */}
       {showCreateModal && (
-        <AdminModal title="Tambah Klien Baru" subtitle="Masukkan data klien korporat." onClose={() => setShowCreateModal(false)} onSubmit={handleCreateClient} submitLabel="Simpan Klien">
+        <AdminModal
+          title="Tambah Klien Baru"
+          subtitle="Masukkan data klien korporat."
+          onClose={() => { setShowCreateModal(false); resetForm() }}
+          onSubmit={handleCreateClient}
+          submitLabel="Simpan Klien"
+        >
           <div className="adm-form-grid">
-            <AdminFormField label="Nama Perusahaan" required fullWidth><input type="text" placeholder="Cth: PT Sinar Jaya" /></AdminFormField>
-            <AdminFormField label="Nama PIC" required><input type="text" placeholder="Cth: Budi Santoso" /></AdminFormField>
-            <AdminFormField label="Telepon" required><input type="text" placeholder="0812-xxxx-xxxx" /></AdminFormField>
-            <AdminFormField label="Email"><input type="email" placeholder="email@perusahaan.co.id" /></AdminFormField>
-            <AdminFormField label="Kota"><input type="text" placeholder="Cth: Jakarta" /></AdminFormField>
-            <AdminFormField label="Alamat" fullWidth><input type="text" placeholder="Alamat lengkap perusahaan" /></AdminFormField>
-            <AdminFormField label="NPWP"><input type="text" placeholder="01.234.567.8-901.000" /></AdminFormField>
-            <AdminFormField label="Catatan Internal" fullWidth><textarea placeholder="Catatan internal tentang klien ini..." /></AdminFormField>
+            <AdminFormField label="Nama Perusahaan" required fullWidth>
+              <input
+                type="text"
+                placeholder="Cth: PT Sinar Jaya"
+                value={formCompanyName}
+                onChange={(e) => setFormCompanyName(e.target.value)}
+              />
+            </AdminFormField>
+            <AdminFormField label="Nama PIC" required>
+              <input
+                type="text"
+                placeholder="Cth: Budi Santoso"
+                value={formPicName}
+                onChange={(e) => setFormPicName(e.target.value)}
+              />
+            </AdminFormField>
+            <AdminFormField label="No. Telepon" required>
+              <input
+                type="text"
+                placeholder="0812-xxxx-xxxx"
+                value={formPhone}
+                onChange={(e) => setFormPhone(e.target.value)}
+              />
+            </AdminFormField>
+            <AdminFormField label="Email" required>
+              <input
+                type="email"
+                placeholder="email@perusahaan.co.id"
+                value={formEmail}
+                onChange={(e) => setFormEmail(e.target.value)}
+              />
+            </AdminFormField>
+            <AdminFormField label="Kota" required>
+              <input
+                type="text"
+                placeholder="Cth: Jakarta"
+                value={formCity}
+                onChange={(e) => setFormCity(e.target.value)}
+              />
+            </AdminFormField>
+            <AdminFormField label="Alamat" required fullWidth>
+              <input
+                type="text"
+                placeholder="Alamat lengkap perusahaan"
+                value={formAddress}
+                onChange={(e) => setFormAddress(e.target.value)}
+              />
+            </AdminFormField>
+            <AdminFormField label="NPWP" required>
+              <input
+                type="text"
+                placeholder="01.234.567.8-901.000"
+                value={formNpwp}
+                onChange={(e) => setFormNpwp(e.target.value)}
+              />
+            </AdminFormField>
           </div>
         </AdminModal>
       )}

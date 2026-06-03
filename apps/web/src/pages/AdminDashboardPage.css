@@ -224,9 +224,11 @@
 .adm-finance-summary {
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem;
   margin-bottom: 1.5rem; animation: dashFadeUp 0.5s var(--dash-transition) both;
+  overflow: hidden;
 }
 .adm-finance-card {
   padding: 1.5rem; border-radius: 1rem; position: relative; overflow: hidden;
+  transition: none;
 }
 .adm-finance-card--total { background: linear-gradient(135deg, #0a1628, #1a3a5a); color: #fff; }
 .adm-finance-card--paid { background: rgba(0,67,13,0.06); border: 1px solid rgba(0,67,13,0.1); }
@@ -240,6 +242,7 @@
 .adm-finance-card--unpaid .adm-finance-card__label { color: #795900; }
 .adm-finance-card__value {
   font-size: 1.5rem; font-weight: 900; margin: 0; letter-spacing: -0.02em;
+  pointer-events: none; user-select: none;
 }
 .adm-finance-card--total .adm-finance-card__value { color: #fff; }
 .adm-finance-card--paid .adm-finance-card__value { color: var(--dash-tertiary); }

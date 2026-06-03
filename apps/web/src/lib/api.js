@@ -124,9 +124,10 @@ export class ApiError extends Error {
 
 // Shorthand methods
 const api = {
-  get: (endpoint, params) => request(endpoint, { method: 'GET', params }),
-  post: (endpoint, body) => request(endpoint, { method: 'POST', body }),
-  patch: (endpoint, body) => request(endpoint, { method: 'PATCH', body }),
+  get:    (endpoint, params) => request(endpoint, { method: 'GET', params }),
+  post:   (endpoint, body)   => request(endpoint, { method: 'POST', body }),
+  patch:  (endpoint, body)   => request(endpoint, { method: 'PATCH', body }),
+  delete: (endpoint)         => request(endpoint, { method: 'DELETE' }),
 }
 
 // ─── Auth API ───────────────────────────────────────────────
@@ -161,6 +162,10 @@ export const usersAPI = {
   /** Admin: list all clients */
   listAll: (params) =>
     api.get('/api/users', params),
+
+  /** Admin: create a new user account */
+  createUser: (data) =>
+    api.post('/api/users', data),
 
   /** Admin: verify a client */
   verify: (userId) =>
