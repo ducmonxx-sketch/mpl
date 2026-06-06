@@ -141,3 +141,42 @@ html {
   opacity: 1;
   transform: translateX(0);
 }
+
+/* ═══════════════════════════════════════════
+   Custom Modern Date Picker Styling
+   ═══════════════════════════════════════════ */
+input[type="date"],
+input[type="datetime-local"] {
+  border: 1px solid rgba(0, 36, 66, 0.12) !important;
+  border-radius: 8px !important;
+  padding: 0.6rem 0.85rem !important;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--dash-primary, #002442) !important;
+  background-color: #ffffff !important;
+  outline: none;
+  transition: all 0.25s ease;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.02);
+}
+
+input[type="date"]:focus,
+input[type="datetime-local"]:focus {
+  border-color: var(--dash-secondary, #fec330) !important;
+  background-color: #ffffff !important;
+  box-shadow: 0 0 0 3px rgba(254, 195, 48, 0.15) !important;
+}
+
+/* Style Webkit calendar picker icon */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(8%) sepia(99%) saturate(4156%) hue-rotate(204deg) brightness(17%) contrast(154%); /* Matches var(--dash-primary) Navy */
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}

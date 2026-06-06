@@ -4,6 +4,7 @@ import { useToast } from '../../contexts/ToastContext'
 import { shipmentsAPI, trackingAPI } from '../../lib/api'
 import TrackingSearchBar from './components/TrackingSearchBar'
 import TrackingListItem from './components/TrackingListItem'
+import { compressImage } from '../../lib/imageCompressor'
 
 const statusDisplayMap = {
   PENDING: 'Menunggu',
@@ -63,6 +64,20 @@ export default function TrackingSection({ initialSearchQuery = '', isAdmin = fal
   const [showAddEventModal, setShowAddEventModal] = useState(false)
   const [updatingStatus, setUpdatingStatus] = useState(false)
 
+  const [tempStatus, setTempStatus] = useState('')
+  const [photoPreview, setPhotoPreview] = useState(null)
+  const [compressing, setCompressing] = useState(false)
+
+  useEffect(() => {
+    if (selectedShipment) {
+      setTempStatus(selectedShipment.rawStatus)
+      setPhotoPreview(selectedShipment.proofPhoto)
+    } else {
+      setTempStatus('')
+      setPhotoPreview(null)
+    }
+  }, [selectedShipment])
+
   const fetchShipments = useCallback(async () => {
     setLoading(true)
     try {
@@ -109,6 +124,7 @@ export default function TrackingSection({ initialSearchQuery = '', isAdmin = fal
             progress: s.currentProgressPercent ?? s.current_progress_percent ?? 0,
             estimatedArrival,
             timeline,
+            proofPhoto: s.proofPhoto || null,
             driver: {
               name: s.driver?.fullName || s.driver?.full_name || '-',
               vehicle: s.vehicle
@@ -150,6 +166,76 @@ export default function TrackingSection({ initialSearchQuery = '', isAdmin = fal
       // Re-select updated shipment
       setSelectedShipment((prev) =>
         prev ? { ...prev, rawStatus: newStatus, status: statusDisplayMap[newStatus] || newStatus } : prev
+      )
+    } catch (err) {
+      showToast(err.message || 'Gagal memperbarui status', 'error')
+    } finally {
+      setUpdatingStatus(false)
+    }
+  }
+
+  const handleStatusSelectChange = async (newStatus) => {
+    if (!selectedShipment) return
+    setTempStatus(newStatus)
+    if (newStatus !== 'DELIVERED') {
+      setUpdatingStatus(true)
+      try {
+        await shipmentsAPI.updateStatus(selectedShipment.id, {
+          status: newStatus,
+          proofPhoto: null
+        })
+        showToast('Status diperbarui!', 'success')
+        await fetchShipments()
+        setSelectedShipment((prev) =>
+          prev ? { ...prev, rawStatus: newStatus, status: statusDisplayMap[newStatus] || newStatus, proofPhoto: null } : prev
+        )
+      } catch (err) {
+        showToast(err.message || 'Gagal memperbarui status', 'error')
+        setTempStatus(selectedShipment.rawStatus)
+      } finally {
+        setUpdatingStatus(false)
+      }
+    }
+  }
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setCompressing(true)
+    try {
+      const compressedBase64 = await compressImage(file, 2)
+      setPhotoPreview(compressedBase64)
+      showToast('Gambar berhasil dikompresi!', 'success')
+    } catch (err) {
+      showToast('Gagal mengompresi gambar', 'error')
+      console.error(err)
+    } finally {
+      setCompressing(false)
+    }
+  }
+
+  const handleSaveDeliveredStatus = async () => {
+    if (!selectedShipment) return
+    setUpdatingStatus(true)
+    try {
+      await shipmentsAPI.updateStatus(selectedShipment.id, {
+        status: 'DELIVERED',
+        currentProgressPercent: 100,
+        proofPhoto: photoPreview,
+      })
+      showToast('Status diperbarui menjadi Terkirim!', 'success')
+      await fetchShipments()
+      setSelectedShipment((prev) =>
+        prev
+          ? {
+              ...prev,
+              rawStatus: 'DELIVERED',
+              status: statusDisplayMap['DELIVERED'],
+              progress: 100,
+              proofPhoto: photoPreview,
+            }
+          : prev
       )
     } catch (err) {
       showToast(err.message || 'Gagal memperbarui status', 'error')
@@ -326,6 +412,28 @@ export default function TrackingSection({ initialSearchQuery = '', isAdmin = fal
                 </div>
               </div>
 
+              {/* Bukti Pengiriman */}
+              {selectedShipment.proofPhoto && (
+                <div className="adm-detail-section" style={{ marginTop: '20px' }}>
+                  <div className="adm-detail-section__title">Bukti Pengiriman</div>
+                  <div style={{ marginTop: '8px' }}>
+                    <img
+                      src={selectedShipment.proofPhoto}
+                      alt="Bukti Pengiriman"
+                      style={{
+                        maxWidth: '100%',
+                        maxHeight: '300px',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border-color, #e5e7eb)',
+                        display: 'block',
+                        objectFit: 'contain',
+                        background: 'rgba(0,0,0,0.2)'
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
               {/* Timeline */}
               {selectedShipment.timeline && selectedShipment.timeline.length > 0 && (
                 <div className="adm-detail-section" style={{ marginTop: '20px' }}>
@@ -375,41 +483,114 @@ export default function TrackingSection({ initialSearchQuery = '', isAdmin = fal
 
               {/* Admin Controls */}
               {isAdmin && (
-                <div className="adm-detail-section" style={{ marginTop: '24px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted, #6b7280)' }}>
-                      Ubah Status:
-                    </label>
-                    <select
-                      value={selectedShipment.rawStatus}
-                      onChange={(e) => handleUpdateStatus(e.target.value)}
-                      disabled={updatingStatus}
-                      style={{
-                        padding: '6px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid var(--border-color, #d1d5db)',
-                        fontSize: '13px',
-                        cursor: 'pointer',
-                        background: 'var(--bg-card, #fff)',
-                      }}
+                <div className="adm-detail-section" style={{ marginTop: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted, #6b7280)' }}>
+                        Ubah Status:
+                      </label>
+                      <select
+                        value={tempStatus}
+                        onChange={(e) => handleStatusSelectChange(e.target.value)}
+                        disabled={updatingStatus}
+                        style={{
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          border: '1px solid var(--border-color, #d1d5db)',
+                          fontSize: '13px',
+                          cursor: 'pointer',
+                          background: 'var(--bg-card, #fff)',
+                        }}
+                      >
+                        {STATUS_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                      {updatingStatus && <Icon name="loader" size={16} />}
+                    </div>
+
+                    <button
+                      className="adm-create-btn"
+                      onClick={() => setShowAddEventModal(true)}
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
                     >
-                      {STATUS_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                    {updatingStatus && <Icon name="loader" size={16} />}
+                      <Icon name="plus" size={16} />
+                      Tambah Checkpoint
+                    </button>
                   </div>
 
-                  <button
-                    className="adm-create-btn"
-                    onClick={() => setShowAddEventModal(true)}
-                    style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                  >
-                    <Icon name="plus" size={16} />
-                    Tambah Checkpoint
-                  </button>
+                  {tempStatus === 'DELIVERED' && (
+                    <div style={{ width: '100%', marginTop: '12px', padding: '12px', border: '1px dashed var(--border-color, #d1d5db)', borderRadius: '8px', background: 'rgba(255,255,255,0.02)' }}>
+                      <div style={{ fontWeight: 600, fontSize: '13px', marginBottom: '8px', color: 'var(--text-muted, #9ca3af)' }}>
+                        Bukti Foto Pengiriman (Max 2MB):
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleFileChange}
+                          disabled={updatingStatus || compressing}
+                          style={{
+                            fontSize: '13px',
+                            color: 'var(--text-color, #fff)',
+                          }}
+                        />
+                        {compressing && (
+                          <span style={{ fontSize: '12px', color: 'var(--color-accent, #fec330)' }}>
+                            Mengompresi gambar...
+                          </span>
+                        )}
+                        {photoPreview && (
+                          <div style={{ position: 'relative', display: 'inline-block', width: '120px', marginTop: '4px' }}>
+                            <img
+                              src={photoPreview}
+                              alt="Bukti Pengiriman"
+                              style={{ width: '120px', height: '90px', objectFit: 'cover', borderRadius: '6px', border: '1px solid var(--border-color, #e5e7eb)' }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setPhotoPreview(null)}
+                              style={{
+                                position: 'absolute',
+                                top: '-6px',
+                                right: '-6px',
+                                background: '#ef4444',
+                                color: '#fff',
+                                border: 'none',
+                                borderRadius: '50%',
+                                width: '18px',
+                                height: '18px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                                fontSize: '12px',
+                                lineHeight: 1,
+                              }}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        )}
+                        <button
+                          onClick={handleSaveDeliveredStatus}
+                          disabled={updatingStatus || compressing}
+                          className="adm-create-btn"
+                          style={{
+                            alignSelf: 'flex-start',
+                            marginTop: '6px',
+                            background: 'var(--color-accent, #fec330)',
+                            color: '#002442',
+                            fontWeight: 700
+                          }}
+                        >
+                          {updatingStatus ? 'Menyimpan...' : 'Simpan & Selesaikan Pengiriman'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

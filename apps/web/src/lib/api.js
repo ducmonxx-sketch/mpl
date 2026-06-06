@@ -174,6 +174,14 @@ export const usersAPI = {
   /** Admin: reject a client */
   reject: (userId) =>
     api.patch(`/api/users/${userId}/reject`),
+
+  /** Admin: update a user/client account */
+  updateUser: (userId, data) =>
+    api.patch(`/api/users/${userId}`, data),
+
+  /** Admin: delete a user/client account */
+  deleteUser: (userId) =>
+    api.delete(`/api/users/${userId}`),
 }
 
 // ─── Shipments API ──────────────────────────────────────────
@@ -232,6 +240,10 @@ export const fleetAPI = {
   updateDriver: (id, data) =>
     api.patch(`/api/fleet/drivers/${id}`, data),
 
+  /** Delete a driver */
+  deleteDriver: (id) =>
+    api.delete(`/api/fleet/drivers/${id}`),
+
   /** List all vehicles */
   getVehicles: (params) =>
     api.get('/api/fleet/vehicles', params),
@@ -243,6 +255,10 @@ export const fleetAPI = {
   /** Update a vehicle */
   updateVehicle: (id, data) =>
     api.patch(`/api/fleet/vehicles/${id}`, data),
+
+  /** Delete a vehicle */
+  deleteVehicle: (id) =>
+    api.delete(`/api/fleet/vehicles/${id}`),
 }
 
 // ─── Notifications API ──────────────────────────────────────

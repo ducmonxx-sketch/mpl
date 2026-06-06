@@ -56,6 +56,9 @@ export default function ArmadaSection() {
   const [licensePlate, setLicensePlate] = useState('')
   const [stnkExpiry, setStnkExpiry] = useState('')
   const [kirExpiry, setKirExpiry] = useState('')
+  const [isEditMode, setIsEditMode] = useState(false)
+  const [editingVehicleId, setEditingVehicleId] = useState(null)
+  const [status, setStatus] = useState('AVAILABLE')
 
   const fetchVehicles = useCallback(async () => {
     setLoading(true)
@@ -66,8 +69,11 @@ export default function ArmadaSection() {
         type: v.type || '-',
         licensePlate: v.licensePlate || '-',
         status: mapVehicleStatus(v.status),
+        rawStatus: v.status,
         stnkExpiry: formatDate(v.stnkExpiry),
+        rawStnkExpiry: v.stnkExpiry,
         kirExpiry: formatDate(v.kirExpiry),
+        rawKirExpiry: v.kirExpiry,
         assignments: v._count?.shipments ?? 0,
       }))
       setVehicles(mapped)
@@ -84,10 +90,13 @@ export default function ArmadaSection() {
   }, [fetchVehicles])
 
   const resetForm = () => {
+    setIsEditMode(false)
+    setEditingVehicleId(null)
     setType('')
     setLicensePlate('')
     setStnkExpiry('')
     setKirExpiry('')
+    setStatus('AVAILABLE')
   }
 
   const handleOpenCreateModal = () => {
@@ -98,6 +107,27 @@ export default function ArmadaSection() {
   const handleCloseCreateModal = () => {
     setShowCreateModal(false)
     resetForm()
+  }
+
+  const handleOpenEdit = (row) => {
+    setIsEditMode(true)
+    setEditingVehicleId(row.id)
+    setType(row.type || '')
+    setLicensePlate(row.licensePlate || '')
+    
+    let stnkDate = ''
+    if (row.rawStnkExpiry) {
+      stnkDate = new Date(row.rawStnkExpiry).toISOString().substring(0, 10)
+    }
+    setStnkExpiry(stnkDate)
+    
+    let kirDate = ''
+    if (row.rawKirExpiry) {
+      kirDate = new Date(row.rawKirExpiry).toISOString().substring(0, 10)
+    }
+    setKirExpiry(kirDate)
+    setStatus(row.rawStatus || 'AVAILABLE')
+    setShowCreateModal(true)
   }
 
   const handleCreateVehicle = async () => {
@@ -116,6 +146,47 @@ export default function ArmadaSection() {
       showToast(err.message || 'Gagal menambah kendaraan.', 'error')
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const handleUpdateVehicle = async () => {
+    if (!type || !licensePlate.trim() || !stnkExpiry || !kirExpiry) {
+      showToast('Harap lengkapi semua field yang wajib diisi.', 'error')
+      return
+    }
+    setSubmitting(true)
+    try {
+      await fleetAPI.updateVehicle(editingVehicleId, {
+        type,
+        licensePlate,
+        stnkExpiry,
+        kirExpiry,
+        status,
+      })
+      showToast('Kendaraan berhasil diperbarui!', 'success')
+      setShowCreateModal(false)
+      resetForm()
+      await fetchVehicles()
+    } catch (err) {
+      showToast(err.message || 'Gagal memperbarui kendaraan.', 'error')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleDeleteVehicle = async (id, plate) => {
+    if (!window.confirm(`Apakah Anda yakin ingin menghapus kendaraan dengan no plat "${plate}"? Penugasan pengirimannya akan dikosongkan.`)) {
+      return
+    }
+    try {
+      await fleetAPI.deleteVehicle(id)
+      showToast('Kendaraan berhasil dihapus.', 'success')
+      if (selectedVehicle?.id === id) {
+        setSelectedVehicle(null)
+      }
+      await fetchVehicles()
+    } catch (err) {
+      showToast(err.message || 'Gagal menghapus kendaraan.', 'error')
     }
   }
 
@@ -197,10 +268,20 @@ export default function ArmadaSection() {
             title="Edit"
             onClick={(e) => {
               e.stopPropagation()
-              showToast('Fitur edit kendaraan dalam tahap pengembangan.', 'info')
+              handleOpenEdit(row)
             }}
           >
             <Icon name="edit" size={16} />
+          </button>
+          <button
+            className="adm-action-btn adm-action-btn--danger"
+            title="Hapus"
+            onClick={(e) => {
+              e.stopPropagation()
+              handleDeleteVehicle(row.id, row.licensePlate)
+            }}
+          >
+            <Icon name="delete" size={16} />
           </button>
         </div>
       ),
@@ -394,11 +475,11 @@ export default function ArmadaSection() {
       {/* Create Modal */}
       {showCreateModal && (
         <AdminModal
-          title="Tambah Kendaraan Baru"
-          subtitle="Isi data kendaraan dan dokumen armada."
+          title={isEditMode ? 'Edit Kendaraan' : 'Tambah Kendaraan Baru'}
+          subtitle={isEditMode ? 'Ubah data kendaraan dan dokumen armada.' : 'Isi data kendaraan dan dokumen armada.'}
           onClose={handleCloseCreateModal}
-          onSubmit={handleCreateVehicle}
-          submitLabel={submitting ? 'Menyimpan...' : 'Simpan Kendaraan'}
+          onSubmit={isEditMode ? handleUpdateVehicle : handleCreateVehicle}
+          submitLabel={submitting ? 'Menyimpan...' : (isEditMode ? 'Simpan Perubahan' : 'Simpan Kendaraan')}
         >
           <div className="adm-form-grid">
             <AdminFormField label="Jenis Kendaraan" required>
@@ -438,6 +519,19 @@ export default function ArmadaSection() {
                 onChange={(e) => setKirExpiry(e.target.value)}
               />
             </AdminFormField>
+
+            {isEditMode && (
+              <AdminFormField label="Status Kendaraan" required>
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                >
+                  <option value="AVAILABLE">Tersedia</option>
+                  <option value="IN_USE">Digunakan</option>
+                  <option value="MAINTENANCE">Perawatan</option>
+                </select>
+              </AdminFormField>
+            )}
           </div>
         </AdminModal>
       )}

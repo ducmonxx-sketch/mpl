@@ -8,7 +8,10 @@ import AdminModal from './components/AdminModal'
 import AdminFormField from './components/AdminFormField'
 import { shipmentsAPI } from '../../lib/api'
 
-const formatIDR = (num) => 'Rp ' + num.toLocaleString('id-ID')
+const formatIDR = (num) => {
+  if (num === null || num === undefined || isNaN(Number(num))) return '-'
+  return 'Rp ' + Number(num).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
 
 export default function InvoicesSection() {
   const { showToast } = useToast()

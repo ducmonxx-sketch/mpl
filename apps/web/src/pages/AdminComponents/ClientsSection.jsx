@@ -55,7 +55,12 @@ export default function ClientsSection() {
     fetchClients()
   }, [fetchClients])
 
+  const [isEditMode, setIsEditMode] = useState(false)
+  const [editingClientId, setEditingClientId] = useState(null)
+
   const resetForm = () => {
+    setIsEditMode(false)
+    setEditingClientId(null)
     setFormCompanyName('')
     setFormPicName('')
     setFormPhone('')
@@ -63,6 +68,19 @@ export default function ClientsSection() {
     setFormCity('')
     setFormAddress('')
     setFormNpwp('')
+  }
+
+  const handleOpenEdit = (row) => {
+    setIsEditMode(true)
+    setEditingClientId(row.id)
+    setFormCompanyName(row.companyName || '')
+    setFormPicName(row.pics[0].name || '')
+    setFormPhone(row.pics[0].phone || '')
+    setFormEmail(row.pics[0].email || '')
+    setFormCity(row.city || '')
+    setFormAddress(row.address || '')
+    setFormNpwp(row.npwp || '')
+    setShowCreateModal(true)
   }
 
   const handleCreateClient = async () => {
@@ -83,6 +101,43 @@ export default function ClientsSection() {
       fetchClients()
     } catch (err) {
       showToast(err.message || 'Gagal menambah klien.', 'error')
+    }
+  }
+
+  const handleUpdateClient = async () => {
+    if (!formCompanyName.trim() || !formPicName.trim() || !formPhone.trim() || !formEmail.trim()) {
+      showToast('Harap isi semua field yang wajib diisi.', 'error')
+      return
+    }
+    try {
+      await usersAPI.updateUser(editingClientId, {
+        fullName: formPicName,
+        companyName: formCompanyName,
+        email: formEmail,
+        phoneNumber: formPhone,
+      })
+      showToast('Klien berhasil diperbarui!', 'success')
+      setShowCreateModal(false)
+      resetForm()
+      fetchClients()
+    } catch (err) {
+      showToast(err.message || 'Gagal memperbarui klien.', 'error')
+    }
+  }
+
+  const handleDeleteClient = async (id, name) => {
+    if (!window.confirm(`Apakah Anda yakin ingin menghapus klien "${name}"? Semua data pengiriman dan faktur terkait juga akan terhapus.`)) {
+      return
+    }
+    try {
+      await usersAPI.deleteUser(id)
+      showToast('Klien berhasil dihapus.', 'success')
+      if (selectedClient?.id === id) {
+        setSelectedClient(null)
+      }
+      fetchClients()
+    } catch (err) {
+      showToast(err.message || 'Gagal menghapus klien.', 'error')
     }
   }
 
@@ -147,9 +202,16 @@ export default function ClientsSection() {
           <button
             className="adm-action-btn"
             title="Edit"
-            onClick={(e) => { e.stopPropagation(); showToast('Fitur edit klien dalam pengembangan.', 'info') }}
+            onClick={(e) => { e.stopPropagation(); handleOpenEdit(row) }}
           >
             <Icon name="edit" size={16} />
+          </button>
+          <button
+            className="adm-action-btn adm-action-btn--danger"
+            title="Hapus"
+            onClick={(e) => { e.stopPropagation(); handleDeleteClient(row.id, row.companyName) }}
+          >
+            <Icon name="delete" size={16} />
           </button>
         </div>
       ),
@@ -264,11 +326,11 @@ export default function ClientsSection() {
       {/* Create Modal */}
       {showCreateModal && (
         <AdminModal
-          title="Tambah Klien Baru"
-          subtitle="Masukkan data klien korporat."
+          title={isEditMode ? "Edit Klien" : "Tambah Klien Baru"}
+          subtitle={isEditMode ? "Ubah data klien korporat." : "Masukkan data klien korporat."}
           onClose={() => { setShowCreateModal(false); resetForm() }}
-          onSubmit={handleCreateClient}
-          submitLabel="Simpan Klien"
+          onSubmit={isEditMode ? handleUpdateClient : handleCreateClient}
+          submitLabel={isEditMode ? "Simpan Perubahan" : "Simpan Klien"}
         >
           <div className="adm-form-grid">
             <AdminFormField label="Nama Perusahaan" required fullWidth>

@@ -165,19 +165,40 @@ export default function ShipmentsSection({ onTrackFull }) {
   }
 
   const handleCreateShipment = async () => {
+    if (!formClientId) {
+      showToast('Pilih Klien terlebih dahulu.', 'error')
+      return
+    }
+    if (!formPackageType.trim()) {
+      showToast('Harap isi Deskripsi Barang.', 'error')
+      return
+    }
+    if (!formOrigin.trim()) {
+      showToast('Harap isi Kota Asal.', 'error')
+      return
+    }
+    if (!formDestination.trim()) {
+      showToast('Harap isi Kota Tujuan.', 'error')
+      return
+    }
+    if (!formPickupDate) {
+      showToast('Harap tentukan Tanggal Pickup.', 'error')
+      return
+    }
+
     try {
       await shipmentsAPI.create({
         clientId:            formClientId,
         packageType:         formPackageType,
-        weightKg:            formWeight || 0,
-        units:               formUnits,
+        weightKg:            Number(formWeight) || 0,
+        units:               formUnits ? Number(formUnits) : null,
         serviceLevel:        formService,
         originLocation:      formOrigin,
         destinationLocation: formDestination,
-        specialNotes:        formNotes,
-        pickupDate:          formPickupDate,
-        estimatedArrival:    formEstimatedArrival,
-        price:               formPrice,
+        specialNotes:        formNotes || null,
+        pickupDate:          formPickupDate ? new Date(formPickupDate).toISOString() : null,
+        estimatedArrival:    formEstimatedArrival ? new Date(formEstimatedArrival).toISOString() : null,
+        price:               formPrice ? Number(formPrice) : null,
       })
       showToast('Pengiriman baru berhasil dibuat!', 'success')
       setShowCreateModal(false)
@@ -189,6 +210,10 @@ export default function ShipmentsSection({ onTrackFull }) {
   }
 
   const openAssignModal = (row) => {
+    if (row.status === 'delivered') {
+      showToast('Tidak dapat menugaskan driver untuk pengiriman yang sudah terkirim.', 'error')
+      return
+    }
     setAssigningShipment(row)
     setAssignDriverId(row.driverId || '')
     setAssignVehicleId(row.vehicleId || '')
@@ -279,8 +304,10 @@ export default function ShipmentsSection({ onTrackFull }) {
           </button>
           <button
             className="adm-action-btn"
-            title="Tugaskan Driver"
+            title={row.status === 'delivered' ? 'Pengiriman Selesai (Terkunci)' : 'Tugaskan Driver'}
             onClick={(e) => { e.stopPropagation(); openAssignModal(row) }}
+            disabled={row.status === 'delivered'}
+            style={row.status === 'delivered' ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
           >
             <Icon name="person_add" size={16} />
           </button>
@@ -493,9 +520,10 @@ export default function ShipmentsSection({ onTrackFull }) {
               </div>
               <div style={{ marginTop: '0.75rem' }}>
                 <button
-                  className="adm-action-btn"
-                  style={{ width: '100%', justifyContent: 'center', gap: '0.4rem', padding: '0.45rem 0.75rem', fontSize: '0.78rem', fontWeight: 700 }}
-                  onClick={() => openAssignModal(selectedShipment)}
+                  className="adm-create-btn"
+                  style={{ width: '100%', justifyContent: 'center', gap: '0.4rem', padding: '0.625rem 1rem', opacity: 0.5, cursor: 'not-allowed', backgroundColor: '#64748b' }}
+                  disabled={true}
+                  title="Fitur ini dinonaktifkan dalam mode Detail (Lihat Detail)"
                 >
                   <Icon name="person_add" size={14} /> Tugaskan Driver &amp; Armada
                 </button>
@@ -516,7 +544,7 @@ export default function ShipmentsSection({ onTrackFull }) {
                 <span className="adm-detail-label">Invoice</span>
                 <span className="adm-detail-value" style={{ fontWeight: 700 }}>
                   {selectedShipment.price !== null && selectedShipment.price !== undefined
-                    ? 'Rp ' + selectedShipment.price.toLocaleString('id-ID')
+                    ? 'Rp ' + Number(selectedShipment.price).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
                     : '-'}
                 </span>
               </div>

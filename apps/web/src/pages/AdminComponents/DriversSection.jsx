@@ -48,6 +48,9 @@ export default function DriversSection() {
   const [licenseNumber, setLicenseNumber] = useState('')
   const [licenseType, setLicenseType] = useState('')
   const [licenseExpiry, setLicenseExpiry] = useState('')
+  const [isEditMode, setIsEditMode] = useState(false)
+  const [editingDriverId, setEditingDriverId] = useState(null)
+  const [status, setStatus] = useState('ACTIVE')
 
   const fetchDrivers = useCallback(async () => {
     setLoading(true)
@@ -60,7 +63,9 @@ export default function DriversSection() {
         licenseNumber: d.licenseNumber || '-',
         licenseType: d.licenseType || '-',
         licenseExpiry: formatDate(d.licenseExpiry),
+        rawLicenseExpiry: d.licenseExpiry,
         status: mapDriverStatus(d.status),
+        rawStatus: d.status,
         assignments: d._count?.shipments ?? 0,
       }))
       setDrivers(mapped)
@@ -77,11 +82,14 @@ export default function DriversSection() {
   }, [fetchDrivers])
 
   const resetForm = () => {
+    setIsEditMode(false)
+    setEditingDriverId(null)
     setFullName('')
     setPhoneNumber('')
     setLicenseNumber('')
     setLicenseType('')
     setLicenseExpiry('')
+    setStatus('ACTIVE')
   }
 
   const handleOpenCreateModal = () => {
@@ -92,6 +100,23 @@ export default function DriversSection() {
   const handleCloseCreateModal = () => {
     setShowCreateModal(false)
     resetForm()
+  }
+
+  const handleOpenEdit = (row) => {
+    setIsEditMode(true)
+    setEditingDriverId(row.id)
+    setFullName(row.name || '')
+    setPhoneNumber(row.phone || '')
+    setLicenseNumber(row.licenseNumber || '')
+    setLicenseType(row.licenseType || '')
+    
+    let expiryDate = ''
+    if (row.rawLicenseExpiry) {
+      expiryDate = new Date(row.rawLicenseExpiry).toISOString().substring(0, 10)
+    }
+    setLicenseExpiry(expiryDate)
+    setStatus(row.rawStatus || 'ACTIVE')
+    setShowCreateModal(true)
   }
 
   const handleCreateDriver = async () => {
@@ -110,6 +135,48 @@ export default function DriversSection() {
       showToast(err.message || 'Gagal menambah driver.', 'error')
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const handleUpdateDriver = async () => {
+    if (!fullName.trim() || !phoneNumber.trim() || !licenseNumber.trim() || !licenseType || !licenseExpiry) {
+      showToast('Harap lengkapi semua field yang wajib diisi.', 'error')
+      return
+    }
+    setSubmitting(true)
+    try {
+      await fleetAPI.updateDriver(editingDriverId, {
+        fullName,
+        phoneNumber,
+        licenseNumber,
+        licenseType,
+        licenseExpiry,
+        status,
+      })
+      showToast('Driver berhasil diperbarui!', 'success')
+      setShowCreateModal(false)
+      resetForm()
+      await fetchDrivers()
+    } catch (err) {
+      showToast(err.message || 'Gagal memperbarui driver.', 'error')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleDeleteDriver = async (id, name) => {
+    if (!window.confirm(`Apakah Anda yakin ingin menghapus driver "${name}"? Penugasan pengirimannya akan dikosongkan.`)) {
+      return
+    }
+    try {
+      await fleetAPI.deleteDriver(id)
+      showToast('Driver berhasil dihapus.', 'success')
+      if (selectedDriver?.id === id) {
+        setSelectedDriver(null)
+      }
+      await fetchDrivers()
+    } catch (err) {
+      showToast(err.message || 'Gagal menghapus driver.', 'error')
     }
   }
 
@@ -167,10 +234,20 @@ export default function DriversSection() {
             title="Edit"
             onClick={(e) => {
               e.stopPropagation()
-              showToast('Fitur edit driver dalam tahap pengembangan.', 'info')
+              handleOpenEdit(row)
             }}
           >
             <Icon name="edit" size={16} />
+          </button>
+          <button
+            className="adm-action-btn adm-action-btn--danger"
+            title="Hapus"
+            onClick={(e) => {
+              e.stopPropagation()
+              handleDeleteDriver(row.id, row.name)
+            }}
+          >
+            <Icon name="delete" size={16} />
           </button>
         </div>
       ),
@@ -342,11 +419,11 @@ export default function DriversSection() {
       {/* Create Modal */}
       {showCreateModal && (
         <AdminModal
-          title="Tambah Driver Baru"
-          subtitle="Isi data lengkap driver dan informasi SIM."
+          title={isEditMode ? 'Edit Driver' : 'Tambah Driver Baru'}
+          subtitle={isEditMode ? 'Ubah data lengkap driver dan informasi SIM.' : 'Isi data lengkap driver dan informasi SIM.'}
           onClose={handleCloseCreateModal}
-          onSubmit={handleCreateDriver}
-          submitLabel={submitting ? 'Menyimpan...' : 'Simpan Driver'}
+          onSubmit={isEditMode ? handleUpdateDriver : handleCreateDriver}
+          submitLabel={submitting ? 'Menyimpan...' : (isEditMode ? 'Simpan Perubahan' : 'Simpan Driver')}
         >
           <div className="adm-form-grid">
             <AdminFormField label="Nama Lengkap" required fullWidth>
@@ -397,6 +474,18 @@ export default function DriversSection() {
                 onChange={(e) => setLicenseExpiry(e.target.value)}
               />
             </AdminFormField>
+
+            {isEditMode && (
+              <AdminFormField label="Status" required>
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                >
+                  <option value="ACTIVE">Tersedia</option>
+                  <option value="UNAVAILABLE">Tidak Aktif</option>
+                </select>
+              </AdminFormField>
+            )}
           </div>
         </AdminModal>
       )}

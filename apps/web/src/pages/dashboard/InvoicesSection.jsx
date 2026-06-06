@@ -1,7 +1,10 @@
 import { useState } from 'react'
 import Icon from '../../components/Icon'
 
-const formatIDR = (num) => 'Rp ' + num.toLocaleString('id-ID')
+const formatIDR = (num) => {
+  if (num === null || num === undefined || isNaN(Number(num))) return '-'
+  return 'Rp ' + Number(num).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
 
 const INVOICES = [
   { id: 'INV-0091', shipmentId: 'MPL-0041', amount: 4500000, taxAmount: 495000, totalAmount: 4995000, dueDate: '15 Apr 2026', paymentStatus: 'overdue' },
