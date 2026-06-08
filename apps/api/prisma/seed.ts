@@ -30,7 +30,13 @@ async function main() {
       email: "client@mpl.com",
       passwordHash: await bcrypt.hash("client1234", 10),
       phoneNumber: "1234567890",
+      city: "Jakarta Pusat",
+      address: "Jl. Sudirman No. 1, DKI Jakarta",
+      npwp: "01.234.567.8-901.000",
       verificationStatus: "VERIFIED",
+      verifiedByAdminId: admin.id,
+      // Create the settings row up front so PATCH /me/settings (an update) works.
+      settings: { create: {} },
     }
   })
   console.log("✅ Client created:", client.email)
