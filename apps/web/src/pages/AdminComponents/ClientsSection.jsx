@@ -53,6 +53,8 @@ export default function ClientsSection() {
 
   useEffect(() => {
     fetchClients()
+    const interval = setInterval(fetchClients, 8000)
+    return () => clearInterval(interval)
   }, [fetchClients])
 
   const [isEditMode, setIsEditMode] = useState(false)
@@ -84,7 +86,7 @@ export default function ClientsSection() {
   }
 
   const handleCreateClient = async () => {
-    if (!formCompanyName.trim() || !formPicName.trim() || !formPhone.trim() || !formEmail.trim()) {
+    if (!formCompanyName.trim() || !formPicName.trim() || !formPhone.trim() || !formEmail.trim() || !formCity.trim() || !formAddress.trim() || !formNpwp.trim()) {
       showToast('Harap isi semua field yang wajib diisi.', 'error')
       return
     }
@@ -94,6 +96,9 @@ export default function ClientsSection() {
         companyName: formCompanyName,
         email: formEmail,
         phoneNumber: formPhone,
+        city: formCity,
+        address: formAddress,
+        npwp: formNpwp,
       })
       showToast('Klien baru berhasil ditambahkan!', 'success')
       setShowCreateModal(false)
@@ -105,7 +110,7 @@ export default function ClientsSection() {
   }
 
   const handleUpdateClient = async () => {
-    if (!formCompanyName.trim() || !formPicName.trim() || !formPhone.trim() || !formEmail.trim()) {
+    if (!formCompanyName.trim() || !formPicName.trim() || !formPhone.trim() || !formEmail.trim() || !formCity.trim() || !formAddress.trim() || !formNpwp.trim()) {
       showToast('Harap isi semua field yang wajib diisi.', 'error')
       return
     }
@@ -115,6 +120,9 @@ export default function ClientsSection() {
         companyName: formCompanyName,
         email: formEmail,
         phoneNumber: formPhone,
+        city: formCity,
+        address: formAddress,
+        npwp: formNpwp,
       })
       showToast('Klien berhasil diperbarui!', 'success')
       setShowCreateModal(false)
@@ -339,6 +347,7 @@ export default function ClientsSection() {
                 placeholder="Cth: PT Sinar Jaya"
                 value={formCompanyName}
                 onChange={(e) => setFormCompanyName(e.target.value)}
+                required
               />
             </AdminFormField>
             <AdminFormField label="Nama PIC" required>
@@ -347,6 +356,7 @@ export default function ClientsSection() {
                 placeholder="Cth: Budi Santoso"
                 value={formPicName}
                 onChange={(e) => setFormPicName(e.target.value)}
+                required
               />
             </AdminFormField>
             <AdminFormField label="No. Telepon" required>
@@ -355,6 +365,7 @@ export default function ClientsSection() {
                 placeholder="0812-xxxx-xxxx"
                 value={formPhone}
                 onChange={(e) => setFormPhone(e.target.value)}
+                required
               />
             </AdminFormField>
             <AdminFormField label="Email" required>
@@ -363,6 +374,7 @@ export default function ClientsSection() {
                 placeholder="email@perusahaan.co.id"
                 value={formEmail}
                 onChange={(e) => setFormEmail(e.target.value)}
+                required
               />
             </AdminFormField>
             <AdminFormField label="Kota" required>
@@ -371,6 +383,7 @@ export default function ClientsSection() {
                 placeholder="Cth: Jakarta"
                 value={formCity}
                 onChange={(e) => setFormCity(e.target.value)}
+                required
               />
             </AdminFormField>
             <AdminFormField label="Alamat" required fullWidth>
@@ -379,6 +392,7 @@ export default function ClientsSection() {
                 placeholder="Alamat lengkap perusahaan"
                 value={formAddress}
                 onChange={(e) => setFormAddress(e.target.value)}
+                required
               />
             </AdminFormField>
             <AdminFormField label="NPWP" required>
@@ -387,6 +401,7 @@ export default function ClientsSection() {
                 placeholder="01.234.567.8-901.000"
                 value={formNpwp}
                 onChange={(e) => setFormNpwp(e.target.value)}
+                required
               />
             </AdminFormField>
           </div>

@@ -231,6 +231,7 @@
   transition: none;
 }
 .adm-finance-card--total { background: linear-gradient(135deg, #0a1628, #1a3a5a); color: #fff; }
+.adm-finance-card--total:hover { background: linear-gradient(135deg, #11223c, #244b74) !important; color: #fff !important; }
 .adm-finance-card--paid { background: rgba(0,67,13,0.06); border: 1px solid rgba(0,67,13,0.1); }
 .adm-finance-card--unpaid { background: rgba(254,195,48,0.06); border: 1px solid rgba(254,195,48,0.15); }
 .adm-finance-card__label {

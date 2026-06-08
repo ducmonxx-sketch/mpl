@@ -276,4 +276,32 @@ export const notificationsAPI = {
     api.patch('/api/notifications/read-all'),
 }
 
+// ─── Invoices API ───────────────────────────────────────────
+export const invoicesAPI = {
+  /** List invoices (client: own, admin: all) */
+  list: (params) =>
+    api.get('/api/invoices', params),
+
+  /** Single invoice detail */
+  getById: (id) =>
+    api.get(`/api/invoices/${id}`),
+
+  /** Admin: create a new invoice */
+  create: (data) =>
+    api.post('/api/invoices', data),
+
+  /** Admin: send invoice to client */
+  send: (id) =>
+    api.patch(`/api/invoices/${id}/send`),
+
+  /** Admin: mark invoice as paid */
+  markPaid: (id) =>
+    api.patch(`/api/invoices/${id}/paid`),
+
+  /** Admin: cancel invoice */
+  cancel: (id) =>
+    api.patch(`/api/invoices/${id}/cancel`),
+}
+
 export default api
+

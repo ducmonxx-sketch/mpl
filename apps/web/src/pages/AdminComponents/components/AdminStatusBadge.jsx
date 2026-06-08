@@ -8,9 +8,12 @@ export default function AdminStatusBadge({ status, type = 'shipment' }) {
       cancelled: { label: 'Dibatalkan', cls: 'adm-badge--cancelled' },
     },
     invoice: {
+      draft: { label: 'Konsep', cls: 'adm-badge--pending' },
+      sent: { label: 'Terkirim', cls: 'adm-badge--processing' },
       unpaid: { label: 'Belum Dibayar', cls: 'adm-badge--pending' },
       paid: { label: 'Lunas', cls: 'adm-badge--delivered' },
       overdue: { label: 'Lewat Jatuh Tempo', cls: 'adm-badge--failed' },
+      cancelled: { label: 'Dibatalkan', cls: 'adm-badge--cancelled' },
     },
     driver: {
       available: { label: 'Tersedia', cls: 'adm-badge--delivered' },
@@ -23,7 +26,8 @@ export default function AdminStatusBadge({ status, type = 'shipment' }) {
     },
   }
 
-  const cfg = configs[type]?.[status] || { label: status, cls: 'adm-badge--pending' }
+  const normStatus = (status || '').toLowerCase()
+  const cfg = configs[type]?.[normStatus] || { label: status, cls: 'adm-badge--pending' }
 
   return <span className={`adm-badge ${cfg.cls}`}>{cfg.label}</span>
 }

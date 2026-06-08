@@ -79,6 +79,8 @@ export default function DriversSection() {
 
   useEffect(() => {
     fetchDrivers()
+    const interval = setInterval(fetchDrivers, 8000)
+    return () => clearInterval(interval)
   }, [fetchDrivers])
 
   const resetForm = () => {

@@ -67,14 +67,18 @@ export default function TrackingSection({ initialSearchQuery = '', isAdmin = fal
   const [tempStatus, setTempStatus] = useState('')
   const [photoPreview, setPhotoPreview] = useState(null)
   const [compressing, setCompressing] = useState(false)
+  const [tempEta, setTempEta] = useState('')
 
   useEffect(() => {
     if (selectedShipment) {
       setTempStatus(selectedShipment.rawStatus)
       setPhotoPreview(selectedShipment.proofPhoto)
+      // Initialize ETA picker from raw shipment data
+      setTempEta(selectedShipment.rawEstimatedArrival || '')
     } else {
       setTempStatus('')
       setPhotoPreview(null)
+      setTempEta('')
     }
   }, [selectedShipment])
 
@@ -123,6 +127,9 @@ export default function TrackingSection({ initialSearchQuery = '', isAdmin = fal
             destination: s.destinationLocation || s.destination_location || '-',
             progress: s.currentProgressPercent ?? s.current_progress_percent ?? 0,
             estimatedArrival,
+            rawEstimatedArrival: estimatedArrivalRaw ? new Date(estimatedArrivalRaw).toISOString().slice(0, 16) : '',
+            units: s.units || null,
+            price: s.price ? Number(s.price) : null,
             timeline,
             proofPhoto: s.proofPhoto || null,
             driver: {
@@ -154,6 +161,8 @@ export default function TrackingSection({ initialSearchQuery = '', isAdmin = fal
 
   useEffect(() => {
     fetchShipments()
+    const interval = setInterval(fetchShipments, 8000)
+    return () => clearInterval(interval)
   }, [fetchShipments])
 
   const handleUpdateStatus = async (newStatus) => {
@@ -239,6 +248,26 @@ export default function TrackingSection({ initialSearchQuery = '', isAdmin = fal
       )
     } catch (err) {
       showToast(err.message || 'Gagal memperbarui status', 'error')
+    } finally {
+      setUpdatingStatus(false)
+    }
+  }
+
+  const handleUpdateEta = async () => {
+    if (!selectedShipment || !tempEta) return
+    setUpdatingStatus(true)
+    try {
+      await shipmentsAPI.updateStatus(selectedShipment.id, {
+        status: selectedShipment.rawStatus,
+        estimatedArrival: new Date(tempEta).toISOString(),
+      })
+      showToast('Estimasi tiba diperbarui!', 'success')
+      await fetchShipments()
+      setSelectedShipment((prev) =>
+        prev ? { ...prev, estimatedArrival: new Date(tempEta).toLocaleString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }), rawEstimatedArrival: tempEta } : prev
+      )
+    } catch (err) {
+      showToast(err.message || 'Gagal memperbarui ETA', 'error')
     } finally {
       setUpdatingStatus(false)
     }
@@ -410,6 +439,20 @@ export default function TrackingSection({ initialSearchQuery = '', isAdmin = fal
                   <span className="adm-detail-label">Progress</span>
                   <span className="adm-detail-value">{selectedShipment.progress}%</span>
                 </div>
+                {selectedShipment.units && (
+                  <div className="adm-detail-row">
+                    <span className="adm-detail-label">Units / Pcs</span>
+                    <span className="adm-detail-value">{selectedShipment.units}</span>
+                  </div>
+                )}
+                {selectedShipment.price && (
+                  <div className="adm-detail-row">
+                    <span className="adm-detail-label">Harga (Rp)</span>
+                    <span className="adm-detail-value">
+                      {'Rp ' + Number(selectedShipment.price).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Bukti Pengiriman */}
@@ -518,6 +561,44 @@ export default function TrackingSection({ initialSearchQuery = '', isAdmin = fal
                     >
                       <Icon name="plus" size={16} />
                       Tambah Checkpoint
+                    </button>
+                  </div>
+
+                  {/* ETA Date-Time Picker */}
+                  <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted, #6b7280)' }}>
+                        Estimasi Tiba:
+                      </label>
+                      <input
+                        type="datetime-local"
+                        value={tempEta}
+                        onChange={(e) => setTempEta(e.target.value)}
+                        disabled={updatingStatus}
+                        style={{
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          border: '1px solid var(--border-color, #d1d5db)',
+                          fontSize: '13px',
+                          cursor: 'pointer',
+                          background: 'var(--bg-card, #fff)',
+                          color: 'var(--text-color, #1e293b)',
+                        }}
+                      />
+                    </div>
+                    <button
+                      className="adm-create-btn"
+                      onClick={handleUpdateEta}
+                      disabled={updatingStatus || !tempEta}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        opacity: (!tempEta || updatingStatus) ? 0.5 : 1,
+                      }}
+                    >
+                      <Icon name="schedule" size={16} />
+                      Simpan ETA
                     </button>
                   </div>
 

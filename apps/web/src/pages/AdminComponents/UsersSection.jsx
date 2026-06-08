@@ -36,6 +36,11 @@ export default function UsersSection() {
   const [magicLink, setMagicLink] = useState('')
   const [magicLinkCopied, setMagicLinkCopied] = useState(false)
 
+  // Create success state
+  const [createSuccess, setCreateSuccess] = useState(false)
+  const [createdCredentials, setCreatedCredentials] = useState({ email: '', password: '' })
+  const [credentialsCopied, setCredentialsCopied] = useState(false)
+
   const fetchUsers = useCallback(async () => {
     setLoading(true)
     try {
@@ -64,6 +69,8 @@ export default function UsersSection() {
 
   useEffect(() => {
     fetchUsers()
+    const interval = setInterval(fetchUsers, 8000)
+    return () => clearInterval(interval)
   }, [fetchUsers])
 
   const filteredUsers = useMemo(() => {
@@ -81,6 +88,9 @@ export default function UsersSection() {
     setShowMagicLinkSection(false)
     setMagicLink('')
     setMagicLinkCopied(false)
+    setCreateSuccess(false)
+    setCreatedCredentials({ email: '', password: '' })
+    setCredentialsCopied(false)
   }
 
   const handleCreateUser = async () => {
@@ -96,12 +106,12 @@ export default function UsersSection() {
         phoneNumber: '',
         password: formPassword || undefined,
       })
-      showToast(
-        'Pengguna baru berhasil dibuat!' + (res.tempPassword ? ' Password sementara: ' + res.tempPassword : ''),
-        'success'
-      )
-      setShowCreateModal(false)
-      resetModal()
+      // Stay in modal, show success UI with credentials
+      setCreatedCredentials({
+        email: formEmail,
+        password: res.tempPassword || formPassword || '(auto-generated)',
+      })
+      setCreateSuccess(true)
       fetchUsers()
     } catch (err) {
       showToast(err.message || 'Gagal membuat pengguna.', 'error')
@@ -123,9 +133,16 @@ export default function UsersSection() {
     setTimeout(() => setMagicLinkCopied(false), 2000)
   }
 
+  const handleCopyCredentials = () => {
+    const text = `Email: ${createdCredentials.email}\nPassword: ${createdCredentials.password}`
+    navigator.clipboard.writeText(text).catch(() => {})
+    setCredentialsCopied(true)
+    setTimeout(() => setCredentialsCopied(false), 2000)
+  }
+
   const handleModalSubmit = () => {
-    if (showMagicLinkSection) {
-      // Admin has their link, just close
+    if (createSuccess || showMagicLinkSection) {
+      // Admin is done reviewing, close the modal
       setShowCreateModal(false)
       resetModal()
     } else {
@@ -297,12 +314,71 @@ export default function UsersSection() {
       {showCreateModal && (
         <AdminModal
           title="Tambah Pengguna Baru"
-          subtitle={showMagicLinkSection ? 'Bagikan link pendaftaran kepada klien.' : 'Isi data akun atau gunakan magic link.'}
+          subtitle={createSuccess ? 'Kredensial pengguna baru.' : (showMagicLinkSection ? 'Bagikan link pendaftaran kepada klien.' : 'Isi data akun atau gunakan magic link.')}
           onClose={() => { setShowCreateModal(false); resetModal() }}
           onSubmit={handleModalSubmit}
-          submitLabel={showMagicLinkSection ? 'Selesai' : 'Buat Akun'}
+          submitLabel={createSuccess ? 'Selesai' : (showMagicLinkSection ? 'Selesai' : 'Buat Akun')}
         >
-          {!showMagicLinkSection ? (
+          {createSuccess ? (
+            /* ── Success Mode: Show credentials ── */
+            <div>
+              <div
+                style={{
+                  padding: '1.5rem',
+                  background: 'rgba(22,163,74,0.06)',
+                  border: '1px solid rgba(22,163,74,0.2)',
+                  borderRadius: '12px',
+                  textAlign: 'center',
+                }}
+              >
+                <Icon name="check_circle" size={40} style={{ color: '#16a34a', marginBottom: '0.75rem' }} />
+                <h4 style={{ margin: '0 0 0.5rem', color: 'var(--dash-primary)', fontWeight: 800 }}>
+                  Pengguna Berhasil Dibuat!
+                </h4>
+                <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '0 0 1rem' }}>
+                  Simpan kredensial berikut sebelum menutup.
+                </p>
+                <div
+                  style={{
+                    padding: '0.75rem',
+                    background: '#fff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px',
+                    fontFamily: 'monospace',
+                    fontSize: '0.82rem',
+                    textAlign: 'left',
+                    lineHeight: 1.8,
+                    color: '#334155',
+                  }}
+                >
+                  <div><strong>Email:</strong> {createdCredentials.email}</div>
+                  <div><strong>Password:</strong> {createdCredentials.password}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyCredentials}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '0.55rem 1.25rem',
+                    marginTop: '1rem',
+                    background: credentialsCopied ? '#16a34a' : '#f1f5f9',
+                    color: credentialsCopied ? '#fff' : 'var(--dash-primary)',
+                    border: '1px solid ' + (credentialsCopied ? '#16a34a' : '#cbd5e1'),
+                    borderRadius: '8px',
+                    fontWeight: 600,
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  <Icon name={credentialsCopied ? 'check' : 'content_copy'} size={16} />
+                  {credentialsCopied ? 'Tersalin!' : 'Salin Kredensial'}
+                </button>
+              </div>
+            </div>
+          ) : !showMagicLinkSection ? (
             /* ── Mode 1: Manual form ── */
             <div>
               <div className="adm-form-grid">

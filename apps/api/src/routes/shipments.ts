@@ -44,6 +44,7 @@ router.get("/", authenticate, async (req: AuthRequest, res: Response) => {
         client:  { select: { fullName: true, companyName: true } },
         driver:  { select: { fullName: true, phoneNumber: true } },
         vehicle: { select: { type: true, licensePlate: true } },
+        invoice: { select: { id: true } },
       },
       orderBy: { createdAt: "desc" },
     })

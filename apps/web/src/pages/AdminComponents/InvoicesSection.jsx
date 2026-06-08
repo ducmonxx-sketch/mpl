@@ -6,7 +6,7 @@ import AdminStatusBadge from './components/AdminStatusBadge'
 import AdminPagination from './components/AdminPagination'
 import AdminModal from './components/AdminModal'
 import AdminFormField from './components/AdminFormField'
-import { shipmentsAPI } from '../../lib/api'
+import { shipmentsAPI, invoicesAPI } from '../../lib/api'
 
 const formatIDR = (num) => {
   if (num === null || num === undefined || isNaN(Number(num))) return '-'
@@ -23,61 +23,156 @@ export default function InvoicesSection() {
   const [INVOICES, setINVOICES] = useState([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    async function fetchInvoices() {
-      setLoading(true)
-      try {
-        const data = await shipmentsAPI.list()
-        const mapped = (data.shipments || []).map((s, idx) => {
-          // Use s.price as the base amount (not weightKg * 15000)
-          const amount = s.price ? Number(s.price) : 0
-          const tax = amount * 0.11
-          // Payment status: DELIVERED = paid, PENDING = unpaid, others = overdue
-          let paymentStatus
-          if (s.status === 'DELIVERED') {
-            paymentStatus = 'paid'
-          } else if (s.status === 'PENDING') {
-            paymentStatus = 'unpaid'
-          } else {
-            paymentStatus = Math.random() > 0.5 ? 'unpaid' : 'overdue'
-          }
-          return {
-            id: `INV-${String(idx + 1).padStart(4, '0')}`,
-            shipmentId: s.id,
-            client: s.client?.companyName || s.client?.fullName || '-',
-            amount,
-            taxAmount: tax,
-            totalAmount: amount + tax,
-            dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('id-ID', {
-              day: 'numeric',
-              month: 'short',
-              year: 'numeric',
-            }),
-            paymentStatus,
-            paidAt: paymentStatus === 'paid' ? new Date().toLocaleDateString('id-ID') : null,
-            paymentNotes: '',
-          }
-        })
-        setINVOICES(mapped)
-      } catch (err) {
-        console.error('Failed to fetch invoices:', err)
-        showToast('Gagal memuat data faktur.', 'error')
-      } finally {
-        setLoading(false)
-      }
+  // Create invoice form state
+  const [availableShipments, setAvailableShipments] = useState([])
+  const [formShipmentId, setFormShipmentId] = useState('')
+  const [formSubtotal, setFormSubtotal] = useState('')
+  const [formDueDate, setFormDueDate] = useState('')
+  const [formNotes, setFormNotes] = useState('')
+
+  const fetchInvoices = async () => {
+    setLoading(true)
+    try {
+      const data = await invoicesAPI.list()
+      const mapped = (data.invoices || []).map((inv) => ({
+        id: inv.invoiceNumber,
+        dbId: inv.id,
+        shipmentId: inv.shipmentId,
+        client: inv.client?.companyName || inv.client?.fullName || '-',
+        amount: Number(inv.subtotal),
+        taxAmount: Number(inv.taxAmount),
+        totalAmount: Number(inv.totalAmount),
+        dueDate: new Date(inv.dueDate).toLocaleDateString('id-ID', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+        }),
+        paymentStatus: inv.status.toLowerCase(), // 'draft', 'sent', 'paid', 'overdue', 'cancelled'
+        paidAt: inv.paidAt ? new Date(inv.paidAt).toLocaleDateString('id-ID') : null,
+        paymentNotes: inv.notes || '',
+        rawInvoice: inv
+      }))
+      setINVOICES(mapped)
+    } catch (err) {
+      console.error('Failed to fetch invoices:', err)
+      showToast('Gagal memuat data faktur.', 'error')
+    } finally {
+      setLoading(false)
     }
+  }
+
+  useEffect(() => {
     fetchInvoices()
+    const interval = setInterval(fetchInvoices, 8000)
+    return () => clearInterval(interval)
   }, [])
 
+  // Load shipments that don't have an invoice when create modal is opened
+  useEffect(() => {
+    if (showCreateModal) {
+      async function loadShipments() {
+        try {
+          const res = await shipmentsAPI.list()
+          const filteredShipments = (res.shipments || res || []).filter(s => !s.invoice)
+          setAvailableShipments(filteredShipments)
+          if (filteredShipments.length > 0) {
+            setFormShipmentId(filteredShipments[0].id)
+            const initialPrice = filteredShipments[0].price
+            setFormSubtotal(initialPrice ? String(Number(initialPrice)) : '')
+          } else {
+            setFormShipmentId('')
+            setFormSubtotal('')
+          }
+          setFormDueDate('')
+          setFormNotes('')
+        } catch (err) {
+          console.error(err)
+          showToast('Gagal memuat data pengiriman.', 'error')
+        }
+      }
+      loadShipments()
+    }
+  }, [showCreateModal])
+
+  const handleAction = async (actionFn, successMsg) => {
+    if (!selectedInvoice) return
+    try {
+      const res = await actionFn(selectedInvoice.dbId)
+      showToast(successMsg, 'success')
+      await fetchInvoices()
+      if (res && res.invoice) {
+        const inv = res.invoice
+        setSelectedInvoice({
+          id: inv.invoiceNumber,
+          dbId: inv.id,
+          shipmentId: inv.shipmentId,
+          client: selectedInvoice.client,
+          amount: Number(inv.subtotal),
+          taxAmount: Number(inv.taxAmount),
+          totalAmount: Number(inv.totalAmount),
+          dueDate: new Date(inv.dueDate).toLocaleDateString('id-ID', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+          }),
+          paymentStatus: inv.status.toLowerCase(),
+          paidAt: inv.paidAt ? new Date(inv.paidAt).toLocaleDateString('id-ID') : null,
+          paymentNotes: inv.notes || '',
+          rawInvoice: inv
+        })
+      } else {
+        setSelectedInvoice(null)
+      }
+    } catch (err) {
+      console.error(err)
+      showToast(err.message || 'Gagal memproses aksi.', 'error')
+    }
+  }
+
+  const handleCreateInvoice = async () => {
+    if (!formShipmentId) {
+      showToast('Pilih pengiriman terlebih dahulu.', 'error')
+      return
+    }
+    if (!formSubtotal || Number(formSubtotal) <= 0) {
+      showToast('Nominal subtotal harus lebih besar dari 0.', 'error')
+      return
+    }
+    if (!formDueDate) {
+      showToast('Tanggal jatuh tempo wajib diisi.', 'error')
+      return
+    }
+
+    try {
+      await invoicesAPI.create({
+        shipmentId: formShipmentId,
+        subtotal: Number(formSubtotal),
+        taxRate: 11,
+        dueDate: new Date(formDueDate).toISOString(),
+        notes: formNotes || null
+      })
+      showToast('Faktur baru berhasil dibuat!', 'success')
+      setShowCreateModal(false)
+      fetchInvoices()
+    } catch (err) {
+      showToast(err.message || 'Gagal membuat faktur.', 'error')
+    }
+  }
+
   const filtered = INVOICES.filter(inv => {
-    const matchStatus = filter === 'all' || inv.paymentStatus === filter
+    const isUnpaid = inv.paymentStatus === 'draft' || inv.paymentStatus === 'sent'
+    const matchStatus =
+      filter === 'all' ||
+      (filter === 'unpaid' && isUnpaid) ||
+      (filter === 'paid' && inv.paymentStatus === 'paid') ||
+      (filter === 'overdue' && inv.paymentStatus === 'overdue')
     const matchClient = filterClient === 'all' || inv.client === filterClient
     return matchStatus && matchClient
   })
 
   const totalAll = INVOICES.reduce((s, inv) => s + inv.totalAmount, 0)
   const totalPaid = INVOICES.filter(inv => inv.paymentStatus === 'paid').reduce((s, inv) => s + inv.totalAmount, 0)
-  const totalUnpaid = totalAll - totalPaid
+  const totalUnpaid = INVOICES.filter(inv => inv.paymentStatus === 'draft' || inv.paymentStatus === 'sent' || inv.paymentStatus === 'overdue').reduce((s, inv) => s + inv.totalAmount, 0)
 
   const filters = [
     { id: 'all', label: 'Semua' },
@@ -104,11 +199,20 @@ export default function InvoicesSection() {
           >
             <Icon name="visibility" size={16} />
           </button>
-          {row.paymentStatus !== 'paid' && (
+          {row.paymentStatus !== 'paid' && row.paymentStatus !== 'cancelled' && (
             <button
               className="adm-action-btn"
               title="Tandai Lunas"
-              onClick={(e) => { e.stopPropagation(); showToast(`${row.id} ditandai sebagai Lunas.`, 'success') }}
+              onClick={async (e) => {
+                e.stopPropagation()
+                try {
+                  await invoicesAPI.markPaid(row.dbId)
+                  showToast(`${row.id} ditandai sebagai Lunas.`, 'success')
+                  fetchInvoices()
+                } catch (err) {
+                  showToast(err.message || 'Gagal menandai lunas.', 'error')
+                }
+              }}
               style={{ color: 'var(--dash-tertiary-light)' }}
             >
               <Icon name="check_circle" size={16} />
@@ -119,10 +223,9 @@ export default function InvoicesSection() {
     },
   ]
 
-  const handleCreateInvoice = () => {
-    showToast('Faktur baru berhasil dibuat!', 'success')
-    setShowCreateModal(false)
-  }
+  const ITEMS_PER_PAGE = 20
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE))
+  const paginated = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
 
   return (
     <div className="dash-content">
@@ -138,11 +241,10 @@ export default function InvoicesSection() {
         </div>
       </section>
 
-      {/* Financial Summary — overflow:hidden prevents hover glitch bleed */}
+      {/* Financial Summary */}
       <div className="adm-finance-summary" style={{ overflow: 'hidden' }}>
         <div className="adm-finance-card adm-finance-card--total glass-card">
           <p className="adm-finance-card__label">Total Tagihan / Total Billing</p>
-          {/* pointerEvents:none prevents h3 from stealing hover events */}
           <h3 className="adm-finance-card__value" style={{ pointerEvents: 'none' }}>{formatIDR(totalAll)}</h3>
         </div>
         <div className="adm-finance-card adm-finance-card--paid glass-card">
@@ -175,9 +277,14 @@ export default function InvoicesSection() {
             f.id === 'all'
               ? INVOICES.filter(inv => filterClient === 'all' || inv.client === filterClient).length
               : INVOICES.filter(
-                  inv =>
-                    inv.paymentStatus === f.id &&
-                    (filterClient === 'all' || inv.client === filterClient)
+                  inv => {
+                    const matchClient = filterClient === 'all' || inv.client === filterClient
+                    if (!matchClient) return false
+                    if (f.id === 'unpaid') return inv.paymentStatus === 'draft' || inv.paymentStatus === 'sent'
+                    if (f.id === 'paid') return inv.paymentStatus === 'paid'
+                    if (f.id === 'overdue') return inv.paymentStatus === 'overdue'
+                    return false
+                  }
                 ).length
           return (
             <button
@@ -192,14 +299,23 @@ export default function InvoicesSection() {
       </div>
 
       <div style={{ marginTop: '1.25rem' }}>
-        <AdminDataTable columns={columns} data={filtered} onRowClick={setSelectedInvoice} />
-        <AdminPagination
-          currentPage={currentPage}
-          totalPages={1}
-          totalItems={filtered.length}
-          itemsPerPage={20}
-          onPageChange={setCurrentPage}
-        />
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
+            <Icon name="sync" size={24} />
+            <p style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}>Memuat data faktur…</p>
+          </div>
+        ) : (
+          <>
+            <AdminDataTable columns={columns} data={paginated} onRowClick={setSelectedInvoice} />
+            <AdminPagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={filtered.length}
+              itemsPerPage={ITEMS_PER_PAGE}
+              onPageChange={setCurrentPage}
+            />
+          </>
+        )}
       </div>
 
       {/* Detail Panel */}
@@ -226,13 +342,6 @@ export default function InvoicesSection() {
                 <span className="adm-detail-label">Jatuh Tempo</span>
                 <span className="adm-detail-value" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   {selectedInvoice.dueDate}
-                  <button
-                    onClick={() => showToast('Jatuh tempo diperbarui.', 'success')}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dash-primary)' }}
-                    title="Ubah Jatuh Tempo"
-                  >
-                    <Icon name="edit" size={14} />
-                  </button>
                 </span>
               </div>
             </div>
@@ -253,8 +362,44 @@ export default function InvoicesSection() {
             </div>
           </div>
 
-          {selectedInvoice.paymentStatus === 'overdue' && (
-            <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'flex-end', paddingTop: '1.5rem', borderTop: '1px solid #e2e8f0' }}>
+          <div style={{ marginTop: '2rem', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', paddingTop: '1.5rem', borderTop: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
+            {selectedInvoice.paymentStatus === 'draft' && (
+              <>
+                <button
+                  className="adm-create-btn"
+                  style={{ width: 'auto' }}
+                  onClick={() => handleAction(invoicesAPI.send, 'Faktur berhasil dikirim.')}
+                >
+                  <Icon name="send" size={16} /> Kirim Faktur
+                </button>
+                <button
+                  className="adm-action-btn"
+                  style={{ color: '#ef4444', borderColor: '#fca5a5', width: 'auto' }}
+                  onClick={() => handleAction(invoicesAPI.cancel, 'Faktur berhasil dibatalkan.')}
+                >
+                  <Icon name="cancel" size={16} /> Batalkan Faktur
+                </button>
+              </>
+            )}
+            {(selectedInvoice.paymentStatus === 'sent' || selectedInvoice.paymentStatus === 'overdue') && (
+              <>
+                <button
+                  className="adm-create-btn"
+                  style={{ width: 'auto', backgroundColor: 'var(--dash-tertiary-light)', borderColor: 'var(--dash-tertiary-light)' }}
+                  onClick={() => handleAction(invoicesAPI.markPaid, 'Faktur ditandai sebagai Lunas.')}
+                >
+                  <Icon name="check_circle" size={16} /> Tandai Lunas
+                </button>
+                <button
+                  className="adm-action-btn"
+                  style={{ color: '#ef4444', borderColor: '#fca5a5', width: 'auto' }}
+                  onClick={() => handleAction(invoicesAPI.cancel, 'Faktur berhasil dibatalkan.')}
+                >
+                  <Icon name="cancel" size={16} /> Batalkan Faktur
+                </button>
+              </>
+            )}
+            {selectedInvoice.paymentStatus === 'overdue' && (
               <a
                 href={`https://wa.me/?text=${encodeURIComponent(
                   `${selectedInvoice.id} - ${formatIDR(selectedInvoice.totalAmount)} - Sudah jatuh tempo silahkan melakukan pembayaran ke nomor rekening xxxxxxxxx`
@@ -265,6 +410,7 @@ export default function InvoicesSection() {
                 style={{
                   background: '#25D366',
                   color: '#fff',
+                  border: 'none',
                   textDecoration: 'none',
                   padding: '0.6rem 1rem',
                   borderRadius: '8px',
@@ -277,8 +423,8 @@ export default function InvoicesSection() {
               >
                 <Icon name="chat" size={18} /> Follow Up via WhatsApp
               </a>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
 
@@ -293,23 +439,65 @@ export default function InvoicesSection() {
         >
           <div className="adm-form-grid">
             <AdminFormField label="Pengiriman Terkait" required fullWidth>
-              <select defaultValue="">
+              <select
+                value={formShipmentId}
+                onChange={(e) => {
+                  const shipId = e.target.value
+                  setFormShipmentId(shipId)
+                  const found = availableShipments.find(s => s.id === shipId)
+                  if (found && found.price) {
+                    setFormSubtotal(String(Number(found.price)))
+                  } else {
+                    setFormSubtotal('')
+                  }
+                }}
+              >
                 <option value="" disabled>Pilih Pengiriman...</option>
-                <option>MPL-0041 - PT Sinar Jaya</option>
-                <option>MPL-0038 - PT Karya Mandiri</option>
+                {availableShipments.map(s => (
+                  <option key={s.id} value={s.id}>
+                    {s.id} - {s.client?.companyName || s.client?.fullName || 'No Client'}
+                  </option>
+                ))}
               </select>
             </AdminFormField>
             <AdminFormField label="Nominal (IDR)" required>
-              <input type="number" placeholder="4500000" min="0" />
+              <input
+                type="number"
+                placeholder="4500000"
+                min="0"
+                value={formSubtotal}
+                onChange={(e) => setFormSubtotal(e.target.value)}
+                readOnly={!!availableShipments.find(s => s.id === formShipmentId)?.price}
+                style={availableShipments.find(s => s.id === formShipmentId)?.price ? { background: '#f1f5f9', cursor: 'not-allowed' } : {}}
+              />
+              {availableShipments.find(s => s.id === formShipmentId)?.price && (
+                <span style={{ fontSize: '0.72rem', color: '#16a34a', marginTop: '4px', display: 'block' }}>
+                  ✓ Harga otomatis dari data pengiriman
+                </span>
+              )}
             </AdminFormField>
             <AdminFormField label="PPN (11%)">
-              <input type="number" placeholder="495000" min="0" readOnly />
+              <input
+                type="number"
+                placeholder="495000"
+                min="0"
+                value={formSubtotal ? Math.round(Number(formSubtotal) * 0.11) : ''}
+                readOnly
+              />
             </AdminFormField>
             <AdminFormField label="Jatuh Tempo" required>
-              <input type="date" />
+              <input
+                type="date"
+                value={formDueDate}
+                onChange={(e) => setFormDueDate(e.target.value)}
+              />
             </AdminFormField>
             <AdminFormField label="Catatan Pembayaran" fullWidth>
-              <textarea placeholder="Cth: Transfer BCA xxxxxxx" />
+              <textarea
+                placeholder="Cth: Transfer BCA xxxxxxx"
+                value={formNotes}
+                onChange={(e) => setFormNotes(e.target.value)}
+              />
             </AdminFormField>
           </div>
         </AdminModal>

@@ -87,6 +87,8 @@ export default function ArmadaSection() {
 
   useEffect(() => {
     fetchVehicles()
+    const interval = setInterval(fetchVehicles, 8000)
+    return () => clearInterval(interval)
   }, [fetchVehicles])
 
   const resetForm = () => {

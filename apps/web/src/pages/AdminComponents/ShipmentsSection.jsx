@@ -115,7 +115,11 @@ export default function ShipmentsSection({ onTrackFull }) {
     }
   }, [])
 
-  useEffect(() => { fetchShipments() }, [fetchShipments])
+  useEffect(() => {
+    fetchShipments()
+    const interval = setInterval(fetchShipments, 8000)
+    return () => clearInterval(interval)
+  }, [fetchShipments])
 
   // Fetch clients for create form
   const fetchClients = async () => {
@@ -183,6 +187,14 @@ export default function ShipmentsSection({ onTrackFull }) {
     }
     if (!formPickupDate) {
       showToast('Harap tentukan Tanggal Pickup.', 'error')
+      return
+    }
+    if (!formUnits || Number(formUnits) <= 0) {
+      showToast('Harap isi Units / Pcs dengan nilai lebih dari 0.', 'error')
+      return
+    }
+    if (!formPrice || Number(formPrice) <= 0) {
+      showToast('Harap isi Total Invoice Price dengan nilai lebih dari 0.', 'error')
       return
     }
 
@@ -667,13 +679,14 @@ export default function ShipmentsSection({ onTrackFull }) {
             </AdminFormField>
 
             {/* Units / Pcs */}
-            <AdminFormField label="Units / Pcs">
+            <AdminFormField label="Units / Pcs" required>
               <input
                 type="number"
-                min="0"
+                min="1"
                 placeholder="0"
                 value={formUnits}
                 onChange={e => setFormUnits(e.target.value)}
+                required
               />
             </AdminFormField>
 
@@ -688,16 +701,28 @@ export default function ShipmentsSection({ onTrackFull }) {
               />
             </AdminFormField>
 
-            {/* Harga */}
-            <AdminFormField label="Harga / Invoice (Rp)">
-              <input
-                type="number"
-                min="0"
-                placeholder="0"
-                value={formPrice}
-                onChange={e => setFormPrice(e.target.value)}
-              />
-            </AdminFormField>
+            {/* Invoice Box */}
+            <div style={{
+              gridColumn: 'span 2',
+              padding: '1.25rem',
+              background: 'rgba(254,195,48,0.05)',
+              border: '1.5px solid rgba(254,195,48,0.3)',
+              borderRadius: '12px',
+              marginTop: '0.5rem',
+              marginBottom: '0.5rem'
+            }}>
+              <AdminFormField label="Total Invoice Price (Jumlah Harga Invoice)" required>
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="Masukkan total harga invoice (Cth: 5000000)"
+                  value={formPrice}
+                  onChange={e => setFormPrice(e.target.value)}
+                  required
+                  style={{ background: '#fff' }}
+                />
+              </AdminFormField>
+            </div>
 
             {/* Catatan Tambahan */}
             <AdminFormField label="Catatan Tambahan" fullWidth>
