@@ -67,7 +67,7 @@ export default defineConfig({
         // Images: self + data URIs for small embedded assets.
         "img-src 'self' data: blob:",
         // API calls to the backend.
-        "connect-src 'self' https://api.mahkotaputralogistik.com http://localhost:3001",
+        "connect-src 'self' https://api.mahkotaputralogistik.id http://localhost:3001",
         // Cloudflare Turnstile widget iframe.
         "frame-src https://challenges.cloudflare.com",
         // No plugins (Flash etc.)
