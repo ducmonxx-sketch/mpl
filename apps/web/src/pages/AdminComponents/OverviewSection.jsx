@@ -5,7 +5,7 @@ import AdminStatusBadge from './components/AdminStatusBadge'
 import Icon from '../../components/Icon'
 import { shipmentsAPI, usersAPI, fleetAPI } from '../../lib/api'
 
-export default function OverviewSection({ onChangeNav }) {
+export default function OverviewSection({ onChangeNav, onNavigateToShipment }) {
   const [recentShipments, setRecentShipments] = useState([])
   const [kpiData, setKpiData] = useState({ activeShipments: 0, totalClients: 0, availableDrivers: 0, unassignedDrivers: 0 })
   const [loading, setLoading] = useState(true)
@@ -74,7 +74,20 @@ export default function OverviewSection({ onChangeNav }) {
   const SERVICE_LABELS = { 'Darat': 'Darat', 'Laut': 'Laut', 'Udara': 'Udara' }
 
   const columns = [
-    { key: 'id', label: 'ID Order', render: (v) => <span className="adm-table__cell-main">{v}</span> },
+    {
+      key: 'id',
+      label: 'ID Order',
+      render: (v) => (
+        <span
+          className="adm-table__cell-main adm-clickable-id"
+          onClick={(e) => { e.stopPropagation(); onNavigateToShipment?.(v) }}
+          style={{ cursor: 'pointer', color: 'var(--dash-primary)', textDecoration: 'underline' }}
+          title="Klik untuk melihat detail pengiriman"
+        >
+          {v}
+        </span>
+      ),
+    },
     { key: 'client', label: 'Klien' },
     { key: 'serviceType', label: 'Layanan', render: (v) => SERVICE_LABELS[v] || v },
     { key: 'destinationCity', label: 'Tujuan' },

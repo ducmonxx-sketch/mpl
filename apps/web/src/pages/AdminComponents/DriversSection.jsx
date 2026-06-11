@@ -21,6 +21,16 @@ const formatDate = (dateStr) => {
   }
 }
 
+const getExpiryStatus = (dateStr) => {
+  if (!dateStr) return null
+  const exp = new Date(dateStr)
+  const now = new Date()
+  const daysLeft = Math.ceil((exp - now) / (1000 * 60 * 60 * 24))
+  if (daysLeft < 0) return { status: 'expired', label: 'SIM Expired' }
+  if (daysLeft <= 30) return { status: 'warning', label: `SIM ${daysLeft} hari lagi` }
+  return null
+}
+
 const mapDriverStatus = (apiStatus) => {
   if (!apiStatus) return 'inactive'
   const s = apiStatus.toUpperCase()
@@ -205,7 +215,20 @@ export default function DriversSection() {
     {
       key: 'name',
       label: 'Nama Driver',
-      render: (v) => <span className="adm-table__cell-main">{v}</span>,
+      render: (v, row) => {
+        const warning = getExpiryStatus(row.rawLicenseExpiry)
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span className="adm-table__cell-main">{v}</span>
+            {warning && (
+              <span className={`adm-expiry-badge adm-expiry-badge--${warning.status}`} title={warning.label}>
+                <Icon name={warning.status === 'expired' ? 'error' : 'warning'} size={12} />
+                {warning.label}
+              </span>
+            )}
+          </div>
+        )
+      },
     },
     { key: 'phone', label: 'No. Telepon' },
     { key: 'licenseNumber', label: 'No. SIM' },

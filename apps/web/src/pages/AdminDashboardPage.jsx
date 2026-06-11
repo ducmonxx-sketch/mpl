@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { notificationsAPI } from '../lib/api'
+import { notificationsAPI, adminNotificationsAPI } from '../lib/api'
+import AdminNotificationPanel from './AdminComponents/components/AdminNotificationPanel'
 import Icon from '../components/Icon'
 import { useToast } from '../contexts/ToastContext'
 
@@ -40,6 +41,9 @@ export default function AdminDashboardPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [trackingId, setTrackingId] = useState('')
   const [unreadCount, setUnreadCount] = useState(0)
+  const [notifications, setNotifications] = useState([])
+  const [showNotifPanel, setShowNotifPanel] = useState(false)
+  const [shipmentHighlightId, setShipmentHighlightId] = useState('')
   const searchWrapperRef = useRef(null)
 
   useEffect(() => {
@@ -52,24 +56,57 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     async function fetchNotifications() {
       try {
-        const data = await notificationsAPI.list()
+        const data = await adminNotificationsAPI.list()
+        setNotifications(data.notifications || [])
         setUnreadCount(data.unreadCount || 0)
       } catch {
-        // Admin may not have notifications endpoint access
+        // fallback
       }
     }
     fetchNotifications()
+    const interval = setInterval(fetchNotifications, 8000)
+    return () => clearInterval(interval)
   }, [])
+
+  const handleMarkAllRead = async () => {
+    try {
+      await adminNotificationsAPI.markAllRead()
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })))
+      setUnreadCount(0)
+    } catch {}
+  }
+
+  const handleMarkRead = async (id) => {
+    try {
+      await adminNotificationsAPI.markRead(id)
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n))
+      setUnreadCount(prev => Math.max(0, prev - 1))
+    } catch {}
+  }
+
+  const handleNotifNavigate = (linkTo, linkId) => {
+    setShowNotifPanel(false)
+    if (linkTo) {
+      setActiveNav(linkTo)
+      if (linkTo === 'shipments' && linkId) setShipmentHighlightId(linkId)
+    }
+  }
 
   const handleNavChange = (id) => {
     setActiveNav(id)
     if (id !== 'tracking') setTrackingId('')
+    if (id !== 'shipments') setShipmentHighlightId('')
     if (isMobile) setSidebarOpen(false)
   }
 
   const navigateToTracking = (id) => {
     setTrackingId(id)
     setActiveNav('tracking')
+  }
+
+  const navigateToShipment = (id) => {
+    setShipmentHighlightId(id)
+    setActiveNav('shipments')
   }
 
   const handleLogout = () => {
@@ -79,15 +116,15 @@ export default function AdminDashboardPage() {
 
   const renderSection = () => {
     switch (activeNav) {
-      case 'overview': return <OverviewSection onChangeNav={handleNavChange} />
-      case 'shipments': return <ShipmentsSection onTrackFull={navigateToTracking} />
+      case 'overview': return <OverviewSection onChangeNav={handleNavChange} onNavigateToShipment={navigateToShipment} />
+      case 'shipments': return <ShipmentsSection onTrackFull={navigateToTracking} highlightShipmentId={shipmentHighlightId} />
       case 'clients': return <ClientsSection />
       case 'drivers': return <DriversSection />
       case 'armada': return <ArmadaSection />
       case 'invoices': return <InvoicesSection />
       case 'users': return <UsersSection />
       case 'tracking': return <TrackingSection initialSearchQuery={trackingId} isAdmin={true} />
-      default: return <OverviewSection onChangeNav={handleNavChange} />
+      default: return <OverviewSection onChangeNav={handleNavChange} onNavigateToShipment={navigateToShipment} />
     }
   }
 
@@ -160,15 +197,30 @@ export default function AdminDashboardPage() {
           </div>
 
           <div className="dash-topbar__right">
-            <button className="dash-topbar__icon-btn" onClick={() => showToast(unreadCount > 0 ? `${unreadCount} notifikasi belum dibaca.` : 'Tidak ada notifikasi baru.', 'info')}>
+            <button className="dash-topbar__icon-btn" onClick={() => setShowNotifPanel(prev => !prev)} style={{ position: 'relative' }}>
               <Icon name="notifications" size={20} />
               {unreadCount > 0 && (
                 <span style={{
-                  position: 'absolute', top: '4px', right: '4px', width: '8px', height: '8px',
-                  background: '#ef4444', borderRadius: '50%', border: '2px solid var(--dash-surface)',
-                }} />
+                  position: 'absolute', top: '2px', right: '2px',
+                  minWidth: '18px', height: '18px', padding: '0 4px',
+                  background: '#ef4444', borderRadius: '9px',
+                  border: '2px solid var(--dash-surface)',
+                  fontSize: '0.65rem', fontWeight: 800, color: '#fff',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
               )}
             </button>
+            {showNotifPanel && (
+              <AdminNotificationPanel
+                notifications={notifications}
+                onMarkAllRead={handleMarkAllRead}
+                onMarkRead={handleMarkRead}
+                onNavigate={handleNotifNavigate}
+                onClose={() => setShowNotifPanel(false)}
+              />
+            )}
             <div className="dash-topbar__divider" />
             <div className="dash-topbar__user" style={{ cursor: 'pointer' }}>
               <div className="dash-topbar__user-info">

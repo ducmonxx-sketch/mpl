@@ -37,12 +37,15 @@ router.get("/drivers", authenticate, adminOnly, async (req: AuthRequest, res: Re
 
 router.post("/drivers", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
   try {
-    const { fullName, phoneNumber } = req.body
+    const { fullName, phoneNumber, licenseNumber, licenseType, licenseExpiry } = req.body
 
     const driver = await prisma.driver.create({
       data: {
         fullName,
         phoneNumber,
+        licenseNumber,
+        licenseType,
+        licenseExpiry: licenseExpiry ? new Date(licenseExpiry) : null,
         lastUpdatedByAdminId: req.user!.id,
       },
     })
@@ -66,7 +69,7 @@ router.post("/drivers", authenticate, adminOnly, async (req: AuthRequest, res: R
 
 router.patch("/drivers/:id", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
   try {
-    const { fullName, phoneNumber, status } = req.body
+    const { fullName, phoneNumber, status, licenseNumber, licenseType, licenseExpiry } = req.body
 
     const driver = await prisma.driver.update({
       where: { id: req.params.id },
@@ -74,6 +77,9 @@ router.patch("/drivers/:id", authenticate, adminOnly, async (req: AuthRequest, r
         ...(fullName    && { fullName }),
         ...(phoneNumber && { phoneNumber }),
         ...(status      && { status }),
+        ...(licenseNumber && { licenseNumber }),
+        ...(licenseType && { licenseType }),
+        ...(licenseExpiry !== undefined && { licenseExpiry: licenseExpiry ? new Date(licenseExpiry) : null }),
         lastUpdatedByAdminId: req.user!.id,
       },
     })
@@ -118,7 +124,7 @@ router.get("/vehicles", authenticate, adminOnly, async (req: AuthRequest, res: R
 
 router.post("/vehicles", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
   try {
-    const { type, licensePlate } = req.body
+    const { type, licensePlate, stnkExpiry, kirExpiry } = req.body
 
     const existing = await prisma.vehicle.findUnique({ where: { licensePlate } })
     if (existing) {
@@ -129,6 +135,8 @@ router.post("/vehicles", authenticate, adminOnly, async (req: AuthRequest, res: 
       data: {
         type,
         licensePlate,
+        stnkExpiry: stnkExpiry ? new Date(stnkExpiry) : null,
+        kirExpiry: kirExpiry ? new Date(kirExpiry) : null,
         lastUpdatedByAdminId: req.user!.id,
       },
     })
@@ -152,7 +160,7 @@ router.post("/vehicles", authenticate, adminOnly, async (req: AuthRequest, res: 
 
 router.patch("/vehicles/:id", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
   try {
-    const { type, licensePlate, status } = req.body
+    const { type, licensePlate, status, stnkExpiry, kirExpiry } = req.body
 
     const vehicle = await prisma.vehicle.update({
       where: { id: req.params.id },
@@ -160,6 +168,8 @@ router.patch("/vehicles/:id", authenticate, adminOnly, async (req: AuthRequest, 
         ...(type         && { type }),
         ...(licensePlate && { licensePlate }),
         ...(status       && { status }),
+        ...(stnkExpiry !== undefined && { stnkExpiry: stnkExpiry ? new Date(stnkExpiry) : null }),
+        ...(kirExpiry !== undefined && { kirExpiry: kirExpiry ? new Date(kirExpiry) : null }),
         lastUpdatedByAdminId: req.user!.id,
       },
     })

@@ -10,6 +10,8 @@
 import { Router, Response } from "express"
 import prisma from "../lib/prisma"
 import { authenticate, adminOnly, AuthRequest } from "../middleware/auth"
+import crypto from "crypto"
+import bcrypt from "bcrypt"
 
 const router = Router()
 
@@ -178,6 +180,248 @@ router.patch("/:id/reject", authenticate, adminOnly, async (req: AuthRequest, re
   } catch (err) {
     console.error(err)
     res.status(500).json({ message: "Failed to reject user." })
+  }
+})
+
+// ── GET /api/users/companies ──────────────────────────────────
+router.get("/companies", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+  try {
+    const users = await prisma.user.findMany({
+      where: { companyName: { not: null } },
+      select: { companyName: true },
+      distinct: ['companyName'],
+    })
+    const companies = users.map(u => u.companyName).filter(Boolean)
+    res.json({ companies })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to fetch companies." })
+  }
+})
+
+// ── POST /api/users/magic-link ───────────────────────────────
+router.post("/magic-link", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+  try {
+    const { companyName } = req.body
+    if (!companyName) {
+      return res.status(400).json({ message: "Company name is required." })
+    }
+
+    const token = crypto.randomBytes(32).toString("hex")
+    const expiresAt = new Date()
+    expiresAt.setDate(expiresAt.getDate() + 7) // Valid for 7 days
+
+    await prisma.magicLink.create({
+      data: {
+        token,
+        type: "registration",
+        companyName,
+        expiresAt,
+      },
+    })
+
+    await prisma.adminAuditLog.create({
+      data: {
+        adminId: req.user!.id,
+        actionType: "GENERATE_MAGIC_LINK",
+        targetTable: "magic_links",
+        targetRecordId: token,
+        changesSummary: `Generated registration magic link for ${companyName}`,
+      },
+    })
+
+    const link = `${process.env.CLIENT_URL || "http://localhost:5173"}/register/magic?token=${token}`
+    res.status(201).json({ message: "Magic link generated.", link })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to generate magic link." })
+  }
+})
+
+// ── GET /api/users/magic-link/:token ─────────────────────────
+router.get("/magic-link/:token", async (req: AuthRequest, res: Response) => {
+  try {
+    const link = await prisma.magicLink.findUnique({
+      where: { token: req.params.token },
+    })
+
+    if (!link || link.type !== "registration") {
+      return res.status(404).json({ message: "Invalid magic link." })
+    }
+
+    if (link.used) {
+      return res.status(400).json({ message: "Magic link has already been used." })
+    }
+
+    if (new Date() > link.expiresAt) {
+      return res.status(400).json({ message: "Magic link has expired." })
+    }
+
+    res.json({ companyName: link.companyName })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to validate magic link." })
+  }
+})
+
+// ── POST /api/users/magic-link/:token/register ───────────────
+router.post("/magic-link/:token/register", async (req: AuthRequest, res: Response) => {
+  try {
+    const { fullName, email, password, confirmPassword } = req.body
+
+    if (password !== confirmPassword) {
+      return res.status(400).json({ message: "Passwords do not match." })
+    }
+
+    const link = await prisma.magicLink.findUnique({
+      where: { token: req.params.token },
+    })
+
+    if (!link || link.type !== "registration" || link.used || new Date() > link.expiresAt) {
+      return res.status(400).json({ message: "Invalid or expired magic link." })
+    }
+
+    const existingUser = await prisma.user.findUnique({ where: { email } })
+    if (existingUser) {
+      return res.status(400).json({ message: "Email is already registered." })
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10)
+
+    const user = await prisma.user.create({
+      data: {
+        fullName,
+        email,
+        companyName: link.companyName,
+        passwordHash,
+        verificationStatus: "VERIFIED",
+        settings: {
+          create: {
+            emailNotifications: true,
+            whatsappNotifications: true,
+          },
+        },
+      },
+    })
+
+    await prisma.magicLink.update({
+      where: { id: link.id },
+      data: { used: true },
+    })
+
+    res.status(201).json({ message: "Registration successful.", user: { id: user.id, email: user.email } })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to register user via magic link." })
+  }
+})
+
+// ── POST /api/users/reset-password-link ──────────────────────
+router.post("/reset-password-link", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+  try {
+    const { userId } = req.body
+
+    const user = await prisma.user.findUnique({ where: { id: userId } })
+    if (!user) {
+      return res.status(404).json({ message: "User not found." })
+    }
+
+    const token = crypto.randomBytes(32).toString("hex")
+    const expiresAt = new Date()
+    expiresAt.setHours(expiresAt.getHours() + 24) // Valid for 24 hours
+
+    await prisma.magicLink.create({
+      data: {
+        token,
+        type: "reset_password",
+        companyName: user.companyName || "Unknown",
+        userId: user.id,
+        expiresAt,
+      },
+    })
+
+    await prisma.adminAuditLog.create({
+      data: {
+        adminId: req.user!.id,
+        actionType: "RESET_PASSWORD",
+        targetTable: "users",
+        targetRecordId: user.id,
+        changesSummary: `Generated password reset link for ${user.email}`,
+      },
+    })
+
+    const link = `${process.env.CLIENT_URL || "http://localhost:5173"}/reset-password?token=${token}`
+    res.status(201).json({ message: "Reset password link generated.", link })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to generate reset password link." })
+  }
+})
+
+// ── GET /api/users/reset-password/:token ─────────────────────
+router.get("/reset-password/:token", async (req: AuthRequest, res: Response) => {
+  try {
+    const link = await prisma.magicLink.findUnique({
+      where: { token: req.params.token },
+    })
+
+    if (!link || link.type !== "reset_password") {
+      return res.status(404).json({ message: "Invalid reset password link." })
+    }
+
+    if (link.used) {
+      return res.status(400).json({ message: "Reset link has already been used." })
+    }
+
+    if (new Date() > link.expiresAt) {
+      return res.status(400).json({ message: "Reset link has expired." })
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: link.userId! } })
+    if (!user) {
+      return res.status(404).json({ message: "User not found." })
+    }
+
+    res.json({ fullName: user.fullName, companyName: user.companyName })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to validate reset link." })
+  }
+})
+
+// ── POST /api/users/reset-password/:token ────────────────────
+router.post("/reset-password/:token", async (req: AuthRequest, res: Response) => {
+  try {
+    const { password, confirmPassword } = req.body
+
+    if (password !== confirmPassword) {
+      return res.status(400).json({ message: "Passwords do not match." })
+    }
+
+    const link = await prisma.magicLink.findUnique({
+      where: { token: req.params.token },
+    })
+
+    if (!link || link.type !== "reset_password" || link.used || new Date() > link.expiresAt) {
+      return res.status(400).json({ message: "Invalid or expired reset link." })
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10)
+
+    await prisma.user.update({
+      where: { id: link.userId! },
+      data: { passwordHash },
+    })
+
+    await prisma.magicLink.update({
+      where: { id: link.id },
+      data: { used: true },
+    })
+
+    res.json({ message: "Password reset successful." })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to reset password." })
   }
 })
 

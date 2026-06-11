@@ -6,6 +6,8 @@ import VerificationPage from './pages/VerificationPage'
 import ClientDashboardPage from './pages/ClientDashboardPage'
 import AdminAuthPage from './pages/AdminAuthPage'
 import AdminDashboardPage from './pages/AdminDashboardPage'
+import MagicLinkPage from './pages/MagicLinkPage'
+import ResetPasswordPage from './pages/ResetPasswordPage'
 import WhatsAppButton from './components/WhatsAppButton'
 import ProtectedRoute from './components/ProtectedRoute'
 import { ToastProvider } from './contexts/ToastContext'
@@ -37,6 +39,8 @@ function AppContent() {
             </ProtectedRoute>
           }
         />
+        <Route path="/auth/register/:token" element={<MagicLinkPage />} />
+        <Route path="/auth/reset-password/:token" element={<ResetPasswordPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
       {!hideWhatsApp && <WhatsAppButton />}

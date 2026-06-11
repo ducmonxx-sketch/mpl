@@ -10,6 +10,7 @@
 import { Router, Response } from "express"
 import prisma from "../lib/prisma"
 import { authenticate, adminOnly, AuthRequest } from "../middleware/auth"
+import { sendWhatsApp } from "../services/whatsapp"
 
 const router = Router()
 
@@ -134,6 +135,9 @@ router.post("/", authenticate, async (req: AuthRequest, res: Response) => {
       destinationLocation,
       specialNotes,
       pickupDate,
+      estimatedArrival,
+      price,
+      units,
     } = req.body
 
     const isAdmin  = req.user?.type === "admin"
@@ -150,6 +154,9 @@ router.post("/", authenticate, async (req: AuthRequest, res: Response) => {
         destinationLocation,
         specialNotes,
         pickupDate:       pickupDate ? new Date(pickupDate) : null,
+        estimatedArrival: estimatedArrival ? new Date(estimatedArrival) : null,
+        price:            price ? Number(price) : null,
+        units:            units ? Number(units) : null,
         clientId,
         createdByAdminId: isAdmin ? req.user!.id : null,
       },
@@ -185,6 +192,9 @@ router.patch("/:id/assign", authenticate, adminOnly, async (req: AuthRequest, re
         status:               "TRANSIT",
         lastUpdatedByAdminId: req.user!.id,
       },
+      include: {
+        driver: true,
+      }
     })
 
     await prisma.adminAuditLog.create({
@@ -205,6 +215,42 @@ router.patch("/:id/assign", authenticate, adminOnly, async (req: AuthRequest, re
         sentByAdminId: req.user!.id,
       },
     })
+
+    if (shipment.driver) {
+      const activeCount = await prisma.shipment.count({
+        where: {
+          driverId: shipment.driver.id,
+          status: { in: ['PENDING', 'TRANSIT'] }
+        }
+      })
+
+      if (activeCount > 3) {
+         await prisma.adminNotification.create({
+           data: {
+             title: `High Workload: ${shipment.driver.fullName}`,
+             message: `Driver ${shipment.driver.fullName} now has ${activeCount} active shipments.`,
+             category: 'assignment',
+             linkTo: 'driver',
+             linkId: shipment.driver.id,
+           }
+         })
+      }
+
+      if (shipment.driver.phoneNumber) {
+         const waMessage = `Hello ${shipment.driver.fullName},\n\nYou have been assigned a new shipment ${shipment.id}.\nPickup: ${shipment.originLocation}\nDropoff: ${shipment.destinationLocation}\n\nPlease check your dashboard.`
+         await sendWhatsApp(shipment.driver.phoneNumber, waMessage)
+
+         await prisma.adminAuditLog.create({
+           data: {
+             adminId: req.user!.id,
+             actionType: "SEND_WHATSAPP_DRIVER",
+             targetTable: "drivers",
+             targetRecordId: shipment.driver.id,
+             changesSummary: `Sent WhatsApp assignment notification to driver ${shipment.driver.id}`,
+           }
+         })
+      }
+    }
 
     res.json({ message: "Driver and vehicle assigned.", shipment })
   } catch (err) {

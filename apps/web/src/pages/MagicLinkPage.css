@@ -1,0 +1,156 @@
+/* ═══════════════════════════════════════════════════════
+   MAGIC LINK & RESET PASSWORD PAGES
+   Mirrors AdminAuthPage.css design
+   ═══════════════════════════════════════════════════════ */
+
+@keyframes mlFadeUp {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes mlShake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(3px); }
+}
+
+/* ─── Page ─── */
+.ml-page {
+  position: relative; min-height: 100vh; display: flex; flex-direction: column;
+  overflow: hidden; font-family: 'Work Sans', sans-serif;
+  background-color: #0a1628;
+}
+
+/* ─── Background ─── */
+.ml-bg { position: fixed; inset: 0; z-index: 0; }
+.ml-bg__overlay {
+  position: absolute; inset: 0;
+  background: radial-gradient(circle at 50% -20%, #162d50 0%, #0a1628 70%);
+}
+
+/* ─── Content ─── */
+.ml-content {
+  position: relative; z-index: 10; flex: 1;
+  display: flex; align-items: center; justify-content: center; padding: 2rem 1rem;
+}
+
+/* ─── Card ─── */
+.ml-card {
+  display: flex; flex-direction: column; max-width: 480px; width: 100%;
+  border-radius: 20px; overflow: hidden;
+  box-shadow: 0 25px 60px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06);
+  animation: mlFadeUp 0.8s ease-out both;
+}
+
+/* ─── Brand Header ─── */
+.ml-brand {
+  position: relative; padding: 2rem;
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  background: linear-gradient(160deg, rgba(10,22,40,0.95) 0%, rgba(13,31,60,0.9) 100%);
+  backdrop-filter: blur(24px) saturate(1.2); -webkit-backdrop-filter: blur(24px) saturate(1.2);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.ml-brand__logo { display: flex; align-items: center; gap: 0.625rem; margin-bottom: 1rem; }
+.ml-brand__logo img { height: 32px; width: 32px; border-radius: 8px; object-fit: contain; }
+.ml-brand__logo-text { font-size: 1.05rem; font-weight: 700; color: #fec330; letter-spacing: 0.02em; }
+
+.ml-brand__heading {
+  font-size: 1.5rem; font-weight: 800; line-height: 1.2; color: #fff;
+  margin-bottom: 0.5rem;
+}
+.ml-brand__desc {
+  font-family: 'Noto Sans', sans-serif; font-size: 0.85rem; line-height: 1.5;
+  color: rgba(255,255,255,0.55);
+}
+
+/* ─── Form ─── */
+.ml-form-panel {
+  padding: 2.5rem 2rem;
+  background: linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(248,249,250,0.98) 100%);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+}
+
+.ml-form { display: flex; flex-direction: column; gap: 0; }
+.ml-field { margin-bottom: 1.25rem; }
+.ml-field__label {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: #1f2937; margin-bottom: 0.5rem;
+}
+.ml-field__input-wrap { position: relative; display: flex; align-items: center; }
+.ml-field__icon {
+  position: absolute; left: 14px; color: #9ca3af; pointer-events: none;
+  display: flex; transition: color 0.25s;
+}
+.ml-field__input-wrap:focus-within .ml-field__icon { color: #0a1628; }
+.ml-field__input {
+  width: 100%; padding: 0.875rem 1rem 0.875rem 2.75rem;
+  font-family: 'Noto Sans', sans-serif; font-size: 0.9rem; color: #1f2937;
+  background: rgba(243,244,246,0.8); border: 1.5px solid rgba(209,213,219,0.5);
+  border-radius: 12px; outline: none; box-sizing: border-box;
+  transition: border-color 0.25s, box-shadow 0.25s, background 0.25s;
+}
+.ml-field__input::placeholder { color: #9ca3af; }
+.ml-field__input:focus { border-color: #0a1628; background: #fff; box-shadow: 0 0 0 3px rgba(10,22,40,0.08); }
+.ml-field__input:read-only { background: #e5e7eb; color: #6b7280; border-color: transparent; cursor: not-allowed; }
+
+.ml-field__input--error { border-color: #dc2626 !important; background: #fef2f2 !important; animation: mlShake 0.4s ease-out; }
+.ml-field__input--error:focus { box-shadow: 0 0 0 3px rgba(220,38,38,0.1) !important; }
+.ml-field__input-wrap--error .ml-field__icon { color: #dc2626; }
+
+.ml-field__toggle {
+  position: absolute; right: 14px; background: none; border: none;
+  color: #9ca3af; cursor: pointer; display: flex; padding: 4px; transition: color 0.2s;
+}
+.ml-field__toggle:hover { color: #6b7280; }
+
+.ml-error {
+  margin-top: 0.375rem; font-family: 'Noto Sans', sans-serif;
+  font-size: 0.78rem; color: #dc2626; display: flex; align-items: center; gap: 0.25rem;
+}
+
+.ml-global-error {
+  background: #fef2f2; border: 1px solid #f87171; color: #b91c1c;
+  padding: 0.75rem; border-radius: 8px; margin-bottom: 1.5rem;
+  font-size: 0.85rem; font-weight: 500; text-align: center;
+}
+
+.ml-global-success {
+  background: #f0fdf4; border: 1px solid #4ade80; color: #15803d;
+  padding: 1.5rem; border-radius: 12px; margin-bottom: 1.5rem;
+  font-size: 1rem; font-weight: 600; text-align: center;
+}
+.ml-global-success p { margin: 0 0 1rem; }
+
+/* ─── Submit ─── */
+.ml-submit {
+  width: 100%; padding: 0.9375rem 1.5rem;
+  font-family: 'Work Sans', sans-serif; font-size: 1rem; font-weight: 700;
+  color: #0a1628; background: linear-gradient(135deg, #fec330 0%, #ffd449 50%, #fec330 100%);
+  background-size: 200% auto; border: none; border-radius: 14px; box-sizing: border-box;
+  cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+  transition: transform 0.2s, box-shadow 0.25s, background-position 0.4s, opacity 0.2s;
+  box-shadow: 0 4px 16px rgba(254,195,48,0.3);
+}
+.ml-submit:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(254,195,48,0.45); background-position: right center; }
+.ml-submit:active:not(:disabled) { transform: translateY(0); box-shadow: 0 2px 8px rgba(254,195,48,0.25); }
+.ml-submit:disabled { opacity: 0.7; cursor: not-allowed; }
+
+.ml-link-btn {
+  display: inline-flex; width: 100%; padding: 0.9375rem 1.5rem;
+  font-family: 'Work Sans', sans-serif; font-size: 1rem; font-weight: 700;
+  color: #fff; background: #0a1628;
+  border-radius: 14px; text-decoration: none; box-sizing: border-box;
+  align-items: center; justify-content: center;
+  transition: background 0.2s, transform 0.2s;
+}
+.ml-link-btn:hover { background: #162d50; transform: translateY(-1px); }
+
+/* ─── Responsive ─── */
+@media (max-width: 480px) {
+  .ml-content { padding: 1rem 0.75rem; }
+  .ml-brand { padding: 1.5rem; }
+  .ml-form-panel { padding: 1.5rem; }
+}

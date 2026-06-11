@@ -5,6 +5,7 @@ import AdminDataTable from './components/AdminDataTable'
 import AdminStatusBadge from './components/AdminStatusBadge'
 import AdminModal from './components/AdminModal'
 import AdminFormField from './components/AdminFormField'
+import SearchableSelect from './components/SearchableSelect'
 import { usersAPI } from '../../lib/api'
 
 const ROLE_LABELS = {
@@ -35,6 +36,10 @@ export default function UsersSection() {
   const [showMagicLinkSection, setShowMagicLinkSection] = useState(false)
   const [magicLink, setMagicLink] = useState('')
   const [magicLinkCopied, setMagicLinkCopied] = useState(false)
+  const [magicLinkCompany, setMagicLinkCompany] = useState('')
+  const [magicLinkNewCompany, setMagicLinkNewCompany] = useState('')
+  const [isNewCompanyLink, setIsNewCompanyLink] = useState(false)
+  const [companies, setCompanies] = useState([])
 
   // Create success state
   const [createSuccess, setCreateSuccess] = useState(false)
@@ -72,6 +77,14 @@ export default function UsersSection() {
     const interval = setInterval(fetchUsers, 8000)
     return () => clearInterval(interval)
   }, [fetchUsers])
+
+  useEffect(() => {
+    if (showCreateModal) {
+      usersAPI.getCompanies().then(res => {
+        setCompanies((res.companies || []).map(c => ({ value: c, label: c })))
+      }).catch(() => {})
+    }
+  }, [showCreateModal])
 
   const filteredUsers = useMemo(() => {
     if (userType === 'internal') return USERS.filter(u => u.role !== 'client')
@@ -118,13 +131,16 @@ export default function UsersSection() {
     }
   }
 
-  const handleGenerateMagicLink = () => {
-    const token =
-      Math.random().toString(36).substring(2, 15) +
-      Math.random().toString(36).substring(2, 15)
-    setMagicLink('https://mpl.co.id/auth/magic?token=' + token)
-    setShowMagicLinkSection(true)
-    setMagicLinkCopied(false)
+  const handleGenerateMagicLink = async () => {
+    const finalCompany = isNewCompanyLink ? magicLinkNewCompany : magicLinkCompany
+    try {
+      const res = await usersAPI.generateMagicLink({ companyName: finalCompany || undefined })
+      setMagicLink(res.link)
+      setShowMagicLinkSection(true)
+      setMagicLinkCopied(false)
+    } catch (err) {
+      showToast('Gagal membuat magic link', 'error')
+    }
   }
 
   const handleCopyMagicLink = () => {
@@ -214,7 +230,16 @@ export default function UsersSection() {
           <button
             className="adm-action-btn"
             title="Reset Password"
-            onClick={(e) => { e.stopPropagation(); showToast(`Password untuk ${row.name} telah direset.`, 'success') }}
+            onClick={async (e) => { 
+              e.stopPropagation()
+              try {
+                const res = await usersAPI.generateResetLink(row.id)
+                navigator.clipboard.writeText(res.link).catch(() => {})
+                showToast(`Link reset password untuk ${row.name} berhasil dibuat dan disalin ke clipboard!`, 'success')
+              } catch(err) {
+                showToast('Gagal membuat link reset password', 'error')
+              }
+            }}
           >
             <Icon name="key" size={16} />
           </button>
@@ -461,6 +486,38 @@ export default function UsersSection() {
                   <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--dash-primary)' }}>
                     Magic Link Pendaftaran
                   </span>
+                </div>
+
+                <div style={{ marginBottom: '1rem' }}>
+                  <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.75rem' }}>
+                    <label style={{ fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                      <input type="radio" checked={!isNewCompanyLink} onChange={() => setIsNewCompanyLink(false)} />
+                      Perusahaan Tersedia
+                    </label>
+                    <label style={{ fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                      <input type="radio" checked={isNewCompanyLink} onChange={() => setIsNewCompanyLink(true)} />
+                      Perusahaan Baru
+                    </label>
+                  </div>
+                  
+                  {!isNewCompanyLink ? (
+                    <SearchableSelect
+                      options={companies}
+                      value={magicLinkCompany}
+                      onChange={setMagicLinkCompany}
+                      placeholder="Pilih Perusahaan..."
+                      searchPlaceholder="Cari perusahaan..."
+                      allLabel="-- Tanpa Perusahaan --"
+                    />
+                  ) : (
+                    <input
+                      type="text"
+                      placeholder="Nama Perusahaan Baru"
+                      value={magicLinkNewCompany}
+                      onChange={(e) => setMagicLinkNewCompany(e.target.value)}
+                      style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                    />
+                  )}
                 </div>
 
                 <button

@@ -6,6 +6,7 @@ import AdminStatusBadge from './components/AdminStatusBadge'
 import AdminPagination from './components/AdminPagination'
 import AdminModal from './components/AdminModal'
 import AdminFormField from './components/AdminFormField'
+import SearchableSelect from './components/SearchableSelect'
 import { shipmentsAPI, invoicesAPI } from '../../lib/api'
 
 const formatIDR = (num) => {
@@ -17,6 +18,7 @@ export default function InvoicesSection() {
   const { showToast } = useToast()
   const [filter, setFilter] = useState('all')
   const [filterClient, setFilterClient] = useState('all')
+  const [filterStatus, setFilterStatus] = useState('all')
   const [selectedInvoice, setSelectedInvoice] = useState(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
@@ -167,10 +169,11 @@ export default function InvoicesSection() {
       (filter === 'paid' && inv.paymentStatus === 'paid') ||
       (filter === 'overdue' && inv.paymentStatus === 'overdue')
     const matchClient = filterClient === 'all' || inv.client === filterClient
-    return matchStatus && matchClient
+    const matchFilterStatus = filterStatus === 'all' || inv.paymentStatus === filterStatus
+    return matchStatus && matchClient && matchFilterStatus
   })
 
-  const totalAll = INVOICES.reduce((s, inv) => s + inv.totalAmount, 0)
+  const totalAll = INVOICES.filter(inv => inv.paymentStatus !== 'cancelled').reduce((s, inv) => s + inv.totalAmount, 0)
   const totalPaid = INVOICES.filter(inv => inv.paymentStatus === 'paid').reduce((s, inv) => s + inv.totalAmount, 0)
   const totalUnpaid = INVOICES.filter(inv => inv.paymentStatus === 'draft' || inv.paymentStatus === 'sent' || inv.paymentStatus === 'overdue').reduce((s, inv) => s + inv.totalAmount, 0)
 
@@ -259,16 +262,30 @@ export default function InvoicesSection() {
 
       {/* Filters */}
       <div className="adm-filters-dropdowns" style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-        <select
+        <SearchableSelect
+          options={Array.from(new Set(INVOICES.map(inv => inv.client))).sort().map(c => ({ value: c, label: c }))}
           value={filterClient}
-          onChange={(e) => { setFilterClient(e.target.value); setCurrentPage(1) }}
-          style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', minWidth: '200px' }}
-        >
-          <option value="all">Semua Klien (A-Z)</option>
-          {Array.from(new Set(INVOICES.map(inv => inv.client))).sort().map(c => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
+          onChange={(v) => { setFilterClient(v); setCurrentPage(1) }}
+          placeholder="Semua Klien (A-Z)"
+          searchPlaceholder="Cari klien..."
+          allLabel="Semua Klien (A-Z)"
+          style={{ width: '250px' }}
+        />
+        <SearchableSelect
+          options={[
+            { value: 'draft', label: 'Draft' },
+            { value: 'sent', label: 'Terkirim' },
+            { value: 'paid', label: 'Lunas' },
+            { value: 'overdue', label: 'Lewat Jatuh Tempo' },
+            { value: 'cancelled', label: 'Dibatalkan' },
+          ]}
+          value={filterStatus}
+          onChange={(v) => { setFilterStatus(v); setCurrentPage(1) }}
+          placeholder="Semua Status"
+          searchPlaceholder="Cari status..."
+          allLabel="Semua Status"
+          style={{ width: '200px' }}
+        />
       </div>
 
       <div className="adm-filters" style={{ marginTop: '1rem' }}>
@@ -279,7 +296,8 @@ export default function InvoicesSection() {
               : INVOICES.filter(
                   inv => {
                     const matchClient = filterClient === 'all' || inv.client === filterClient
-                    if (!matchClient) return false
+                    const matchFilterStatus = filterStatus === 'all' || inv.paymentStatus === filterStatus
+                    if (!matchClient || !matchFilterStatus) return false
                     if (f.id === 'unpaid') return inv.paymentStatus === 'draft' || inv.paymentStatus === 'sent'
                     if (f.id === 'paid') return inv.paymentStatus === 'paid'
                     if (f.id === 'overdue') return inv.paymentStatus === 'overdue'

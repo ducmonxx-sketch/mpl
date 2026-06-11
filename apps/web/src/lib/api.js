@@ -182,6 +182,33 @@ export const usersAPI = {
   /** Admin: delete a user/client account */
   deleteUser: (userId) =>
     api.delete(`/api/users/${userId}`),
+  /** Admin: get distinct company names */
+  getCompanies: () =>
+    api.get('/api/users/companies'),
+
+  /** Admin: generate magic link for registration */
+  generateMagicLink: (data) =>
+    api.post('/api/users/magic-link', data),
+
+  /** Public: validate magic link token */
+  validateMagicLink: (token) =>
+    api.get(`/api/users/magic-link/${token}`),
+
+  /** Public: register via magic link */
+  registerViaMagicLink: (token, data) =>
+    api.post(`/api/users/magic-link/${token}/register`, data),
+
+  /** Admin: generate reset password link */
+  generateResetLink: (userId) =>
+    api.post('/api/users/reset-password-link', { userId }),
+
+  /** Public: validate reset password token */
+  validateResetLink: (token) =>
+    api.get(`/api/users/reset-password/${token}`),
+
+  /** Public: reset password */
+  resetPassword: (token, data) =>
+    api.post(`/api/users/reset-password/${token}`, data),
 }
 
 // ─── Shipments API ──────────────────────────────────────────
@@ -303,5 +330,19 @@ export const invoicesAPI = {
     api.patch(`/api/invoices/${id}/cancel`),
 }
 
-export default api
+// ─── Admin Notifications API ────────────────────────────────
+export const adminNotificationsAPI = {
+  /** List admin notifications */
+  list: () =>
+    api.get('/api/admin/notifications'),
 
+  /** Mark single notification as read */
+  markRead: (id) =>
+    api.patch(`/api/admin/notifications/${id}/read`),
+
+  /** Mark all admin notifications as read */
+  markAllRead: () =>
+    api.patch('/api/admin/notifications/read-all'),
+}
+
+export default api

@@ -21,6 +21,16 @@ const formatDate = (dateStr) => {
   }
 }
 
+const getExpiryStatus = (dateStr) => {
+  if (!dateStr) return null
+  const exp = new Date(dateStr)
+  const now = new Date()
+  const daysLeft = Math.ceil((exp - now) / (1000 * 60 * 60 * 24))
+  if (daysLeft < 0) return { status: 'expired', label: 'Expired' }
+  if (daysLeft <= 30) return { status: 'warning', label: `${daysLeft} hari lagi` }
+  return null
+}
+
 const VEHICLE_STATUS_DISPLAY = {
   AVAILABLE: 'Tersedia',
   IN_USE: 'Digunakan',
@@ -248,8 +258,42 @@ export default function ArmadaSection() {
         </span>
       ),
     },
-    { key: 'stnkExpiry', label: 'Masa Berlaku STNK' },
-    { key: 'kirExpiry', label: 'Masa Berlaku KIR' },
+    {
+      key: 'stnkExpiry',
+      label: 'Masa Berlaku STNK',
+      render: (v, row) => {
+        const warning = getExpiryStatus(row.rawStnkExpiry)
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span>{v}</span>
+            {warning && (
+              <span className={`adm-expiry-badge adm-expiry-badge--${warning.status}`} title={warning.label}>
+                <Icon name={warning.status === 'expired' ? 'error' : 'warning'} size={12} />
+                {warning.label}
+              </span>
+            )}
+          </div>
+        )
+      },
+    },
+    {
+      key: 'kirExpiry',
+      label: 'Masa Berlaku KIR',
+      render: (v, row) => {
+        const warning = getExpiryStatus(row.rawKirExpiry)
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span>{v}</span>
+            {warning && (
+              <span className={`adm-expiry-badge adm-expiry-badge--${warning.status}`} title={warning.label}>
+                <Icon name={warning.status === 'expired' ? 'error' : 'warning'} size={12} />
+                {warning.label}
+              </span>
+            )}
+          </div>
+        )
+      },
+    },
     {
       key: 'actions',
       label: '',

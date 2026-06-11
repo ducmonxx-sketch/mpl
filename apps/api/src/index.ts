@@ -14,6 +14,8 @@ import usersRouter         from "./routes/users"
 import fleetRouter         from "./routes/fleet"
 import notificationsRouter from "./routes/notifications"
 import invoicesRouter      from "./routes/invoices"
+import adminNotificationsRouter from "./routes/adminNotifications"
+import { startAlertScheduler } from "./services/alertScheduler"
 
 const app  = express()
 const PORT = process.env.PORT || 3001
@@ -45,6 +47,7 @@ app.use("/api/tracking",      trackingRouter)
 app.use("/api/users",         usersRouter)
 app.use("/api/fleet",         fleetRouter)
 app.use("/api/notifications", notificationsRouter)
+app.use("/api/admin-notifications", adminNotificationsRouter)
 app.use("/api/invoices",      invoicesRouter)
 
 // ── 404 Fallback ──────────────────────────────────────────────
@@ -73,6 +76,7 @@ app.listen(PORT, () => {
 ║   Invoice → /api/invoices            ║
 ╚══════════════════════════════════════╝
   `)
+  startAlertScheduler()
 })
 
 export default app

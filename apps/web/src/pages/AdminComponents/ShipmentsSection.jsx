@@ -7,6 +7,7 @@ import AdminStatusBadge from './components/AdminStatusBadge'
 import AdminPagination from './components/AdminPagination'
 import AdminModal from './components/AdminModal'
 import AdminFormField from './components/AdminFormField'
+import SearchableSelect from './components/SearchableSelect'
 
 export const SERVICE_LABELS = {
   'Darat': 'Darat',
@@ -41,7 +42,16 @@ const formatDate = (raw) => {
   }
 }
 
-export default function ShipmentsSection({ onTrackFull }) {
+const formatRupiahInput = (value) => {
+  const num = String(value).replace(/\D/g, '')
+  return num.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+}
+
+const parseRupiahInput = (formatted) => {
+  return formatted.replace(/,/g, '')
+}
+
+export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
   const { showToast } = useToast()
 
   // ── List / filter state ──────────────────────────────────────
@@ -120,6 +130,13 @@ export default function ShipmentsSection({ onTrackFull }) {
     const interval = setInterval(fetchShipments, 8000)
     return () => clearInterval(interval)
   }, [fetchShipments])
+
+  useEffect(() => {
+    if (highlightShipmentId && SHIPMENTS.length > 0) {
+      const found = SHIPMENTS.find(s => s.id === highlightShipmentId)
+      if (found) setSelectedShipment(found)
+    }
+  }, [highlightShipmentId, SHIPMENTS])
 
   // Fetch clients for create form
   const fetchClients = async () => {
@@ -357,29 +374,31 @@ export default function ShipmentsSection({ onTrackFull }) {
 
       {/* Filter dropdowns */}
       <div className="adm-filters-dropdowns" style={{ display: 'flex', gap: '1rem', marginTop: '1rem', flexWrap: 'wrap' }}>
-        <select
+        <SearchableSelect
+          options={Array.from(new Set(SHIPMENTS.map(s => s.client))).sort().map(c => ({ value: c, label: c }))}
           value={filterClient}
-          onChange={e => { setFilterClient(e.target.value); setCurrentPage(1) }}
-          style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', minWidth: '200px' }}
-        >
-          <option value="all">Semua Klien (A-Z)</option>
-          {Array.from(new Set(SHIPMENTS.map(s => s.client))).sort().map(c => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
-        <select
+          onChange={v => { setFilterClient(v); setCurrentPage(1) }}
+          placeholder="Semua Klien (A-Z)"
+          searchPlaceholder="Cari klien..."
+          allLabel="Semua Klien (A-Z)"
+          style={{ width: '250px' }}
+        />
+        <SearchableSelect
+          options={[
+            { value: 'Darat', label: 'Darat' },
+            { value: 'Laut', label: 'Laut' },
+            { value: 'Udara', label: 'Udara' },
+            { value: 'inter_island', label: 'Antar Pulau' },
+            { value: 'last_mile', label: 'Lokal' },
+            { value: 'warehousing', label: 'Gudang' },
+          ]}
           value={filterService}
-          onChange={e => { setFilterService(e.target.value); setCurrentPage(1) }}
-          style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', minWidth: '160px' }}
-        >
-          <option value="all">Semua Layanan</option>
-          <option value="Darat">Darat</option>
-          <option value="Laut">Laut</option>
-          <option value="Udara">Udara</option>
-          <option value="inter_island">Antar Pulau</option>
-          <option value="last_mile">Lokal</option>
-          <option value="warehousing">Gudang</option>
-        </select>
+          onChange={v => { setFilterService(v); setCurrentPage(1) }}
+          placeholder="Semua Layanan"
+          searchPlaceholder="Cari layanan..."
+          allLabel="Semua Layanan"
+          style={{ width: '200px' }}
+        />
       </div>
 
       {/* Status filter tabs */}
@@ -531,14 +550,33 @@ export default function ShipmentsSection({ onTrackFull }) {
                 <span className="adm-detail-value">{selectedShipment.vehicleName || 'Belum ditugaskan'}</span>
               </div>
               <div style={{ marginTop: '0.75rem' }}>
-                <button
-                  className="adm-create-btn"
-                  style={{ width: '100%', justifyContent: 'center', gap: '0.4rem', padding: '0.625rem 1rem', opacity: 0.5, cursor: 'not-allowed', backgroundColor: '#64748b' }}
-                  disabled={true}
-                  title="Fitur ini dinonaktifkan dalam mode Detail (Lihat Detail)"
-                >
-                  <Icon name="person_add" size={14} /> Tugaskan Driver &amp; Armada
-                </button>
+                {selectedShipment.driverName ? (
+                  <button
+                    className="adm-create-btn"
+                    style={{ width: '100%', justifyContent: 'center', gap: '0.4rem', padding: '0.625rem 1rem', backgroundColor: '#25D366', borderColor: '#25D366' }}
+                    onClick={() => {
+                      const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu']
+                      let pickupDateObj = new Date()
+                      try {
+                        const parts = selectedShipment.pickupDate.split(' ')
+                        if (parts.length === 3) {
+                          const monthMap = { Jan:0, Feb:1, Mar:2, Apr:3, Mei:4, Jun:5, Jul:6, Ags:7, Sep:8, Okt:9, Nov:10, Des:11 }
+                          pickupDateObj = new Date(parts[2], monthMap[parts[1]] || 0, parts[0])
+                        }
+                      } catch (e) {}
+                      const dayName = dayNames[pickupDateObj.getDay() || 0]
+                      const msg = `Informasi Klien\nNama Perusahaan: ${selectedShipment.client}\nAlamat Pick-up: ${selectedShipment.originCity}\nAlamat Drop off: ${selectedShipment.destinationCity}\nHari & Tanggal Pickup: ${dayName}, ${selectedShipment.pickupDate}\n\nDetail Muatan\nDeskripsi: ${selectedShipment.cargoDescription}\nJumlah Unit /pcs: ${selectedShipment.units}${selectedShipment.weightKg && Number(selectedShipment.weightKg) > 0 ? `\nBerat: ${selectedShipment.weightKg} kg` : ''}\n\n-Admin MPL`
+                      window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
+                      showToast('Membuka WhatsApp untuk mengirim notifikasi driver...', 'success')
+                    }}
+                  >
+                    <Icon name="chat" size={14} /> Kirim Notifikasi WhatsApp Driver
+                  </button>
+                ) : (
+                  <p style={{ fontSize: '0.78rem', color: '#94a3b8', fontStyle: 'italic', margin: 0, textAlign: 'center', padding: '0.5rem 0' }}>
+                    Tugaskan driver terlebih dahulu untuk mengirim notifikasi.
+                  </p>
+                )}
               </div>
               {selectedShipment.notes && (
                 <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'rgba(254,195,48,0.06)', borderRadius: '8px', border: '1px solid rgba(254,195,48,0.12)' }}>
@@ -713,11 +751,10 @@ export default function ShipmentsSection({ onTrackFull }) {
             }}>
               <AdminFormField label="Total Invoice Price (Jumlah Harga Invoice)" required>
                 <input
-                  type="number"
-                  min="0"
-                  placeholder="Masukkan total harga invoice (Cth: 5000000)"
-                  value={formPrice}
-                  onChange={e => setFormPrice(e.target.value)}
+                  type="text"
+                  placeholder="Masukkan total harga invoice (Cth: 5,000,000)"
+                  value={formatRupiahInput(formPrice)}
+                  onChange={e => setFormPrice(parseRupiahInput(e.target.value))}
                   required
                   style={{ background: '#fff' }}
                 />
