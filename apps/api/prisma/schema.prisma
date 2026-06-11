@@ -83,6 +83,9 @@ enum AuditActionType {
   SEND_INVOICE
   MARK_INVOICE_PAID
   CANCEL_INVOICE
+  CREATE_USER
+  UPDATE_USER
+  DELETE_USER
 }
 
 enum InvoiceStatus {
@@ -147,6 +150,9 @@ model User {
   email              String             @unique
   passwordHash       String
   phoneNumber        String?
+  city               String?
+  address            String?
+  npwp               String?
   verificationStatus VerificationStatus @default(PENDING)
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
@@ -184,10 +190,13 @@ model UserSettings {
 // ============================================================
 
 model Driver {
-  id          String       @id @default(uuid())
-  fullName    String
-  phoneNumber String?
-  status      DriverStatus @default(ACTIVE)
+  id            String       @id @default(uuid())
+  fullName      String
+  phoneNumber   String?
+  status        DriverStatus @default(ACTIVE)
+  licenseNumber String?      // nomor SIM
+  licenseType   String?      // jenis SIM (A, B1, B2, dll.)
+  licenseExpiry DateTime?    // masa berlaku SIM
 
   lastUpdatedByAdminId String?
   lastUpdatedByAdmin   Admin?  @relation("DriverManagedBy", fields: [lastUpdatedByAdminId], references: [id])
@@ -206,6 +215,8 @@ model Vehicle {
   type         String
   licensePlate String        @unique
   status       VehicleStatus @default(AVAILABLE)
+  stnkExpiry   DateTime?     // masa berlaku STNK
+  kirExpiry    DateTime?     // masa berlaku KIR
 
   lastUpdatedByAdminId String?
   lastUpdatedByAdmin   Admin?  @relation("VehicleManagedBy", fields: [lastUpdatedByAdminId], references: [id])
@@ -224,13 +235,16 @@ model Shipment {
   id                     String         @id
   packageType            String
   weightKg               Decimal        @db.Decimal(10, 2)
+  units                  Int?           // jumlah barang (pcs)
   serviceLevel           String
   originLocation         String
   destinationLocation    String
   specialNotes           String?
+  price                  Decimal?       @db.Decimal(12, 2)  // quoted invoice price set at creation
   status                 ShipmentStatus @default(PENDING)
   currentProgressPercent Int            @default(0)
   pickupDate             DateTime?
+  estimatedArrival       DateTime?      // ETA / estimasi tiba
   completionDate         DateTime?
   createdAt              DateTime       @default(now())
 

@@ -25,8 +25,8 @@ export default function ClientsSection() {
   const [formAddress, setFormAddress] = useState('')
   const [formNpwp, setFormNpwp] = useState('')
 
-  const fetchClients = useCallback(async () => {
-    setLoading(true)
+  const fetchClients = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true)
     try {
       const data = await usersAPI.listAll()
       const users = data.users || []
@@ -38,22 +38,22 @@ export default function ClientsSection() {
         shipmentCount: u._count?.shipments || 0,
         pics: [{ name: u.fullName, phone: u.phoneNumber || '-', email: u.email }],
         notes: '',
-        address: '-',
-        city: '-',
-        npwp: '-',
+        address: u.address || '-',
+        city: u.city || '-',
+        npwp: u.npwp || '-',
       }))
       setCLIENTS(mapped)
     } catch (err) {
       console.error('Failed to fetch clients:', err)
       showToast('Gagal memuat data klien.', 'error')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [showToast])
 
   useEffect(() => {
     fetchClients()
-    const interval = setInterval(fetchClients, 8000)
+    const interval = setInterval(() => fetchClients({ silent: true }), 8000)
     return () => clearInterval(interval)
   }, [fetchClients])
 
@@ -91,7 +91,7 @@ export default function ClientsSection() {
       return
     }
     try {
-      await usersAPI.createUser({
+      const res = await usersAPI.createUser({
         fullName: formPicName,
         companyName: formCompanyName,
         email: formEmail,
@@ -100,10 +100,21 @@ export default function ClientsSection() {
         address: formAddress,
         npwp: formNpwp,
       })
-      showToast('Klien baru berhasil ditambahkan!', 'success')
       setShowCreateModal(false)
       resetForm()
       fetchClients()
+      // The temp password is shown only once — keep the toast sticky (duration 0)
+      // so the admin can copy it before dismissing. (Will be emailed/WA'd directly
+      // to the client in a future update — see docs/credentials-delivery.md.)
+      if (res?.temporaryPassword) {
+        showToast(
+          `Klien dibuat! Password sementara: ${res.temporaryPassword} — salin & bagikan ke klien sekarang (hanya ditampilkan sekali).`,
+          'success',
+          0,
+        )
+      } else {
+        showToast('Klien baru berhasil ditambahkan!', 'success')
+      }
     } catch (err) {
       showToast(err.message || 'Gagal menambah klien.', 'error')
     }

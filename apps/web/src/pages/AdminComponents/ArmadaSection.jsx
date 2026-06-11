@@ -60,8 +60,8 @@ export default function ArmadaSection() {
   const [editingVehicleId, setEditingVehicleId] = useState(null)
   const [status, setStatus] = useState('AVAILABLE')
 
-  const fetchVehicles = useCallback(async () => {
-    setLoading(true)
+  const fetchVehicles = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true)
     try {
       const data = await fleetAPI.getVehicles()
       const mapped = (data.vehicles || data || []).map((v) => ({
@@ -81,13 +81,13 @@ export default function ArmadaSection() {
       console.error('Failed to fetch vehicles:', err)
       showToast(err.message || 'Gagal memuat data armada.', 'error')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [showToast])
 
   useEffect(() => {
     fetchVehicles()
-    const interval = setInterval(fetchVehicles, 8000)
+    const interval = setInterval(() => fetchVehicles({ silent: true }), 8000)
     return () => clearInterval(interval)
   }, [fetchVehicles])
 
