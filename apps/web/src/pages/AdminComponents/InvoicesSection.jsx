@@ -32,8 +32,8 @@ export default function InvoicesSection() {
   const [formDueDate, setFormDueDate] = useState('')
   const [formNotes, setFormNotes] = useState('')
 
-  const fetchInvoices = async () => {
-    setLoading(true)
+  const fetchInvoices = async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true)
     try {
       const data = await invoicesAPI.list()
       const mapped = (data.invoices || []).map((inv) => ({
@@ -59,13 +59,13 @@ export default function InvoicesSection() {
       console.error('Failed to fetch invoices:', err)
       showToast('Gagal memuat data faktur.', 'error')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
   useEffect(() => {
     fetchInvoices()
-    const interval = setInterval(fetchInvoices, 8000)
+    const interval = setInterval(() => fetchInvoices({ silent: true }), 8000)
     return () => clearInterval(interval)
   }, [])
 

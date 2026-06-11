@@ -62,8 +62,8 @@ export default function DriversSection() {
   const [editingDriverId, setEditingDriverId] = useState(null)
   const [status, setStatus] = useState('ACTIVE')
 
-  const fetchDrivers = useCallback(async () => {
-    setLoading(true)
+  const fetchDrivers = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true)
     try {
       const data = await fleetAPI.getDrivers()
       const mapped = (data.drivers || []).map((d) => ({
@@ -83,13 +83,13 @@ export default function DriversSection() {
       console.error('Failed to fetch drivers:', err)
       showToast(err.message || 'Gagal memuat data driver.', 'error')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [showToast])
 
   useEffect(() => {
     fetchDrivers()
-    const interval = setInterval(fetchDrivers, 8000)
+    const interval = setInterval(() => fetchDrivers({ silent: true }), 8000)
     return () => clearInterval(interval)
   }, [fetchDrivers])
 

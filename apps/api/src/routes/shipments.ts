@@ -130,14 +130,14 @@ router.post("/", authenticate, async (req: AuthRequest, res: Response) => {
     const {
       packageType,
       weightKg,
+      units,
       serviceLevel,
       originLocation,
       destinationLocation,
       specialNotes,
+      price,
       pickupDate,
       estimatedArrival,
-      price,
-      units,
     } = req.body
 
     const isAdmin  = req.user?.type === "admin"
@@ -149,14 +149,14 @@ router.post("/", authenticate, async (req: AuthRequest, res: Response) => {
         id,
         packageType,
         weightKg,
+        units:            units != null ? Number(units) : null,
         serviceLevel,
         originLocation,
         destinationLocation,
         specialNotes,
+        price:            price != null ? Number(price) : null,
         pickupDate:       pickupDate ? new Date(pickupDate) : null,
         estimatedArrival: estimatedArrival ? new Date(estimatedArrival) : null,
-        price:            price ? Number(price) : null,
-        units:            units ? Number(units) : null,
         clientId,
         createdByAdminId: isAdmin ? req.user!.id : null,
       },

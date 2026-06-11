@@ -90,8 +90,8 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
   const [availableVehicles, setAvailableVehicles] = useState([])
 
   // ── Data fetching ─────────────────────────────────────────────
-  const fetchShipments = useCallback(async () => {
-    setLoading(true)
+  const fetchShipments = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true)
     try {
       const data = await shipmentsAPI.list()
       const mapped = (data.shipments || data || []).map(s => ({
@@ -121,13 +121,13 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
       console.error('Failed to fetch shipments:', err)
       showToast('Gagal memuat data pengiriman.', 'error')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [])
 
   useEffect(() => {
     fetchShipments()
-    const interval = setInterval(fetchShipments, 8000)
+    const interval = setInterval(() => fetchShipments({ silent: true }), 8000)
     return () => clearInterval(interval)
   }, [fetchShipments])
 

@@ -46,8 +46,8 @@ export default function UsersSection() {
   const [createdCredentials, setCreatedCredentials] = useState({ email: '', password: '' })
   const [credentialsCopied, setCredentialsCopied] = useState(false)
 
-  const fetchUsers = useCallback(async () => {
-    setLoading(true)
+  const fetchUsers = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true)
     try {
       const data = await usersAPI.listAll()
       // /api/users only returns User records (clients), all mapped as 'client' role
@@ -68,13 +68,13 @@ export default function UsersSection() {
       console.error('Failed to fetch users:', err)
       showToast('Gagal memuat data pengguna.', 'error')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [showToast])
 
   useEffect(() => {
     fetchUsers()
-    const interval = setInterval(fetchUsers, 8000)
+    const interval = setInterval(() => fetchUsers({ silent: true }), 8000)
     return () => clearInterval(interval)
   }, [fetchUsers])
 
