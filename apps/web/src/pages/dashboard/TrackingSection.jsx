@@ -5,6 +5,7 @@ import { shipmentsAPI, trackingAPI } from '../../lib/api'
 import TrackingSearchBar from './components/TrackingSearchBar'
 import TrackingListItem from './components/TrackingListItem'
 import { compressImage } from '../../lib/imageCompressor'
+import { usePolling, POLL_INTERVAL } from '../../lib/polling'
 
 const statusDisplayMap = {
   PENDING: 'Menunggu',
@@ -82,8 +83,8 @@ export default function TrackingSection({ initialSearchQuery = '', isAdmin = fal
     }
   }, [selectedShipment])
 
-  const fetchShipments = useCallback(async () => {
-    setLoading(true)
+  const fetchShipments = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true)
     try {
       const res = await shipmentsAPI.list()
       const raw = Array.isArray(res) ? res : (res?.data || res?.shipments || [])
@@ -144,7 +145,9 @@ export default function TrackingSection({ initialSearchQuery = '', isAdmin = fal
 
       setShipments(mapped)
 
-      if (initialSearchQuery) {
+      // Only auto-select on the initial (non-silent) load. Re-selecting on every
+      // silent poll would snap the view back to this shipment while the user browses.
+      if (!silent && initialSearchQuery) {
         const match = mapped.find(
           (sh) =>
             sh.id?.toString().toLowerCase().includes(initialSearchQuery.toLowerCase()) ||
@@ -153,17 +156,19 @@ export default function TrackingSection({ initialSearchQuery = '', isAdmin = fal
         if (match) setSelectedShipment(match)
       }
     } catch (err) {
-      showToast(err.message || 'Gagal memuat data pengiriman', 'error')
+      // Don't surface a toast on every 8s background poll — only on the visible load.
+      if (!silent) showToast(err.message || 'Gagal memuat data pengiriman', 'error')
+      else console.error('Silent tracking refresh failed:', err)
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [initialSearchQuery, showToast])
 
   useEffect(() => {
     fetchShipments()
-    const interval = setInterval(fetchShipments, 8000)
-    return () => clearInterval(interval)
   }, [fetchShipments])
+
+  usePolling(() => fetchShipments({ silent: true }), POLL_INTERVAL.LIVE)
 
   const handleUpdateStatus = async (newStatus) => {
     if (!selectedShipment) return

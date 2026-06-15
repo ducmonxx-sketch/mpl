@@ -7,6 +7,7 @@ import AdminPagination from './components/AdminPagination'
 import AdminModal from './components/AdminModal'
 import AdminFormField from './components/AdminFormField'
 import { fleetAPI } from '../../lib/api'
+import { usePolling, POLL_INTERVAL } from '../../lib/polling'
 
 const formatDate = (dateStr) => {
   if (!dateStr) return '-'
@@ -89,9 +90,9 @@ export default function DriversSection() {
 
   useEffect(() => {
     fetchDrivers()
-    const interval = setInterval(() => fetchDrivers({ silent: true }), 8000)
-    return () => clearInterval(interval)
   }, [fetchDrivers])
+
+  usePolling(() => fetchDrivers({ silent: true }), POLL_INTERVAL.REFERENCE)
 
   const resetForm = () => {
     setIsEditMode(false)
@@ -142,7 +143,7 @@ export default function DriversSection() {
       showToast('Driver baru berhasil ditambahkan!', 'success')
       setShowCreateModal(false)
       resetForm()
-      await fetchDrivers()
+      await fetchDrivers({ silent: true })
     } catch (err) {
       showToast(err.message || 'Gagal menambah driver.', 'error')
     } finally {
@@ -168,7 +169,7 @@ export default function DriversSection() {
       showToast('Driver berhasil diperbarui!', 'success')
       setShowCreateModal(false)
       resetForm()
-      await fetchDrivers()
+      await fetchDrivers({ silent: true })
     } catch (err) {
       showToast(err.message || 'Gagal memperbarui driver.', 'error')
     } finally {
@@ -186,7 +187,7 @@ export default function DriversSection() {
       if (selectedDriver?.id === id) {
         setSelectedDriver(null)
       }
-      await fetchDrivers()
+      await fetchDrivers({ silent: true })
     } catch (err) {
       showToast(err.message || 'Gagal menghapus driver.', 'error')
     }

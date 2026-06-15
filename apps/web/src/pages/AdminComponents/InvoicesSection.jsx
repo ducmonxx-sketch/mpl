@@ -8,6 +8,7 @@ import AdminModal from './components/AdminModal'
 import AdminFormField from './components/AdminFormField'
 import SearchableSelect from './components/SearchableSelect'
 import { shipmentsAPI, invoicesAPI } from '../../lib/api'
+import { usePolling, POLL_INTERVAL } from '../../lib/polling'
 
 const formatIDR = (num) => {
   if (num === null || num === undefined || isNaN(Number(num))) return '-'
@@ -65,9 +66,9 @@ export default function InvoicesSection() {
 
   useEffect(() => {
     fetchInvoices()
-    const interval = setInterval(() => fetchInvoices({ silent: true }), 8000)
-    return () => clearInterval(interval)
   }, [])
+
+  usePolling(() => fetchInvoices({ silent: true }), POLL_INTERVAL.REFERENCE)
 
   // Load shipments that don't have an invoice when create modal is opened
   useEffect(() => {
@@ -101,7 +102,7 @@ export default function InvoicesSection() {
     try {
       const res = await actionFn(selectedInvoice.dbId)
       showToast(successMsg, 'success')
-      await fetchInvoices()
+      await fetchInvoices({ silent: true })
       if (res && res.invoice) {
         const inv = res.invoice
         setSelectedInvoice({
@@ -155,7 +156,7 @@ export default function InvoicesSection() {
       })
       showToast('Faktur baru berhasil dibuat!', 'success')
       setShowCreateModal(false)
-      fetchInvoices()
+      fetchInvoices({ silent: true })
     } catch (err) {
       showToast(err.message || 'Gagal membuat faktur.', 'error')
     }
@@ -211,7 +212,7 @@ export default function InvoicesSection() {
                 try {
                   await invoicesAPI.markPaid(row.dbId)
                   showToast(`${row.id} ditandai sebagai Lunas.`, 'success')
-                  fetchInvoices()
+                  fetchInvoices({ silent: true })
                 } catch (err) {
                   showToast(err.message || 'Gagal menandai lunas.', 'error')
                 }

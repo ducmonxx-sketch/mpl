@@ -6,6 +6,7 @@ import AdminPagination from './components/AdminPagination'
 import AdminModal from './components/AdminModal'
 import AdminFormField from './components/AdminFormField'
 import { usersAPI } from '../../lib/api'
+import { usePolling, POLL_INTERVAL } from '../../lib/polling'
 
 export default function ClientsSection() {
   const { showToast } = useToast()
@@ -53,9 +54,9 @@ export default function ClientsSection() {
 
   useEffect(() => {
     fetchClients()
-    const interval = setInterval(() => fetchClients({ silent: true }), 8000)
-    return () => clearInterval(interval)
   }, [fetchClients])
+
+  usePolling(() => fetchClients({ silent: true }), POLL_INTERVAL.REFERENCE)
 
   const [isEditMode, setIsEditMode] = useState(false)
   const [editingClientId, setEditingClientId] = useState(null)
@@ -102,7 +103,7 @@ export default function ClientsSection() {
       })
       setShowCreateModal(false)
       resetForm()
-      fetchClients()
+      fetchClients({ silent: true })
       // The temp password is shown only once — keep the toast sticky (duration 0)
       // so the admin can copy it before dismissing. (Will be emailed/WA'd directly
       // to the client in a future update — see docs/credentials-delivery.md.)
@@ -138,7 +139,7 @@ export default function ClientsSection() {
       showToast('Klien berhasil diperbarui!', 'success')
       setShowCreateModal(false)
       resetForm()
-      fetchClients()
+      fetchClients({ silent: true })
     } catch (err) {
       showToast(err.message || 'Gagal memperbarui klien.', 'error')
     }
@@ -154,7 +155,7 @@ export default function ClientsSection() {
       if (selectedClient?.id === id) {
         setSelectedClient(null)
       }
-      fetchClients()
+      fetchClients({ silent: true })
     } catch (err) {
       showToast(err.message || 'Gagal menghapus klien.', 'error')
     }

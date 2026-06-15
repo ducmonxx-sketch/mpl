@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { notificationsAPI, adminNotificationsAPI } from '../lib/api'
+import { usePolling, POLL_INTERVAL } from '../lib/polling'
 import AdminNotificationPanel from './AdminComponents/components/AdminNotificationPanel'
 import Icon from '../components/Icon'
 import { useToast } from '../contexts/ToastContext'
@@ -52,21 +53,23 @@ export default function AdminDashboardPage() {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  // Fetch notification count
-  useEffect(() => {
-    async function fetchNotifications() {
-      try {
-        const data = await adminNotificationsAPI.list()
-        setNotifications(data.notifications || [])
-        setUnreadCount(data.unreadCount || 0)
-      } catch {
-        // fallback
-      }
+  // Fetch notification count. Already "silent" — only updates the badge/list,
+  // never a loading state — so it's safe to poll directly.
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const data = await adminNotificationsAPI.list()
+      setNotifications(data.notifications || [])
+      setUnreadCount(data.unreadCount || 0)
+    } catch {
+      // fallback
     }
-    fetchNotifications()
-    const interval = setInterval(fetchNotifications, 8000)
-    return () => clearInterval(interval)
   }, [])
+
+  useEffect(() => {
+    fetchNotifications()
+  }, [fetchNotifications])
+
+  usePolling(fetchNotifications, POLL_INTERVAL.LIVE)
 
   const handleMarkAllRead = async () => {
     try {

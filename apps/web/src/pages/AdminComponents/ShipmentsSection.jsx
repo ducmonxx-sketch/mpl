@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import Icon from '../../components/Icon'
 import { useToast } from '../../contexts/ToastContext'
 import { shipmentsAPI, usersAPI, fleetAPI } from '../../lib/api'
+import { usePolling, POLL_INTERVAL } from '../../lib/polling'
 import AdminDataTable from './components/AdminDataTable'
 import AdminStatusBadge from './components/AdminStatusBadge'
 import AdminPagination from './components/AdminPagination'
@@ -127,9 +128,9 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
 
   useEffect(() => {
     fetchShipments()
-    const interval = setInterval(() => fetchShipments({ silent: true }), 8000)
-    return () => clearInterval(interval)
   }, [fetchShipments])
+
+  usePolling(() => fetchShipments({ silent: true }), POLL_INTERVAL.LIVE)
 
   useEffect(() => {
     if (highlightShipmentId && SHIPMENTS.length > 0) {
@@ -232,7 +233,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
       showToast('Pengiriman baru berhasil dibuat!', 'success')
       setShowCreateModal(false)
       resetCreateForm()
-      fetchShipments()
+      fetchShipments({ silent: true })
     } catch (err) {
       showToast(err.message || 'Gagal membuat pengiriman.', 'error')
     }
@@ -258,7 +259,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
       })
       showToast('Driver dan armada berhasil ditugaskan!', 'success')
       setShowAssignModal(false)
-      fetchShipments()
+      fetchShipments({ silent: true })
     } catch (err) {
       showToast(err.message, 'error')
     }
@@ -268,7 +269,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
     try {
       await shipmentsAPI.updateStatus(selectedShipment.id, { status: newRawStatus })
       showToast('Status diperbarui!', 'success')
-      fetchShipments()
+      fetchShipments({ silent: true })
       setSelectedShipment(prev => ({
         ...prev,
         rawStatus: newRawStatus,

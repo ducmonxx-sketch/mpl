@@ -7,6 +7,7 @@ import AdminModal from './components/AdminModal'
 import AdminFormField from './components/AdminFormField'
 import SearchableSelect from './components/SearchableSelect'
 import { usersAPI } from '../../lib/api'
+import { usePolling, POLL_INTERVAL } from '../../lib/polling'
 
 const ROLE_LABELS = {
   super_admin: 'Super Admin',
@@ -74,9 +75,9 @@ export default function UsersSection() {
 
   useEffect(() => {
     fetchUsers()
-    const interval = setInterval(() => fetchUsers({ silent: true }), 8000)
-    return () => clearInterval(interval)
   }, [fetchUsers])
+
+  usePolling(() => fetchUsers({ silent: true }), POLL_INTERVAL.REFERENCE)
 
   useEffect(() => {
     if (showCreateModal) {
@@ -125,7 +126,7 @@ export default function UsersSection() {
         password: res.tempPassword || formPassword || '(auto-generated)',
       })
       setCreateSuccess(true)
-      fetchUsers()
+      fetchUsers({ silent: true })
     } catch (err) {
       showToast(err.message || 'Gagal membuat pengguna.', 'error')
     }

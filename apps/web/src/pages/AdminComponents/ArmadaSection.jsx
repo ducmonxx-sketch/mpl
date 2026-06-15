@@ -7,6 +7,7 @@ import AdminPagination from './components/AdminPagination'
 import AdminModal from './components/AdminModal'
 import AdminFormField from './components/AdminFormField'
 import { fleetAPI } from '../../lib/api'
+import { usePolling, POLL_INTERVAL } from '../../lib/polling'
 
 const formatDate = (dateStr) => {
   if (!dateStr) return '-'
@@ -97,9 +98,9 @@ export default function ArmadaSection() {
 
   useEffect(() => {
     fetchVehicles()
-    const interval = setInterval(() => fetchVehicles({ silent: true }), 8000)
-    return () => clearInterval(interval)
   }, [fetchVehicles])
+
+  usePolling(() => fetchVehicles({ silent: true }), POLL_INTERVAL.REFERENCE)
 
   const resetForm = () => {
     setIsEditMode(false)
@@ -153,7 +154,7 @@ export default function ArmadaSection() {
       showToast('Kendaraan baru berhasil ditambahkan!', 'success')
       setShowCreateModal(false)
       resetForm()
-      await fetchVehicles()
+      await fetchVehicles({ silent: true })
     } catch (err) {
       showToast(err.message || 'Gagal menambah kendaraan.', 'error')
     } finally {
@@ -178,7 +179,7 @@ export default function ArmadaSection() {
       showToast('Kendaraan berhasil diperbarui!', 'success')
       setShowCreateModal(false)
       resetForm()
-      await fetchVehicles()
+      await fetchVehicles({ silent: true })
     } catch (err) {
       showToast(err.message || 'Gagal memperbarui kendaraan.', 'error')
     } finally {
@@ -196,7 +197,7 @@ export default function ArmadaSection() {
       if (selectedVehicle?.id === id) {
         setSelectedVehicle(null)
       }
-      await fetchVehicles()
+      await fetchVehicles({ silent: true })
     } catch (err) {
       showToast(err.message || 'Gagal menghapus kendaraan.', 'error')
     }
