@@ -59,11 +59,23 @@ docker run -d \
 ### 3. Configure Environment Variables
 You need to create configuration files in both `apps/api/` and `apps/web/`.
 
-- **For the API server**: Copy `apps/api/.env.example` to `apps/api/.env` and update the parameters (Database connection string, Port, JWT secret, etc.).
-- **For the Web client**: Copy `apps/web/.env.example` to `apps/web/.env` and configure key variables like `VITE_API_BASE_URL` (points to backend server) and `VITE_TURNSTILE_SITE_KEY`.
+- **For the API server**: Copy `apps/api/.env.example` to `apps/api/.env` and update the parameters below.
+- **For the Web client**: Copy `apps/web/.env.example` to `apps/web/.env` and configure `VITE_API_BASE_URL` and `VITE_TURNSTILE_SITE_KEY`.
+
+**Required API environment variables (`apps/api/.env`):**
+
+| Variable | Description | Example |
+|---|---|---|
+| `DATABASE_URL` | PostgreSQL connection string | `postgresql://postgres:yourpassword@localhost:5432/mpl_logistics` |
+| `JWT_SECRET` | Secret key for signing JWT tokens | `your-secret-key` |
+| `OPENWA_BASE_URL` | Base URL of your self-hosted OpenWA instance | `http://localhost:2785` |
+| `OPENWA_API_KEY` | OpenWA API master key or operator key | `your-openwa-key` |
+| `OPENWA_SESSION_ID` | OpenWA session ID of the linked WhatsApp session | `my-session` |
+
+> **WhatsApp Note:** This project uses **OpenWA** (self-hosted WhatsApp gateway) instead of Fonnte. See the [OpenWA setup section](#-openwa-whatsapp-gateway) below before running.
 
 ### 4. Initialize Database Schemas & Seed Data
-Navigate to the API folder to set up Prisma and populate initial admin credentials:
+Navigate to the API folder to set up Prisma and populate initial data:
 ```bash
 cd apps/api
 
@@ -71,19 +83,21 @@ cd apps/api
 npx prisma migrate dev --name init
 npx prisma generate
 
-# Seed database with the default Super Admin (admin@mpl.com / admin1234)
+# Seed database with default Super Admin and sample data
 npx ts-node prisma/seed.ts
 ```
 
+Default Super Admin credentials after seeding: **`admin@mpl.com`** / **`admin1234`**
+
 ### 5. Running the Development Servers
-You can launch both the frontend and backend applications simultaneously from the **root directory**:
+Launch both the frontend and backend simultaneously from the **root directory**:
 
 ```bash
 # Starts Express API (localhost:3001) and Vite Frontend (localhost:5173) in watch-mode
 npm run dev
 ```
 
-Alternatively, you can run them individually:
+Alternatively, run them individually:
 ```bash
 # Run backend only
 npm run dev --workspace=api
@@ -94,6 +108,56 @@ npm run dev --workspace=web
 
 ---
 
+## 📡 OpenWA WhatsApp Gateway
+
+This project uses **OpenWA** — a self-hosted, open-source WhatsApp HTTP API — to send WhatsApp notifications (shipment updates, invoice alerts, driver assignments, etc.).
+
+### Why OpenWA?
+- Free and self-hosted — no per-message fees
+- No third-party dependency (replaces the previous Fonnte integration)
+- Full control over the WhatsApp session and message history
+
+### Setup
+1. Start OpenWA locally (see [OpenWA folder](./OpenWA/) or its own repo)
+2. Scan the QR code in the OpenWA dashboard to link a WhatsApp account
+3. Copy the session ID and API key into `apps/api/.env` as shown in the table above
+
+### Phone Number Format
+The API automatically normalizes Indonesian phone numbers:
+- `0821-xxxx-xxxx` → `62821xxxxxxxx@c.us`
+- `+62812…` → `62812…@c.us`
+- `812…` (local, no prefix) → `62812…@c.us`
+
+If OpenWA is not configured, the app degrades gracefully — WhatsApp messages are skipped with a warning log, and no errors are thrown.
+
+---
+
+## 🔄 Admin Dashboard — Live Polling
+
+The admin dashboard uses a centralized polling utility (`apps/web/src/lib/polling.js`) to auto-refresh data without manual page reloads.
+
+### Polling Intervals
+
+| Constant | Interval | Used For |
+|---|---|---|
+| `POLL_INTERVAL.LIVE` | 10 seconds | Notifications, active shipments, driver activity |
+| `POLL_INTERVAL.REFERENCE` | 30 seconds | Clients, drivers, vehicles, invoices |
+
+### Smart Polling Behavior
+- **Pauses automatically** when the browser tab is hidden — no wasted background requests
+- **Fires immediately** when the tab becomes visible again to flush stale data
+- Polling is driven by the `usePolling(onPoll, interval)` hook, used across all Admin sections:
+  - `AdminDashboardPage` — notification badge refresh
+  - `ArmadaSection` — vehicle fleet list
+  - `ClientsSection` — client list
+  - `DriversSection` — driver list
+  - `InvoicesSection` — invoice list
+  - `ShipmentsSection` — shipment list
+  - `UsersSection` — user list
+  - `TrackingSection` — live shipment tracking
+
+---
+
 ## 📋 Technology Stack Summary
 
 ### Frontend (Web)
@@ -101,14 +165,14 @@ npm run dev --workspace=web
 - **Build Tool**: Vite 6
 - **Styling**: Tailwind CSS 3 & Vanilla CSS
 - **Routing**: React Router DOM 7
-- **Features**: SheetJS (`xlsx`) for Excel reports, custom Toast alerts, Cloudflare Turnstile integration.
+- **Features**: SheetJS (`xlsx`) for Excel reports, custom Toast alerts, Cloudflare Turnstile integration, centralized live polling
 
 ### Backend (API)
 - **Server**: Express.js
 - **Database Engine**: PostgreSQL
 - **ORM**: Prisma 7
 - **Authentication**: JSON Web Tokens (JWT) + role-based middleware guards
-- **Services**: Fonnte (WhatsApp integration), Resend / Nodemailer (Email notification engine)
+- **Services**: OpenWA (self-hosted WhatsApp gateway), Resend / Nodemailer (email notification engine)
 
 ---
 
