@@ -236,6 +236,10 @@ export const shipmentsAPI = {
   /** Admin: update status & progress */
   updateStatus: (id, data) =>
     api.patch(`/api/shipments/${encodeURIComponent(id)}/status`, data),
+
+  /** Admin: send WhatsApp assignment notification to the assigned driver (via OpenWA) */
+  notifyDriver: (id) =>
+    api.post(`/api/shipments/${encodeURIComponent(id)}/notify-driver`),
 }
 
 // ─── Tracking API ───────────────────────────────────────────
