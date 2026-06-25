@@ -118,9 +118,12 @@ This project uses **OpenWA** — a self-hosted, open-source WhatsApp HTTP API �
 - Full control over the WhatsApp session and message history
 
 ### Setup
-1. Start OpenWA locally (see [OpenWA folder](./OpenWA/) or its own repo)
-2. Scan the QR code in the OpenWA dashboard to link a WhatsApp account
-3. Copy the session ID and API key into `apps/api/.env` as shown in the table above
+OpenWA lives in `services/OpenWA/` (gitignored — clone it there separately) and runs as
+its own service. **Full step-by-step: [services/OpenWA-SETUP.md](services/OpenWA-SETUP.md).**
+In short:
+1. Clone OpenWA into `services/`, then `npm install` and `npm run dev` (API on :2785, dashboard on **:2886**)
+2. Scan the QR in the dashboard (http://localhost:2886) to link a WhatsApp account — wait for status `ready`
+3. Copy the session ID and API key (`dev-admin-key` in local dev) into `apps/api/.env` as shown in the table above, then restart the API
 
 ### Phone Number Format
 The API automatically normalizes Indonesian phone numbers:
