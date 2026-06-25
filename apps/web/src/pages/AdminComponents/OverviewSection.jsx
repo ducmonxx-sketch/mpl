@@ -97,27 +97,22 @@ export default function OverviewSection({ onChangeNav, onNavigateToShipment }) {
 
   if (loading) {
     return (
-      <div className="dash-content" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <div style={{ textAlign: 'center', color: '#64748b' }}>
-          <div style={{ width: 32, height: 32, border: '3px solid #e2e8f0', borderTopColor: '#fec330', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
-          <p style={{ fontSize: '0.9rem' }}>Memuat data beranda...</p>
-          <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
-        </div>
+      <div className="flex flex-col justify-center items-center min-h-[400px] text-gray-500">
+        <div className="w-8 h-8 border-4 border-gray-200 border-t-[#fec330] rounded-full animate-spin mb-4" />
+        <p className="text-sm font-medium">Memuat data beranda...</p>
       </div>
     )
   }
 
   return (
-    <div className="dash-content">
-      <section className="dash-header">
-        <div>
-          <h2 className="dash-header__title">Selamat Datang, Admin</h2>
-          <p className="dash-header__subtitle">Ikhtisar operasional PT Mahkota Putra Logistik hari ini.</p>
-        </div>
+    <div className="flex flex-col gap-8 max-w-[1600px] mx-auto w-full pb-10">
+      <section className="flex flex-col gap-1">
+        <h2 className="text-2xl md:text-3xl font-black text-[#002442] tracking-tight">Selamat Datang, Admin</h2>
+        <p className="text-sm text-gray-500 font-medium">Ikhtisar operasional PT Mahkota Putra Logistik hari ini.</p>
       </section>
 
       {/* KPI Cards */}
-      <div className="adm-kpi-grid">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-6">
         <AdminKPICard icon="local_shipping" label="Pengiriman Aktif Container" sublabel="Active Container Shipments" value={String(kpiData.activeShipments)} trend={`${kpiData.unassignedDrivers} menunggu`} color="primary" delay={0.05} />
         <AdminKPICard icon="receipt" label="Total Pengiriman" sublabel="All Shipments" value={String(kpiData.total || 0)} color="gold" delay={0.1} />
         <AdminKPICard icon="people" label="Total Klien" sublabel="Total Clients" value={String(kpiData.totalClients)} color="green" delay={0.15} />
@@ -125,11 +120,14 @@ export default function OverviewSection({ onChangeNav, onNavigateToShipment }) {
       </div>
 
       {/* Recent Shipments */}
-      <div className="adm-recent-card glass-card">
-        <div className="adm-recent-header">
-          <h3>Pengiriman Terbaru / Recent Shipments</h3>
-          <button className="adm-view-all-btn" onClick={() => onChangeNav?.('shipments')}>
-            Lihat Semua <Icon name="chevron_right" size={14} />
+      <div className="bg-white border border-gray-200 rounded-2xl shadow-[0_2px_10px_rgba(0,0,0,0.02)] p-6 md:p-8 flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500 delay-150 fill-mode-both">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <h3 className="text-lg font-bold text-[#002442]">Pengiriman Terbaru / Recent Shipments</h3>
+          <button 
+            className="flex items-center justify-center gap-1.5 px-4 py-2 text-sm font-bold text-[#002442] bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl transition-colors"
+            onClick={() => onChangeNav?.('shipments')}
+          >
+            Lihat Semua <Icon name="chevron_right" size={16} />
           </button>
         </div>
         <AdminDataTable columns={columns} data={recentShipments} />

@@ -6,11 +6,11 @@ import AdminPagination from './components/AdminPagination'
 import AdminModal from './components/AdminModal'
 import AdminFormField from './components/AdminFormField'
 import { usersAPI } from '../../lib/api'
-import { usePolling, POLL_INTERVAL } from '../../lib/polling'
 
 export default function ClientsSection() {
   const { showToast } = useToast()
   const [searchQuery, setSearchQuery] = useState('')
+  const [filter, setFilter] = useState('all')
   const [selectedClient, setSelectedClient] = useState(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
@@ -54,9 +54,9 @@ export default function ClientsSection() {
 
   useEffect(() => {
     fetchClients()
+    const interval = setInterval(() => fetchClients({ silent: true }), 8000)
+    return () => clearInterval(interval)
   }, [fetchClients])
-
-  usePolling(() => fetchClients({ silent: true }), POLL_INTERVAL.REFERENCE)
 
   const [isEditMode, setIsEditMode] = useState(false)
   const [editingClientId, setEditingClientId] = useState(null)
@@ -103,7 +103,7 @@ export default function ClientsSection() {
       })
       setShowCreateModal(false)
       resetForm()
-      fetchClients({ silent: true })
+      fetchClients()
       // The temp password is shown only once — keep the toast sticky (duration 0)
       // so the admin can copy it before dismissing. (Will be emailed/WA'd directly
       // to the client in a future update — see docs/credentials-delivery.md.)
@@ -139,7 +139,7 @@ export default function ClientsSection() {
       showToast('Klien berhasil diperbarui!', 'success')
       setShowCreateModal(false)
       resetForm()
-      fetchClients({ silent: true })
+      fetchClients()
     } catch (err) {
       showToast(err.message || 'Gagal memperbarui klien.', 'error')
     }
@@ -155,17 +155,28 @@ export default function ClientsSection() {
       if (selectedClient?.id === id) {
         setSelectedClient(null)
       }
-      fetchClients({ silent: true })
+      fetchClients()
     } catch (err) {
       showToast(err.message || 'Gagal menghapus klien.', 'error')
     }
   }
 
-  const filtered = CLIENTS.filter(c =>
-    !searchQuery ||
-    c.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.pics.some(pic => pic.name.toLowerCase().includes(searchQuery.toLowerCase()))
-  )
+  const filters = [
+    { id: 'all', label: 'Semua' },
+    { id: 'verified', label: 'Terverifikasi' },
+    { id: 'unverified', label: 'Belum Terverifikasi' },
+  ]
+
+  const filtered = CLIENTS.filter(c => {
+    const matchFilter = filter === 'all' || (filter === 'verified' ? c.isActive : !c.isActive)
+    const matchSearch = !searchQuery ||
+      c.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      c.pics.some(pic => pic.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    return matchFilter && matchSearch
+  })
+
+  const verifiedCount = CLIENTS.filter(c => c.isActive).length
+  const unverifiedCount = CLIENTS.filter(c => !c.isActive).length
 
   const columns = [
     {
@@ -252,14 +263,83 @@ export default function ClientsSection() {
         </div>
       </section>
 
-      <div className="adm-search-bar">
-        <Icon name="search" size={18} />
-        <input
-          type="text"
-          placeholder="Cari nama perusahaan atau PIC..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
+      {/* Premium KPI Cards */}
+      <div className="adm-kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginTop: '1.25rem' }}>
+        <div className="adm-kpi-card" style={{ background: '#fff', borderRadius: '1rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
+          <div className="adm-kpi-card__header">
+            <div className="adm-kpi-card__icon" style={{ background: 'rgba(0,36,66,0.05)', color: 'var(--dash-primary)' }}>
+              <Icon name="business" size={24} />
+            </div>
+          </div>
+          <div>
+            <h3 className="adm-kpi-card__value">{CLIENTS.length}</h3>
+            <p className="adm-kpi-card__label">Total Klien</p>
+            <p className="adm-kpi-card__sublabel">Seluruh klien terdaftar</p>
+          </div>
+        </div>
+
+        <div className="adm-kpi-card" style={{ background: '#fff', borderRadius: '1rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
+          <div className="adm-kpi-card__header">
+            <div className="adm-kpi-card__icon" style={{ background: 'rgba(59,130,246,0.08)', color: '#1d4ed8' }}>
+              <Icon name="check_circle" size={24} />
+            </div>
+          </div>
+          <div>
+            <h3 className="adm-kpi-card__value">{verifiedCount}</h3>
+            <p className="adm-kpi-card__label">Terverifikasi</p>
+            <p className="adm-kpi-card__sublabel">Akun klien aktif</p>
+          </div>
+        </div>
+
+        <div className="adm-kpi-card" style={{ background: '#fff', borderRadius: '1rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
+          <div className="adm-kpi-card__header">
+            <div className="adm-kpi-card__icon" style={{ background: 'rgba(186,26,26,0.08)', color: '#93000a' }}>
+              <Icon name="warning" size={24} />
+            </div>
+          </div>
+          <div>
+            <h3 className="adm-kpi-card__value">{unverifiedCount}</h3>
+            <p className="adm-kpi-card__label">Belum Terverifikasi</p>
+            <p className="adm-kpi-card__sublabel">Perlu peninjauan</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Unified Search & Filters */}
+      <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginTop: '1.5rem', flexWrap: 'wrap' }}>
+        <div className="adm-search-bar" style={{ margin: 0, flex: '1', minWidth: '300px' }}>
+          <Icon name="search" size={18} />
+          <input
+            type="text"
+            placeholder="Cari nama perusahaan atau PIC..."
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value)
+              setCurrentPage(1)
+            }}
+          />
+        </div>
+
+        <div className="adm-filters" style={{ margin: 0 }}>
+          {filters.map((f) => {
+            const count =
+              f.id === 'all'
+                ? CLIENTS.length
+                : f.id === 'verified' ? verifiedCount : unverifiedCount;
+            return (
+              <button
+                key={f.id}
+                className={`adm-filter-tab${filter === f.id ? ' adm-filter-tab--active' : ''}`}
+                onClick={() => {
+                  setFilter(f.id)
+                  setCurrentPage(1)
+                }}
+              >
+                {f.label} <span className="adm-filter-count">{count}</span>
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {loading ? (
@@ -310,13 +390,26 @@ export default function ClientsSection() {
       {selectedClient && (
         <div className="adm-detail-panel glass-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
-            <div>
-              <h3 style={{ fontSize: '1.35rem', fontWeight: 900, color: 'var(--dash-primary)', margin: 0 }}>
-                {selectedClient.companyName}
-              </h3>
-              <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '4px 0 0' }}>
-                PIC Utama: {selectedClient.pics[0].name}
-              </p>
+            <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center' }}>
+              <div 
+                style={{
+                  width: '64px', height: '64px', borderRadius: '50%',
+                  background: 'linear-gradient(135deg, var(--dash-secondary) 0%, #d49811 100%)',
+                  color: 'var(--dash-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '1.5rem', fontWeight: 900, boxShadow: '0 4px 15px rgba(254,195,48,0.3)',
+                  flexShrink: 0
+                }}
+              >
+                {(selectedClient.companyName || 'C').split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
+              </div>
+              <div>
+                <h3 style={{ fontSize: '1.35rem', fontWeight: 900, color: 'var(--dash-primary)', margin: 0 }}>
+                  {selectedClient.companyName}
+                </h3>
+                <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '4px 0 0' }}>
+                  PIC Utama: {selectedClient.pics[0].name}
+                </p>
+              </div>
             </div>
             <button className="adm-action-btn" onClick={() => setSelectedClient(null)}>
               <Icon name="close" size={18} />

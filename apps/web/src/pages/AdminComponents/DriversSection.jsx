@@ -7,7 +7,6 @@ import AdminPagination from './components/AdminPagination'
 import AdminModal from './components/AdminModal'
 import AdminFormField from './components/AdminFormField'
 import { fleetAPI } from '../../lib/api'
-import { usePolling, POLL_INTERVAL } from '../../lib/polling'
 
 const formatDate = (dateStr) => {
   if (!dateStr) return '-'
@@ -90,9 +89,9 @@ export default function DriversSection() {
 
   useEffect(() => {
     fetchDrivers()
+    const interval = setInterval(() => fetchDrivers({ silent: true }), 8000)
+    return () => clearInterval(interval)
   }, [fetchDrivers])
-
-  usePolling(() => fetchDrivers({ silent: true }), POLL_INTERVAL.REFERENCE)
 
   const resetForm = () => {
     setIsEditMode(false)
@@ -143,7 +142,7 @@ export default function DriversSection() {
       showToast('Driver baru berhasil ditambahkan!', 'success')
       setShowCreateModal(false)
       resetForm()
-      await fetchDrivers({ silent: true })
+      await fetchDrivers()
     } catch (err) {
       showToast(err.message || 'Gagal menambah driver.', 'error')
     } finally {
@@ -169,7 +168,7 @@ export default function DriversSection() {
       showToast('Driver berhasil diperbarui!', 'success')
       setShowCreateModal(false)
       resetForm()
-      await fetchDrivers({ silent: true })
+      await fetchDrivers()
     } catch (err) {
       showToast(err.message || 'Gagal memperbarui driver.', 'error')
     } finally {
@@ -187,7 +186,7 @@ export default function DriversSection() {
       if (selectedDriver?.id === id) {
         setSelectedDriver(null)
       }
-      await fetchDrivers({ silent: true })
+      await fetchDrivers()
     } catch (err) {
       showToast(err.message || 'Gagal menghapus driver.', 'error')
     }
@@ -295,40 +294,83 @@ export default function DriversSection() {
         </div>
       </section>
 
-      {/* Search */}
-      <div className="adm-search-bar">
-        <Icon name="search" size={18} />
-        <input
-          type="text"
-          placeholder="Cari nama driver, telepon, atau no. SIM..."
-          value={searchQuery}
-          onChange={(e) => {
-            setSearchQuery(e.target.value)
-            setCurrentPage(1)
-          }}
-        />
+      {/* Premium KPI Cards */}
+      <div className="adm-kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginTop: '1.25rem' }}>
+        <div className="adm-kpi-card" style={{ background: '#fff', borderRadius: '1rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
+          <div className="adm-kpi-card__header">
+            <div className="adm-kpi-card__icon" style={{ background: 'rgba(0,36,66,0.05)', color: 'var(--dash-primary)' }}>
+              <Icon name="people" size={24} />
+            </div>
+          </div>
+          <div>
+            <h3 className="adm-kpi-card__value">{drivers.length}</h3>
+            <p className="adm-kpi-card__label">Total Driver</p>
+            <p className="adm-kpi-card__sublabel">Seluruh driver terdaftar</p>
+          </div>
+        </div>
+
+        <div className="adm-kpi-card" style={{ background: '#fff', borderRadius: '1rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
+          <div className="adm-kpi-card__header">
+            <div className="adm-kpi-card__icon" style={{ background: 'rgba(59,130,246,0.08)', color: '#1d4ed8' }}>
+              <Icon name="check_circle" size={24} />
+            </div>
+          </div>
+          <div>
+            <h3 className="adm-kpi-card__value">{availableCount}</h3>
+            <p className="adm-kpi-card__label">Tersedia</p>
+            <p className="adm-kpi-card__sublabel">Siap untuk penugasan</p>
+          </div>
+        </div>
+
+        <div className="adm-kpi-card" style={{ background: '#fff', borderRadius: '1rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
+          <div className="adm-kpi-card__header">
+            <div className="adm-kpi-card__icon" style={{ background: 'rgba(186,26,26,0.08)', color: '#93000a' }}>
+              <Icon name="block" size={24} />
+            </div>
+          </div>
+          <div>
+            <h3 className="adm-kpi-card__value">{inactiveCount}</h3>
+            <p className="adm-kpi-card__label">Tidak Aktif</p>
+            <p className="adm-kpi-card__sublabel">Sedang tidak bertugas</p>
+          </div>
+        </div>
       </div>
 
-      {/* Filters */}
-      <div className="adm-filters" style={{ marginTop: '1rem' }}>
-        {filters.map((f) => {
-          const count =
-            f.id === 'all'
-              ? drivers.length
-              : drivers.filter((d) => d.status === f.id).length
-          return (
-            <button
-              key={f.id}
-              className={`adm-filter-tab${filter === f.id ? ' adm-filter-tab--active' : ''}`}
-              onClick={() => {
-                setFilter(f.id)
-                setCurrentPage(1)
-              }}
-            >
-              {f.label} <span className="adm-filter-count">{count}</span>
-            </button>
-          )
-        })}
+      {/* Unified Search & Filters */}
+      <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginTop: '1.5rem', flexWrap: 'wrap' }}>
+        <div className="adm-search-bar" style={{ margin: 0, flex: '1', minWidth: '300px' }}>
+          <Icon name="search" size={18} />
+          <input
+            type="text"
+            placeholder="Cari nama driver, telepon, atau no. SIM..."
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value)
+              setCurrentPage(1)
+            }}
+          />
+        </div>
+
+        <div className="adm-filters" style={{ margin: 0 }}>
+          {filters.map((f) => {
+            const count =
+              f.id === 'all'
+                ? drivers.length
+                : drivers.filter((d) => d.status === f.id).length
+            return (
+              <button
+                key={f.id}
+                className={`adm-filter-tab${filter === f.id ? ' adm-filter-tab--active' : ''}`}
+                onClick={() => {
+                  setFilter(f.id)
+                  setCurrentPage(1)
+                }}
+              >
+                {f.label} <span className="adm-filter-count">{count}</span>
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* Table */}
@@ -352,20 +394,7 @@ export default function DriversSection() {
         )}
       </div>
 
-      {/* Summary Bar */}
-      <div className="adm-driver-summary">
-        <span>
-          <strong>{drivers.length}</strong> Total Driver
-        </span>
-        <span>|</span>
-        <span>
-          <strong>{availableCount}</strong> Tersedia
-        </span>
-        <span>|</span>
-        <span>
-          <strong>{inactiveCount}</strong> Tidak Aktif
-        </span>
-      </div>
+
 
       {/* Detail Panel */}
       {selectedDriver && (
@@ -378,18 +407,31 @@ export default function DriversSection() {
               marginBottom: '1.5rem',
             }}
           >
-            <div>
-              <AdminStatusBadge status={selectedDriver.status} type="driver" />
-              <h3
+            <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center' }}>
+              <div 
                 style={{
-                  fontSize: '1.35rem',
-                  fontWeight: 900,
-                  color: 'var(--dash-primary)',
-                  margin: '0.5rem 0 0',
+                  width: '64px', height: '64px', borderRadius: '50%',
+                  background: 'linear-gradient(135deg, var(--dash-secondary) 0%, #d49811 100%)',
+                  color: 'var(--dash-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '1.5rem', fontWeight: 900, boxShadow: '0 4px 15px rgba(254,195,48,0.3)',
+                  flexShrink: 0
                 }}
               >
-                {selectedDriver.name}
-              </h3>
+                {(selectedDriver.name || 'D').split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
+              </div>
+              <div>
+                <AdminStatusBadge status={selectedDriver.status} type="driver" />
+                <h3
+                  style={{
+                    fontSize: '1.35rem',
+                    fontWeight: 900,
+                    color: 'var(--dash-primary)',
+                    margin: '0.5rem 0 0',
+                  }}
+                >
+                  {selectedDriver.name}
+                </h3>
+              </div>
             </div>
             <button className="adm-action-btn" onClick={() => setSelectedDriver(null)}>
               <Icon name="close" size={18} />
@@ -480,17 +522,29 @@ export default function DriversSection() {
             </AdminFormField>
 
             <AdminFormField label="Jenis SIM" required>
-              <select
-                value={licenseType}
-                onChange={(e) => setLicenseType(e.target.value)}
-              >
-                <option value="" disabled>
-                  Pilih Jenis SIM...
-                </option>
-                <option value="A">A</option>
-                <option value="B1">B1</option>
-                <option value="B2">B2</option>
-              </select>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                {['A', 'B1', 'B2'].map(type => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setLicenseType(type)}
+                    style={{
+                      flex: 1,
+                      padding: '0.7rem',
+                      borderRadius: '8px',
+                      border: `2px solid ${licenseType === type ? 'var(--dash-secondary)' : '#e2e8f0'}`,
+                      background: licenseType === type ? 'rgba(254,195,48,0.1)' : '#fff',
+                      color: licenseType === type ? 'var(--dash-primary)' : '#64748b',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      outline: 'none'
+                    }}
+                  >
+                    SIM {type}
+                  </button>
+                ))}
+              </div>
             </AdminFormField>
 
             <AdminFormField label="Masa Berlaku SIM" required>
@@ -503,13 +557,32 @@ export default function DriversSection() {
 
             {isEditMode && (
               <AdminFormField label="Status" required>
-                <select
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value)}
-                >
-                  <option value="ACTIVE">Tersedia</option>
-                  <option value="UNAVAILABLE">Tidak Aktif</option>
-                </select>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  {[
+                    { value: 'ACTIVE', label: 'Tersedia' },
+                    { value: 'UNAVAILABLE', label: 'Tidak Aktif' }
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setStatus(opt.value)}
+                      style={{
+                        flex: 1,
+                        padding: '0.7rem',
+                        borderRadius: '8px',
+                        border: `2px solid ${status === opt.value ? 'var(--dash-secondary)' : '#e2e8f0'}`,
+                        background: status === opt.value ? 'rgba(254,195,48,0.1)' : '#fff',
+                        color: status === opt.value ? 'var(--dash-primary)' : '#64748b',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        outline: 'none'
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
               </AdminFormField>
             )}
           </div>

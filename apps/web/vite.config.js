@@ -68,8 +68,8 @@ export default defineConfig({
         "img-src 'self' data: blob:",
         // API calls to the backend.
         "connect-src 'self' https://api.mahkotaputralogistik.id http://localhost:3001",
-        // Cloudflare Turnstile widget iframe.
-        "frame-src https://challenges.cloudflare.com",
+        // Cloudflare Turnstile widget iframe and Google Maps embeds.
+        "frame-src https://challenges.cloudflare.com https://www.google.com https://maps.google.com",
         // No plugins (Flash etc.)
         "object-src 'none'",
         // Disable <base> hijacking.

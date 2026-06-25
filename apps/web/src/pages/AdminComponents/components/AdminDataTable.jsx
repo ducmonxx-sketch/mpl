@@ -14,66 +14,68 @@ export default function AdminDataTable({ columns, data, onRowClick, emptyMessage
 
   if (!data || data.length === 0) {
     return (
-      <div className="adm-table-empty">
+      <div className="flex flex-col items-center justify-center p-12 text-gray-400 gap-3 border border-dashed border-gray-300 rounded-2xl bg-gray-50/50">
         <Icon name="search" size={32} />
-        <p>{emptyMessage}</p>
+        <p className="text-sm font-medium">{emptyMessage}</p>
       </div>
     )
   }
 
   return (
-    <div className="adm-table-wrap">
-      <table className="adm-table">
-        <thead>
-          <tr>
-            {columns.map((col) => (
-              <th key={col.key} style={col.width ? { width: col.width } : undefined}>
-                {col.label}
-              </th>
-            ))}
-          </tr>
-          {columns.some(col => col.filterRender) && (
-            <tr className="adm-table__filter-row" style={{ backgroundColor: 'rgba(254, 195, 48, 0.03)' }}>
+    <div className="bg-white border border-gray-200 rounded-2xl shadow-[0_2px_10px_rgba(0,0,0,0.02)] overflow-hidden">
+      <div className="overflow-x-auto custom-scrollbar">
+        <table className="w-full text-left border-collapse whitespace-nowrap">
+          <thead>
+            <tr className="bg-gray-50/80 border-b border-gray-200">
               {columns.map((col) => (
-                <th key={`filter-${col.key}`} style={{ padding: '0.5rem 1rem', borderBottom: '1px solid #e2e8f0', fontWeight: 'normal' }}>
-                  {col.filterRender ? col.filterRender() : null}
+                <th key={col.key} style={col.width ? { width: col.width } : undefined} className="py-3 px-5 text-[0.65rem] font-bold uppercase tracking-wider text-gray-500">
+                  {col.label}
                 </th>
               ))}
             </tr>
-          )}
-        </thead>
-        <tbody>
-          {data.map((row, idx) => {
-            const rowId = row.id || idx
-            const isExpanded = expandedRows.has(rowId)
-            
-            return (
-              <Fragment key={rowId}>
-                <tr
-                  className={`adm-table__row ${isExpanded ? 'adm-table__row--expanded' : ''}`}
-                  onClick={() => onRowClick?.(row)}
-                  style={onRowClick ? { cursor: 'pointer' } : undefined}
-                >
-                  {columns.map((col) => (
-                    <td key={col.key}>
-                      {col.render ? col.render(row[col.key], row, { toggleRow: (e) => toggleRow(rowId, e), isExpanded }) : row[col.key]}
-                    </td>
-                  ))}
-                </tr>
-                {expandableContent && isExpanded && (
-                  <tr className="adm-table__expanded-row">
-                    <td colSpan={columns.length} style={{ padding: 0, backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                      <div style={{ padding: '1.25rem', borderLeft: '3px solid var(--dash-primary)' }}>
-                        {expandableContent(row)}
-                      </div>
-                    </td>
+            {columns.some(col => col.filterRender) && (
+              <tr className="bg-[#fec330]/5 border-b border-gray-200">
+                {columns.map((col) => (
+                  <th key={`filter-${col.key}`} className="py-2 px-5 font-normal">
+                    {col.filterRender ? col.filterRender() : null}
+                  </th>
+                ))}
+              </tr>
+            )}
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {data.map((row, idx) => {
+              const rowId = row.id || idx
+              const isExpanded = expandedRows.has(rowId)
+              
+              return (
+                <Fragment key={rowId}>
+                  <tr
+                    className={`transition-colors duration-200 ${isExpanded ? 'bg-blue-50/30' : 'hover:bg-gray-50'}`}
+                    onClick={() => onRowClick?.(row)}
+                    style={onRowClick ? { cursor: 'pointer' } : undefined}
+                  >
+                    {columns.map((col) => (
+                      <td key={col.key} className="py-4 px-5 text-sm font-medium text-[#333333] align-middle">
+                        {col.render ? col.render(row[col.key], row, { toggleRow: (e) => toggleRow(rowId, e), isExpanded }) : row[col.key]}
+                      </td>
+                    ))}
                   </tr>
-                )}
-              </Fragment>
-            )
-          })}
-        </tbody>
-      </table>
+                  {expandableContent && isExpanded && (
+                    <tr>
+                      <td colSpan={columns.length} className="p-0 bg-gray-50 border-b border-gray-200">
+                        <div className="p-6 border-l-4 border-[#002442]">
+                          {expandableContent(row)}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }

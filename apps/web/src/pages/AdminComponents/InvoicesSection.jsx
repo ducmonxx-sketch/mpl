@@ -8,7 +8,6 @@ import AdminModal from './components/AdminModal'
 import AdminFormField from './components/AdminFormField'
 import SearchableSelect from './components/SearchableSelect'
 import { shipmentsAPI, invoicesAPI } from '../../lib/api'
-import { usePolling, POLL_INTERVAL } from '../../lib/polling'
 
 const formatIDR = (num) => {
   if (num === null || num === undefined || isNaN(Number(num))) return '-'
@@ -66,9 +65,9 @@ export default function InvoicesSection() {
 
   useEffect(() => {
     fetchInvoices()
+    const interval = setInterval(() => fetchInvoices({ silent: true }), 8000)
+    return () => clearInterval(interval)
   }, [])
-
-  usePolling(() => fetchInvoices({ silent: true }), POLL_INTERVAL.REFERENCE)
 
   // Load shipments that don't have an invoice when create modal is opened
   useEffect(() => {
@@ -102,7 +101,7 @@ export default function InvoicesSection() {
     try {
       const res = await actionFn(selectedInvoice.dbId)
       showToast(successMsg, 'success')
-      await fetchInvoices({ silent: true })
+      await fetchInvoices()
       if (res && res.invoice) {
         const inv = res.invoice
         setSelectedInvoice({
@@ -150,13 +149,13 @@ export default function InvoicesSection() {
       await invoicesAPI.create({
         shipmentId: formShipmentId,
         subtotal: Number(formSubtotal),
-        taxRate: 11,
+        taxRate: 0,
         dueDate: new Date(formDueDate).toISOString(),
         notes: formNotes || null
       })
       showToast('Faktur baru berhasil dibuat!', 'success')
       setShowCreateModal(false)
-      fetchInvoices({ silent: true })
+      fetchInvoices()
     } catch (err) {
       showToast(err.message || 'Gagal membuat faktur.', 'error')
     }
@@ -212,7 +211,7 @@ export default function InvoicesSection() {
                 try {
                   await invoicesAPI.markPaid(row.dbId)
                   showToast(`${row.id} ditandai sebagai Lunas.`, 'success')
-                  fetchInvoices({ silent: true })
+                  fetchInvoices()
                 } catch (err) {
                   showToast(err.message || 'Gagal menandai lunas.', 'error')
                 }
@@ -245,24 +244,45 @@ export default function InvoicesSection() {
         </div>
       </section>
 
-      {/* Financial Summary */}
+      {/* Premium Financial Summary */}
       <div className="adm-finance-summary" style={{ overflow: 'hidden' }}>
-        <div className="adm-finance-card adm-finance-card--total glass-card">
-          <p className="adm-finance-card__label">Total Tagihan / Total Billing</p>
-          <h3 className="adm-finance-card__value" style={{ pointerEvents: 'none' }}>{formatIDR(totalAll)}</h3>
+        <div className="adm-finance-card adm-finance-card--total" style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <p className="adm-finance-card__label" style={{ color: 'rgba(255,255,255,0.7)' }}>Total Tagihan / Total Billing</p>
+              <h3 className="adm-finance-card__value" style={{ pointerEvents: 'none', marginTop: '0.25rem' }}>{formatIDR(totalAll)}</h3>
+            </div>
+            <div style={{ width: '48px', height: '48px', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.1)', color: '#fff' }}>
+              <Icon name="receipt_long" size={24} />
+            </div>
+          </div>
         </div>
-        <div className="adm-finance-card adm-finance-card--paid glass-card">
-          <p className="adm-finance-card__label">Sudah Dibayar / Paid</p>
-          <h3 className="adm-finance-card__value" style={{ pointerEvents: 'none' }}>{formatIDR(totalPaid)}</h3>
+        <div className="adm-finance-card adm-finance-card--paid" style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <p className="adm-finance-card__label">Sudah Dibayar / Paid</p>
+              <h3 className="adm-finance-card__value" style={{ pointerEvents: 'none', marginTop: '0.25rem' }}>{formatIDR(totalPaid)}</h3>
+            </div>
+            <div style={{ width: '48px', height: '48px', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,67,13,0.1)', color: 'var(--dash-tertiary-light)' }}>
+              <Icon name="check_circle" size={24} />
+            </div>
+          </div>
         </div>
-        <div className="adm-finance-card adm-finance-card--unpaid glass-card">
-          <p className="adm-finance-card__label">Belum Dibayar / Outstanding</p>
-          <h3 className="adm-finance-card__value" style={{ pointerEvents: 'none' }}>{formatIDR(totalUnpaid)}</h3>
+        <div className="adm-finance-card adm-finance-card--unpaid" style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <p className="adm-finance-card__label">Belum Dibayar / Outstanding</p>
+              <h3 className="adm-finance-card__value" style={{ pointerEvents: 'none', marginTop: '0.25rem' }}>{formatIDR(totalUnpaid)}</h3>
+            </div>
+            <div style={{ width: '48px', height: '48px', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(254,195,48,0.1)', color: '#795900' }}>
+              <Icon name="warning" size={24} />
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="adm-filters-dropdowns" style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+      {/* Unified Search & Filters */}
+      <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginTop: '1.5rem', flexWrap: 'wrap' }}>
         <SearchableSelect
           options={Array.from(new Set(INVOICES.map(inv => inv.client))).sort().map(c => ({ value: c, label: c }))}
           value={filterClient}
@@ -270,7 +290,7 @@ export default function InvoicesSection() {
           placeholder="Semua Klien (A-Z)"
           searchPlaceholder="Cari klien..."
           allLabel="Semua Klien (A-Z)"
-          style={{ width: '250px' }}
+          style={{ width: '250px', margin: 0 }}
         />
         <SearchableSelect
           options={[
@@ -285,36 +305,36 @@ export default function InvoicesSection() {
           placeholder="Semua Status"
           searchPlaceholder="Cari status..."
           allLabel="Semua Status"
-          style={{ width: '200px' }}
+          style={{ width: '200px', margin: 0 }}
         />
-      </div>
 
-      <div className="adm-filters" style={{ marginTop: '1rem' }}>
-        {filters.map(f => {
-          const count =
-            f.id === 'all'
-              ? INVOICES.filter(inv => filterClient === 'all' || inv.client === filterClient).length
-              : INVOICES.filter(
-                  inv => {
-                    const matchClient = filterClient === 'all' || inv.client === filterClient
-                    const matchFilterStatus = filterStatus === 'all' || inv.paymentStatus === filterStatus
-                    if (!matchClient || !matchFilterStatus) return false
-                    if (f.id === 'unpaid') return inv.paymentStatus === 'draft' || inv.paymentStatus === 'sent'
-                    if (f.id === 'paid') return inv.paymentStatus === 'paid'
-                    if (f.id === 'overdue') return inv.paymentStatus === 'overdue'
-                    return false
-                  }
-                ).length
-          return (
-            <button
-              key={f.id}
-              className={`adm-filter-tab${filter === f.id ? ' adm-filter-tab--active' : ''}`}
-              onClick={() => { setFilter(f.id); setCurrentPage(1) }}
-            >
-              {f.label} <span className="adm-filter-count">{count}</span>
-            </button>
-          )
-        })}
+        <div className="adm-filters" style={{ margin: 0 }}>
+          {filters.map(f => {
+            const count =
+              f.id === 'all'
+                ? INVOICES.filter(inv => filterClient === 'all' || inv.client === filterClient).length
+                : INVOICES.filter(
+                    inv => {
+                      const matchClient = filterClient === 'all' || inv.client === filterClient
+                      const matchFilterStatus = filterStatus === 'all' || inv.paymentStatus === filterStatus
+                      if (!matchClient || !matchFilterStatus) return false
+                      if (f.id === 'unpaid') return inv.paymentStatus === 'draft' || inv.paymentStatus === 'sent'
+                      if (f.id === 'paid') return inv.paymentStatus === 'paid'
+                      if (f.id === 'overdue') return inv.paymentStatus === 'overdue'
+                      return false
+                    }
+                  ).length
+            return (
+              <button
+                key={f.id}
+                className={`adm-filter-tab${filter === f.id ? ' adm-filter-tab--active' : ''}`}
+                onClick={() => { setFilter(f.id); setCurrentPage(1) }}
+              >
+                {f.label} <span className="adm-filter-count">{count}</span>
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       <div style={{ marginTop: '1.25rem' }}>
@@ -341,11 +361,27 @@ export default function InvoicesSection() {
       {selectedInvoice && (
         <div className="adm-detail-panel glass-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
-            <div>
-              <AdminStatusBadge status={selectedInvoice.paymentStatus} type="invoice" />
-              <h3 style={{ fontSize: '1.35rem', fontWeight: 900, color: 'var(--dash-primary)', margin: '0.5rem 0 0' }}>
-                Detail Faktur {selectedInvoice.id}
-              </h3>
+            <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center' }}>
+              <div 
+                style={{
+                  width: '64px', height: '64px', borderRadius: '50%',
+                  background: 'linear-gradient(135deg, var(--dash-secondary) 0%, #d49811 100%)',
+                  color: 'var(--dash-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '1.5rem', fontWeight: 900, boxShadow: '0 4px 15px rgba(254,195,48,0.3)',
+                  flexShrink: 0
+                }}
+              >
+                {(selectedInvoice.client || 'C').split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
+              </div>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                  <AdminStatusBadge status={selectedInvoice.paymentStatus} type="invoice" />
+                  <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>{selectedInvoice.client}</span>
+                </div>
+                <h3 style={{ fontSize: '1.35rem', fontWeight: 900, color: 'var(--dash-primary)', margin: 0 }}>
+                  Detail Faktur {selectedInvoice.id}
+                </h3>
+              </div>
             </div>
             <button className="adm-action-btn" onClick={() => setSelectedInvoice(null)}>
               <Icon name="close" size={18} />
@@ -458,10 +494,13 @@ export default function InvoicesSection() {
         >
           <div className="adm-form-grid">
             <AdminFormField label="Pengiriman Terkait" required fullWidth>
-              <select
+              <SearchableSelect
+                options={availableShipments.map(s => ({
+                  value: s.id,
+                  label: `${s.id} - ${s.client?.companyName || s.client?.fullName || 'No Client'}`
+                }))}
                 value={formShipmentId}
-                onChange={(e) => {
-                  const shipId = e.target.value
+                onChange={(shipId) => {
                   setFormShipmentId(shipId)
                   const found = availableShipments.find(s => s.id === shipId)
                   if (found && found.price) {
@@ -470,14 +509,10 @@ export default function InvoicesSection() {
                     setFormSubtotal('')
                   }
                 }}
-              >
-                <option value="" disabled>Pilih Pengiriman...</option>
-                {availableShipments.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {s.id} - {s.client?.companyName || s.client?.fullName || 'No Client'}
-                  </option>
-                ))}
-              </select>
+                placeholder="Pilih Pengiriman..."
+                searchPlaceholder="Cari ID Pengiriman..."
+                style={{ width: '100%' }}
+              />
             </AdminFormField>
             <AdminFormField label="Nominal (IDR)" required>
               <input
@@ -495,15 +530,7 @@ export default function InvoicesSection() {
                 </span>
               )}
             </AdminFormField>
-            <AdminFormField label="PPN (11%)">
-              <input
-                type="number"
-                placeholder="495000"
-                min="0"
-                value={formSubtotal ? Math.round(Number(formSubtotal) * 0.11) : ''}
-                readOnly
-              />
-            </AdminFormField>
+
             <AdminFormField label="Jatuh Tempo" required>
               <input
                 type="date"

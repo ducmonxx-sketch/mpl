@@ -7,7 +7,6 @@ import AdminPagination from './components/AdminPagination'
 import AdminModal from './components/AdminModal'
 import AdminFormField from './components/AdminFormField'
 import { fleetAPI } from '../../lib/api'
-import { usePolling, POLL_INTERVAL } from '../../lib/polling'
 
 const formatDate = (dateStr) => {
   if (!dateStr) return '-'
@@ -98,9 +97,9 @@ export default function ArmadaSection() {
 
   useEffect(() => {
     fetchVehicles()
+    const interval = setInterval(() => fetchVehicles({ silent: true }), 8000)
+    return () => clearInterval(interval)
   }, [fetchVehicles])
-
-  usePolling(() => fetchVehicles({ silent: true }), POLL_INTERVAL.REFERENCE)
 
   const resetForm = () => {
     setIsEditMode(false)
@@ -154,7 +153,7 @@ export default function ArmadaSection() {
       showToast('Kendaraan baru berhasil ditambahkan!', 'success')
       setShowCreateModal(false)
       resetForm()
-      await fetchVehicles({ silent: true })
+      await fetchVehicles()
     } catch (err) {
       showToast(err.message || 'Gagal menambah kendaraan.', 'error')
     } finally {
@@ -179,7 +178,7 @@ export default function ArmadaSection() {
       showToast('Kendaraan berhasil diperbarui!', 'success')
       setShowCreateModal(false)
       resetForm()
-      await fetchVehicles({ silent: true })
+      await fetchVehicles()
     } catch (err) {
       showToast(err.message || 'Gagal memperbarui kendaraan.', 'error')
     } finally {
@@ -197,7 +196,7 @@ export default function ArmadaSection() {
       if (selectedVehicle?.id === id) {
         setSelectedVehicle(null)
       }
-      await fetchVehicles({ silent: true })
+      await fetchVehicles()
     } catch (err) {
       showToast(err.message || 'Gagal menghapus kendaraan.', 'error')
     }
@@ -336,54 +335,63 @@ export default function ArmadaSection() {
   ]
 
   return (
-    <div className="dash-content">
+    <div className="flex flex-col gap-6 w-full relative">
       {/* Header */}
-      <section className="dash-header">
-        <div>
-          <h2 className="dash-header__title">Armada Kendaraan</h2>
-          <p className="dash-header__subtitle">Kelola kendaraan, status, dan dokumen armada.</p>
+      <section className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-2xl md:text-3xl font-black text-[#002442] tracking-tight">Armada Kendaraan</h2>
+          <p className="text-sm text-gray-500 font-medium">Kelola kendaraan, status, dan dokumen armada.</p>
         </div>
-        <div className="adm-section-actions">
-          <button className="adm-create-btn" onClick={handleOpenCreateModal}>
-            <Icon name="add" size={18} /> Tambah Kendaraan
-          </button>
-        </div>
+        <button 
+          className="flex items-center justify-center gap-2 px-5 py-2.5 bg-[#fec330] hover:bg-[#eab308] text-[#002442] font-bold rounded-xl shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5" 
+          onClick={handleOpenCreateModal}
+        >
+          <Icon name="add" size={18} /> Tambah Kendaraan
+        </button>
       </section>
 
-      {/* Search */}
-      <div className="adm-search-bar">
-        <Icon name="search" size={18} />
-        <input
-          type="text"
-          placeholder="Cari jenis kendaraan atau no. plat..."
-          value={searchQuery}
-          onChange={(e) => {
-            setSearchQuery(e.target.value)
-            setCurrentPage(1)
-          }}
-        />
-      </div>
+      {/* Search & Filters */}
+      <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
+        {/* Search */}
+        <div className="relative w-full md:w-96">
+          <Icon name="search" size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Cari jenis kendaraan atau no. plat..."
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value)
+              setCurrentPage(1)
+            }}
+            className="w-full pl-11 pr-4 py-2.5 bg-white border border-gray-200 shadow-sm rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] transition-all placeholder:text-gray-400"
+          />
+        </div>
 
-      {/* Filters */}
-      <div className="adm-filters" style={{ marginTop: '1rem' }}>
-        {filters.map((f) => {
-          const count =
-            f.id === 'all'
-              ? vehicles.length
-              : vehicles.filter((v) => v.status === f.id).length
-          return (
-            <button
-              key={f.id}
-              className={`adm-filter-tab${filter === f.id ? ' adm-filter-tab--active' : ''}`}
-              onClick={() => {
-                setFilter(f.id)
-                setCurrentPage(1)
-              }}
-            >
-              {f.label} <span className="adm-filter-count">{count}</span>
-            </button>
-          )
-        })}
+        {/* Filters */}
+        <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-px">
+          {filters.map((f) => {
+            const count =
+              f.id === 'all'
+                ? vehicles.length
+                : vehicles.filter((v) => v.status === f.id).length
+            const isActive = filter === f.id
+            return (
+              <button
+                key={f.id}
+                className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${isActive ? 'border-[#002442] text-[#002442]' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+                onClick={() => {
+                  setFilter(f.id)
+                  setCurrentPage(1)
+                }}
+              >
+                {f.label} 
+                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${isActive ? 'bg-[#002442]/10 text-[#002442]' : 'bg-gray-100 text-gray-500'}`}>
+                  {count}
+                </span>
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* Table */}
@@ -407,113 +415,116 @@ export default function ArmadaSection() {
         )}
       </div>
 
-      {/* Summary Bar */}
-      <div className="adm-driver-summary">
-        <span>
-          <strong>{vehicles.length}</strong> Total Kendaraan
-        </span>
-        <span>|</span>
-        <span>
-          <strong>{availableCount}</strong> Tersedia
-        </span>
-        <span>|</span>
-        <span>
-          <strong>{inUseCount}</strong> Digunakan
-        </span>
-        <span>|</span>
-        <span>
-          <strong>{maintenanceCount}</strong> Perawatan
-        </span>
+      {/* Summary Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          { label: 'Total Kendaraan', value: vehicles.length, icon: 'directions_car', color: 'text-gray-600', bg: 'bg-gray-50' },
+          { label: 'Tersedia', value: availableCount, icon: 'check_circle', color: 'text-green-600', bg: 'bg-green-50' },
+          { label: 'Digunakan', value: inUseCount, icon: 'local_shipping', color: 'text-blue-600', bg: 'bg-blue-50' },
+          { label: 'Perawatan', value: maintenanceCount, icon: 'build', color: 'text-red-600', bg: 'bg-red-50' },
+        ].map((stat, i) => (
+          <div key={i} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
+            <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${stat.bg} ${stat.color}`}>
+              <Icon name={stat.icon} size={24} />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-2xl font-black text-[#002442]">{stat.value}</span>
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">{stat.label}</span>
+            </div>
+          </div>
+        ))}
       </div>
 
-      {/* Detail Panel */}
+      {/* Slide-over Detail Panel */}
       {selectedVehicle && (
-        <div className="adm-detail-panel glass-card">
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'flex-start',
-              marginBottom: '1.5rem',
-            }}
-          >
-            <div>
-              <span
-                style={{
-                  display: 'inline-block',
-                  padding: '0.25rem 0.65rem',
-                  borderRadius: '99px',
-                  fontSize: '0.72rem',
-                  fontWeight: 700,
-                  background:
-                    selectedVehicle.status === 'AVAILABLE'
-                      ? 'rgba(34,197,94,0.12)'
-                      : selectedVehicle.status === 'IN_USE'
-                      ? 'rgba(59,130,246,0.12)'
-                      : 'rgba(239,68,68,0.12)',
-                  color:
-                    selectedVehicle.status === 'AVAILABLE'
-                      ? '#16a34a'
-                      : selectedVehicle.status === 'IN_USE'
-                      ? '#2563eb'
-                      : '#dc2626',
-                }}
-              >
-                {VEHICLE_STATUS_DISPLAY[selectedVehicle.status] || selectedVehicle.status}
-              </span>
-              <h3
-                style={{
-                  fontSize: '1.35rem',
-                  fontWeight: 900,
-                  color: 'var(--dash-primary)',
-                  margin: '0.5rem 0 0',
-                }}
-              >
-                {selectedVehicle.licensePlate}
-              </h3>
-            </div>
-            <button className="adm-action-btn" onClick={() => setSelectedVehicle(null)}>
-              <Icon name="close" size={18} />
-            </button>
-          </div>
-
-          <div className="adm-detail-grid">
-            <div className="adm-detail-section">
-              <h4 className="adm-detail-section__title">
-                <Icon name="directions_car" size={16} /> Informasi Kendaraan
-              </h4>
-              <div className="adm-detail-row">
-                <span className="adm-detail-label">No. Plat</span>
-                <span className="adm-detail-value">{selectedVehicle.licensePlate}</span>
-              </div>
-              <div className="adm-detail-row">
-                <span className="adm-detail-label">Jenis</span>
-                <span className="adm-detail-value">{selectedVehicle.type}</span>
-              </div>
-              <div className="adm-detail-row">
-                <span className="adm-detail-label">Status</span>
-                <span className="adm-detail-value">
+        <div className="fixed inset-0 z-50 flex justify-end">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-[#002442]/20 backdrop-blur-sm animate-in fade-in duration-300"
+            onClick={() => setSelectedVehicle(null)}
+          />
+          
+          {/* Panel */}
+          <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300 border-l border-gray-100">
+            {/* Header */}
+            <div className="flex justify-between items-start p-6 border-b border-gray-100 bg-gray-50/50">
+              <div>
+                <span className={`inline-flex px-3 py-1 rounded-full text-xs font-bold border ${
+                    selectedVehicle.status === 'AVAILABLE' ? 'bg-green-50 text-green-700 border-green-200' :
+                    selectedVehicle.status === 'IN_USE' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                    'bg-red-50 text-red-700 border-red-200'
+                  }`}
+                >
                   {VEHICLE_STATUS_DISPLAY[selectedVehicle.status] || selectedVehicle.status}
                 </span>
+                <h3 className="text-2xl font-black text-[#002442] mt-3">
+                  {selectedVehicle.licensePlate}
+                </h3>
               </div>
-              <div className="adm-detail-row">
-                <span className="adm-detail-label">Total Penugasan</span>
-                <span className="adm-detail-value">{selectedVehicle.assignments}</span>
-              </div>
+              <button 
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-white border border-gray-200 text-gray-500 hover:text-[#002442] hover:bg-gray-50 transition-colors shadow-sm"
+                onClick={() => setSelectedVehicle(null)}
+              >
+                <Icon name="close" size={18} />
+              </button>
             </div>
 
-            <div className="adm-detail-section">
-              <h4 className="adm-detail-section__title">
-                <Icon name="description" size={16} /> Dokumen Kendaraan
-              </h4>
-              <div className="adm-detail-row">
-                <span className="adm-detail-label">Masa Berlaku STNK</span>
-                <span className="adm-detail-value">{selectedVehicle.stnkExpiry}</span>
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-8 custom-scrollbar">
+              <div className="flex flex-col gap-4">
+                <h4 className="flex items-center gap-2 text-sm font-bold text-gray-900 border-b border-gray-100 pb-2">
+                  <Icon name="directions_car" size={18} className="text-gray-400" /> Informasi Kendaraan
+                </h4>
+                <div className="grid grid-cols-2 gap-y-4">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">No. Plat</span>
+                    <span className="text-sm font-bold text-[#002442]">{selectedVehicle.licensePlate}</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Jenis</span>
+                    <span className="text-sm font-bold text-[#002442]">{selectedVehicle.type}</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Total Penugasan</span>
+                    <span className="text-sm font-bold text-[#002442]">{selectedVehicle.assignments}</span>
+                  </div>
+                </div>
               </div>
-              <div className="adm-detail-row">
-                <span className="adm-detail-label">Masa Berlaku KIR</span>
-                <span className="adm-detail-value">{selectedVehicle.kirExpiry}</span>
+
+              <div className="flex flex-col gap-4">
+                <h4 className="flex items-center gap-2 text-sm font-bold text-gray-900 border-b border-gray-100 pb-2">
+                  <Icon name="description" size={18} className="text-gray-400" /> Dokumen Kendaraan
+                </h4>
+                <div className="flex flex-col gap-4">
+                  <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 flex justify-between items-center">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Masa Berlaku STNK</span>
+                      <span className="text-sm font-bold text-[#002442]">{selectedVehicle.stnkExpiry}</span>
+                    </div>
+                    <Icon name="event" size={24} className="text-gray-300" />
+                  </div>
+                  <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 flex justify-between items-center">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Masa Berlaku KIR</span>
+                      <span className="text-sm font-bold text-[#002442]">{selectedVehicle.kirExpiry}</span>
+                    </div>
+                    <Icon name="event" size={24} className="text-gray-300" />
+                  </div>
+                </div>
               </div>
+            </div>
+            
+            {/* Footer actions */}
+            <div className="p-6 border-t border-gray-100 bg-gray-50/50">
+              <button
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-gray-200 hover:bg-gray-50 hover:border-gray-300 text-gray-700 font-bold rounded-xl transition-all shadow-sm"
+                onClick={() => {
+                  handleOpenEdit(selectedVehicle)
+                  setSelectedVehicle(null)
+                }}
+              >
+                <Icon name="edit" size={18} /> Edit Data Kendaraan
+              </button>
             </div>
           </div>
         </div>
@@ -528,9 +539,13 @@ export default function ArmadaSection() {
           onSubmit={isEditMode ? handleUpdateVehicle : handleCreateVehicle}
           submitLabel={submitting ? 'Menyimpan...' : (isEditMode ? 'Simpan Perubahan' : 'Simpan Kendaraan')}
         >
-          <div className="adm-form-grid">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <AdminFormField label="Jenis Kendaraan" required>
-              <select value={type} onChange={(e) => setType(e.target.value)}>
+              <select 
+                value={type} 
+                onChange={(e) => setType(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
+              >
                 <option value="" disabled>
                   Pilih Jenis...
                 </option>
@@ -548,6 +563,7 @@ export default function ArmadaSection() {
                 placeholder="B 1234 XY"
                 value={licensePlate}
                 onChange={(e) => setLicensePlate(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
               />
             </AdminFormField>
 
@@ -556,6 +572,7 @@ export default function ArmadaSection() {
                 type="date"
                 value={stnkExpiry}
                 onChange={(e) => setStnkExpiry(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
               />
             </AdminFormField>
 
@@ -564,6 +581,7 @@ export default function ArmadaSection() {
                 type="date"
                 value={kirExpiry}
                 onChange={(e) => setKirExpiry(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
               />
             </AdminFormField>
 
@@ -572,6 +590,7 @@ export default function ArmadaSection() {
                 <select
                   value={status}
                   onChange={(e) => setStatus(e.target.value)}
+                  className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
                 >
                   <option value="AVAILABLE">Tersedia</option>
                   <option value="IN_USE">Digunakan</option>
