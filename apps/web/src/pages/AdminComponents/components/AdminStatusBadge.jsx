@@ -1,33 +1,37 @@
 export default function AdminStatusBadge({ status, type = 'shipment' }) {
   const configs = {
     shipment: {
-      pending: { label: 'Menunggu', cls: 'adm-badge--pending' },
-      processing: { label: 'Diproses', cls: 'adm-badge--processing' },
-      in_transit: { label: 'Dalam Perjalanan', cls: 'adm-badge--transit' },
-      delivered: { label: 'Terkirim', cls: 'adm-badge--delivered' },
-      cancelled: { label: 'Dibatalkan', cls: 'adm-badge--cancelled' },
+      pending: { label: 'Menunggu', cls: 'bg-gray-100 text-gray-600 border border-gray-200' },
+      processing: { label: 'Diproses', cls: 'bg-blue-50 text-blue-700 border border-blue-200' },
+      in_transit: { label: 'Dalam Perjalanan', cls: 'bg-amber-50 text-amber-700 border border-amber-200' },
+      delivered: { label: 'Terkirim', cls: 'bg-green-50 text-green-700 border border-green-200' },
+      cancelled: { label: 'Dibatalkan', cls: 'bg-red-50 text-red-700 border border-red-200' },
     },
     invoice: {
-      draft: { label: 'Konsep', cls: 'adm-badge--pending' },
-      sent: { label: 'Terkirim', cls: 'adm-badge--processing' },
-      unpaid: { label: 'Belum Dibayar', cls: 'adm-badge--pending' },
-      paid: { label: 'Lunas', cls: 'adm-badge--delivered' },
-      overdue: { label: 'Lewat Jatuh Tempo', cls: 'adm-badge--failed' },
-      cancelled: { label: 'Dibatalkan', cls: 'adm-badge--cancelled' },
+      draft: { label: 'Konsep', cls: 'bg-gray-100 text-gray-600 border border-gray-200' },
+      sent: { label: 'Terkirim', cls: 'bg-blue-50 text-blue-700 border border-blue-200' },
+      unpaid: { label: 'Belum Dibayar', cls: 'bg-amber-50 text-amber-700 border border-amber-200' },
+      paid: { label: 'Lunas', cls: 'bg-green-50 text-green-700 border border-green-200' },
+      overdue: { label: 'Lewat Jatuh Tempo', cls: 'bg-red-50 text-red-700 border border-red-200' },
+      cancelled: { label: 'Dibatalkan', cls: 'bg-gray-100 text-gray-500 border border-gray-200' },
     },
     driver: {
-      available: { label: 'Tersedia', cls: 'adm-badge--delivered' },
-      on_duty: { label: 'Bertugas', cls: 'adm-badge--transit' },
-      inactive: { label: 'Tidak Aktif', cls: 'adm-badge--failed' },
+      available: { label: 'Tersedia', cls: 'bg-green-50 text-green-700 border border-green-200' },
+      on_duty: { label: 'Bertugas', cls: 'bg-amber-50 text-amber-700 border border-amber-200' },
+      inactive: { label: 'Tidak Aktif', cls: 'bg-red-50 text-red-700 border border-red-200' },
     },
     user: {
-      active: { label: 'Aktif', cls: 'adm-badge--delivered' },
-      inactive: { label: 'Nonaktif', cls: 'adm-badge--failed' },
+      active: { label: 'Aktif', cls: 'bg-green-50 text-green-700 border border-green-200' },
+      inactive: { label: 'Nonaktif', cls: 'bg-red-50 text-red-700 border border-red-200' },
     },
   }
 
   const normStatus = (status || '').toLowerCase()
-  const cfg = configs[type]?.[normStatus] || { label: status, cls: 'adm-badge--pending' }
+  const cfg = configs[type]?.[normStatus] || { label: status, cls: 'bg-gray-100 text-gray-600 border border-gray-200' }
 
-  return <span className={`adm-badge ${cfg.cls}`}>{cfg.label}</span>
+  return (
+    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[0.65rem] font-bold uppercase tracking-wider ${cfg.cls}`}>
+      {cfg.label}
+    </span>
+  )
 }

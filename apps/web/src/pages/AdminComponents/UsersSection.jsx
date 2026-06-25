@@ -195,10 +195,10 @@ export default function UsersSection() {
           style={{
             fontSize: '0.75rem',
             fontWeight: 700,
-            color: v === 'client' ? '#00430d' : 'var(--dash-primary)',
-            background: v === 'client' ? 'rgba(0,67,13,0.06)' : 'rgba(0,36,66,0.06)',
-            padding: '0.2rem 0.6rem',
-            borderRadius: '6px',
+            color: v === 'client' ? 'var(--dash-tertiary-light)' : 'var(--dash-primary)',
+            background: v === 'client' ? 'rgba(0,67,13,0.1)' : 'rgba(0,36,66,0.06)',
+            padding: '0.25rem 0.75rem',
+            borderRadius: '12px',
           }}
         >
           {ROLE_LABELS[v] || v}
@@ -257,6 +257,10 @@ export default function UsersSection() {
     },
   ]
 
+  const statsTotalUsers = USERS.length
+  const statsActiveClients = USERS.filter(u => u.role === 'client' && u.isActive).length
+  const statsInternalTeam = USERS.filter(u => u.role !== 'client').length
+
   return (
     <div className="dash-content">
       <section className="dash-header">
@@ -271,7 +275,32 @@ export default function UsersSection() {
         </div>
       </section>
 
-      <div className="adm-filters" style={{ marginTop: '1.5rem' }}>
+      {/* KPI Grid */}
+      <div className="adm-kpi-grid" style={{ marginBottom: '1.5rem' }}>
+        <div className="adm-kpi-card glass-card">
+          <div className="adm-kpi-card__icon"><Icon name="group" size={24} /></div>
+          <div className="adm-kpi-card__info">
+            <h3 className="adm-kpi-card__title">Total Pengguna</h3>
+            <p className="adm-kpi-card__value">{statsTotalUsers}</p>
+          </div>
+        </div>
+        <div className="adm-kpi-card glass-card">
+          <div className="adm-kpi-card__icon" style={{ color: '#16a34a', background: 'rgba(22,163,74,0.1)' }}><Icon name="verified_user" size={24} /></div>
+          <div className="adm-kpi-card__info">
+            <h3 className="adm-kpi-card__title">Klien Aktif</h3>
+            <p className="adm-kpi-card__value">{statsActiveClients}</p>
+          </div>
+        </div>
+        <div className="adm-kpi-card glass-card">
+          <div className="adm-kpi-card__icon" style={{ color: 'var(--dash-primary)', background: 'rgba(0,36,66,0.1)' }}><Icon name="admin_panel_settings" size={24} /></div>
+          <div className="adm-kpi-card__info">
+            <h3 className="adm-kpi-card__title">Tim Internal</h3>
+            <p className="adm-kpi-card__value">{statsInternalTeam}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="adm-filters" style={{ marginTop: '0' }}>
         <button
           className={`adm-filter-tab ${userType === 'all' ? 'adm-filter-tab--active' : ''}`}
           onClick={() => setUserType('all')}
@@ -304,13 +333,26 @@ export default function UsersSection() {
       {selectedUser && (
         <div className="adm-detail-panel glass-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
-            <div>
-              <h3 style={{ fontSize: '1.35rem', fontWeight: 900, color: 'var(--dash-primary)', margin: 0 }}>
-                {selectedUser.name}
-              </h3>
-              <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '4px 0 0' }}>
-                {ROLE_LABELS[selectedUser.role]} • {selectedUser.company}
-              </p>
+            <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center' }}>
+              <div 
+                style={{
+                  width: '64px', height: '64px', borderRadius: '50%',
+                  background: 'linear-gradient(135deg, var(--dash-secondary) 0%, #d49811 100%)',
+                  color: 'var(--dash-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '1.5rem', fontWeight: 900, boxShadow: '0 4px 15px rgba(254,195,48,0.3)',
+                  flexShrink: 0
+                }}
+              >
+                {(selectedUser.name || 'U').split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
+              </div>
+              <div>
+                <h3 style={{ fontSize: '1.35rem', fontWeight: 900, color: 'var(--dash-primary)', margin: 0 }}>
+                  {selectedUser.name}
+                </h3>
+                <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '4px 0 0' }}>
+                  {ROLE_LABELS[selectedUser.role]} • {selectedUser.company}
+                </p>
+              </div>
             </div>
             <button className="adm-action-btn" onClick={() => setSelectedUser(null)}>
               <Icon name="close" size={18} />
@@ -475,15 +517,18 @@ export default function UsersSection() {
             <div>
               <div
                 style={{
-                  padding: '1.25rem',
-                  background: 'rgba(234,179,8,0.06)',
-                  border: '1px solid rgba(234,179,8,0.2)',
-                  borderRadius: '12px',
+                  padding: '1.5rem',
+                  background: 'linear-gradient(135deg, rgba(242,184,36,0.05) 0%, rgba(242,184,36,0.15) 100%)',
+                  border: '1px solid rgba(242,184,36,0.3)',
+                  borderRadius: '16px',
+                  boxShadow: '0 8px 32px rgba(242,184,36,0.05)',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1rem' }}>
-                  <Icon name="link" size={18} style={{ color: '#eab308' }} />
-                  <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--dash-primary)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '1.25rem' }}>
+                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'var(--dash-secondary)', color: 'var(--dash-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Icon name="link" size={18} />
+                  </div>
+                  <span style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--dash-primary)' }}>
                     Magic Link Pendaftaran
                   </span>
                 </div>

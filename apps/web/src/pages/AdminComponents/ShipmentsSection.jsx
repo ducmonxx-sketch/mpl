@@ -323,20 +323,19 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
       key: 'actions',
       label: '',
       render: (_, row) => (
-        <div className="adm-actions">
+        <div className="flex items-center justify-end gap-2">
           <button
-            className="adm-action-btn"
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 bg-gray-100 hover:bg-[#002442] hover:text-white transition-colors"
             title="Lihat Detail"
             onClick={(e) => { e.stopPropagation(); setSelectedShipment(row) }}
           >
             <Icon name="visibility" size={16} />
           </button>
           <button
-            className="adm-action-btn"
+            className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${row.status === 'delivered' ? 'text-gray-300 bg-gray-50 cursor-not-allowed' : 'text-gray-500 bg-gray-100 hover:bg-[#fec330] hover:text-[#002442]'}`}
             title={row.status === 'delivered' ? 'Pengiriman Selesai (Terkunci)' : 'Tugaskan Driver'}
             onClick={(e) => { e.stopPropagation(); openAssignModal(row) }}
             disabled={row.status === 'delivered'}
-            style={row.status === 'delivered' ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
           >
             <Icon name="person_add" size={16} />
           </button>
@@ -347,62 +346,64 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
 
   // ── Render ────────────────────────────────────────────────────
   return (
-    <div className="dash-content">
+    <div className="flex flex-col gap-6 max-w-[1600px] mx-auto w-full pb-10">
       {/* Header */}
-      <section className="dash-header">
-        <div>
-          <h2 className="dash-header__title">Manajemen Pengiriman</h2>
-          <p className="dash-header__subtitle">Kelola semua pengiriman dari pickup hingga delivery.</p>
+      <section className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-2xl md:text-3xl font-black text-[#002442] tracking-tight">Manajemen Pengiriman</h2>
+          <p className="text-sm text-gray-500 font-medium">Kelola semua pengiriman dari pickup hingga delivery.</p>
         </div>
-        <div className="adm-section-actions">
-          <button className="adm-create-btn" onClick={openCreateModal}>
-            <Icon name="add" size={18} /> Buat Pengiriman Baru
-          </button>
-        </div>
+        <button 
+          className="flex items-center justify-center gap-2 px-5 py-2.5 bg-[#fec330] hover:bg-[#eab308] text-[#002442] font-bold rounded-xl shadow-sm transition-all hover:shadow-md" 
+          onClick={openCreateModal}
+        >
+          <Icon name="add" size={20} /> Buat Pengiriman Baru
+        </button>
       </section>
 
-      {/* Search */}
-      <div className="adm-search-bar">
-        <Icon name="search" size={18} />
-        <input
-          type="text"
-          placeholder="Cari ID order atau nama klien..."
-          value={searchQuery}
-          onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
-        />
-      </div>
-
-      {/* Filter dropdowns */}
-      <div className="adm-filters-dropdowns" style={{ display: 'flex', gap: '1rem', marginTop: '1rem', flexWrap: 'wrap' }}>
-        <SearchableSelect
-          options={Array.from(new Set(SHIPMENTS.map(s => s.client))).sort().map(c => ({ value: c, label: c }))}
-          value={filterClient}
-          onChange={v => { setFilterClient(v); setCurrentPage(1) }}
-          placeholder="Semua Klien (A-Z)"
-          searchPlaceholder="Cari klien..."
-          allLabel="Semua Klien (A-Z)"
-          style={{ width: '250px' }}
-        />
-        <SearchableSelect
-          options={[
-            { value: 'Darat', label: 'Darat' },
-            { value: 'Laut', label: 'Laut' },
-            { value: 'Udara', label: 'Udara' },
-            { value: 'inter_island', label: 'Antar Pulau' },
-            { value: 'last_mile', label: 'Lokal' },
-            { value: 'warehousing', label: 'Gudang' },
-          ]}
-          value={filterService}
-          onChange={v => { setFilterService(v); setCurrentPage(1) }}
-          placeholder="Semua Layanan"
-          searchPlaceholder="Cari layanan..."
-          allLabel="Semua Layanan"
-          style={{ width: '200px' }}
-        />
+      {/* Toolbar: Search & Filters */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mt-2">
+        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+          <div className="relative w-full sm:w-72">
+            <Icon name="search" size={20} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Cari ID order atau nama klien..."
+              value={searchQuery}
+              onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
+              className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] transition-all"
+            />
+          </div>
+          <SearchableSelect
+            options={Array.from(new Set(SHIPMENTS.map(s => s.client))).sort().map(c => ({ value: c, label: c }))}
+            value={filterClient}
+            onChange={v => { setFilterClient(v); setCurrentPage(1) }}
+            placeholder="Semua Klien (A-Z)"
+            searchPlaceholder="Cari klien..."
+            allLabel="Semua Klien (A-Z)"
+            className="w-full sm:w-56"
+          />
+          <SearchableSelect
+            options={[
+              { value: 'Darat', label: 'Darat' },
+              { value: 'Laut', label: 'Laut' },
+              { value: 'Udara', label: 'Udara' },
+              { value: 'inter_island', label: 'Antar Pulau' },
+              { value: 'last_mile', label: 'Lokal' },
+              { value: 'warehousing', label: 'Gudang' },
+            ]}
+            value={filterService}
+            onChange={v => { setFilterService(v); setCurrentPage(1) }}
+            placeholder="Semua Layanan"
+            searchPlaceholder="Cari layanan..."
+            allLabel="Semua Layanan"
+            className="w-full sm:w-48"
+          />
+        </div>
       </div>
 
       {/* Status filter tabs */}
-      <div className="adm-filters" style={{ marginTop: '1rem' }}>
+      <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-px">
         {filters.map(f => {
           const baseSet = SHIPMENTS.filter(s =>
             (filterClient  === 'all' || s.client      === filterClient) &&
@@ -411,27 +412,32 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
           const count = f.id === 'all'
             ? baseSet.length
             : baseSet.filter(s => s.status === f.id).length
+          const isActive = filter === f.id
+          
           return (
             <button
               key={f.id}
-              className={`adm-filter-tab${filter === f.id ? ' adm-filter-tab--active' : ''}`}
+              className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${isActive ? 'border-[#002442] text-[#002442]' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
               onClick={() => { setFilter(f.id); setCurrentPage(1) }}
             >
-              {f.label} <span className="adm-filter-count">{count}</span>
+              {f.label} 
+              <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${isActive ? 'bg-[#002442]/10 text-[#002442]' : 'bg-gray-100 text-gray-500'}`}>
+                {count}
+              </span>
             </button>
           )
         })}
       </div>
 
       {/* Table */}
-      <div style={{ marginTop: '1.25rem' }}>
+      <div>
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
-            <Icon name="sync" size={24} />
-            <p style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}>Memuat data pengiriman…</p>
+          <div className="flex flex-col items-center justify-center p-12 text-gray-400 gap-3 border border-dashed border-gray-300 rounded-2xl bg-gray-50/50">
+             <Icon name="sync" size={32} className="animate-spin" />
+             <p className="text-sm font-medium">Memuat data pengiriman...</p>
           </div>
         ) : (
-          <>
+          <div className="flex flex-col gap-4">
             <AdminDataTable columns={columns} data={paginated} onRowClick={setSelectedShipment} />
             <AdminPagination
               currentPage={currentPage}
@@ -440,167 +446,178 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
               itemsPerPage={ITEMS_PER_PAGE}
               onPageChange={setCurrentPage}
             />
-          </>
+          </div>
         )}
       </div>
 
-      {/* ── Detail Panel ── */}
+      {/* ── Slide-over Detail Panel ── */}
       {selectedShipment && (
-        <div className="adm-detail-panel glass-card">
-          {/* Panel header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
-            <div>
-              <AdminStatusBadge status={selectedShipment.status} type="shipment" />
-              <h3 style={{ fontSize: '1.35rem', fontWeight: 900, color: 'var(--dash-primary)', margin: '0.5rem 0 0' }}>
-                Detail Pengiriman #{selectedShipment.id}
-              </h3>
-            </div>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              {/* Status updater */}
-              <select
-                style={{ padding: '0.4rem 0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.75rem', fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}
-                value={selectedShipment.rawStatus}
-                onChange={(e) => handleStatusUpdate(e.target.value)}
-              >
-                {RAW_STATUS_OPTIONS.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-              {onTrackFull && (
-                <button
-                  className="adm-action-btn"
-                  style={{ backgroundColor: 'rgba(254,195,48,0.1)', color: 'var(--dash-secondary-hover)', padding: '0.4rem 0.75rem', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 700, width: 'auto' }}
-                  onClick={() => onTrackFull(selectedShipment.id)}
+        <>
+          {/* Backdrop */}
+          <div className="fixed inset-0 bg-[#002442]/20 backdrop-blur-sm z-[100]" onClick={() => setSelectedShipment(null)} />
+          {/* Panel */}
+          <div className="fixed right-0 top-0 h-screen w-full sm:w-[500px] bg-white shadow-2xl z-[101] flex flex-col animate-in slide-in-from-right duration-300 border-l border-gray-200">
+            {/* Panel Header */}
+            <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex flex-col gap-4">
+              <div className="flex justify-between items-start">
+                <AdminStatusBadge status={selectedShipment.status} type="shipment" />
+                <button 
+                  className="w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-700 hover:bg-white transition-colors"
+                  onClick={() => setSelectedShipment(null)}
                 >
-                  Lacak Penuh
+                  <Icon name="close" size={20} />
                 </button>
-              )}
-              <button
-                className="adm-action-btn"
-                title="Tutup"
-                onClick={() => setSelectedShipment(null)}
-              >
-                <Icon name="close" size={18} />
-              </button>
-            </div>
-          </div>
-
-          {/* Detail grid */}
-          <div className="adm-detail-grid">
-            {/* Informasi Klien */}
-            <div className="adm-detail-section">
-              <h4 className="adm-detail-section__title"><Icon name="people" size={16} /> Informasi Klien</h4>
-              <div className="adm-detail-row">
-                <span className="adm-detail-label">Perusahaan</span>
-                <span className="adm-detail-value">{selectedShipment.client}</span>
               </div>
-              <div className="adm-detail-row">
-                <span className="adm-detail-label">Dibuat oleh</span>
-                <span className="adm-detail-value">{selectedShipment.createdBy}</span>
-              </div>
-            </div>
-
-            {/* Rute Pengiriman */}
-            <div className="adm-detail-section">
-              <h4 className="adm-detail-section__title"><Icon name="route" size={16} /> Rute Pengiriman</h4>
-              <div className="adm-detail-row">
-                <span className="adm-detail-label">Asal</span>
-                <span className="adm-detail-value">{selectedShipment.originCity}</span>
-              </div>
-              <div className="adm-detail-row">
-                <span className="adm-detail-label">Tujuan</span>
-                <span className="adm-detail-value">{selectedShipment.destinationCity}</span>
-              </div>
-              <div className="adm-detail-row">
-                <span className="adm-detail-label">Pickup</span>
-                <span className="adm-detail-value">{selectedShipment.pickupDate}</span>
-              </div>
-              <div className="adm-detail-row">
-                <span className="adm-detail-label">Est. Tiba</span>
-                <span className="adm-detail-value">{selectedShipment.estimatedArrival}</span>
-              </div>
-            </div>
-
-            {/* Detail Muatan */}
-            <div className="adm-detail-section">
-              <h4 className="adm-detail-section__title"><Icon name="inventory_2" size={16} /> Detail Muatan</h4>
-              <div className="adm-detail-row">
-                <span className="adm-detail-label">Deskripsi</span>
-                <span className="adm-detail-value">{selectedShipment.cargoDescription}</span>
-              </div>
-              <div className="adm-detail-row">
-                <span className="adm-detail-label">Berat</span>
-                <span className="adm-detail-value">{selectedShipment.weightKg} kg</span>
-              </div>
-              <div className="adm-detail-row">
-                <span className="adm-detail-label">Units / Pcs</span>
-                <span className="adm-detail-value">{selectedShipment.units}</span>
-              </div>
-            </div>
-
-            {/* Driver & Kendaraan */}
-            <div className="adm-detail-section">
-              <h4 className="adm-detail-section__title"><Icon name="directions_car" size={16} /> Driver &amp; Kendaraan</h4>
-              <div className="adm-detail-row">
-                <span className="adm-detail-label">Driver</span>
-                <span className="adm-detail-value">{selectedShipment.driverName || 'Belum ditugaskan'}</span>
-              </div>
-              <div className="adm-detail-row">
-                <span className="adm-detail-label">Kendaraan</span>
-                <span className="adm-detail-value">{selectedShipment.vehicleName || 'Belum ditugaskan'}</span>
-              </div>
-              <div style={{ marginTop: '0.75rem' }}>
-                {selectedShipment.driverName ? (
+              <h3 className="text-2xl font-black text-[#002442]">Detail #{selectedShipment.id}</h3>
+              <div className="flex gap-2">
+                <select
+                  className="px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-xs font-bold text-gray-700 focus:outline-none focus:border-[#fec330]"
+                  value={selectedShipment.rawStatus}
+                  onChange={(e) => handleStatusUpdate(e.target.value)}
+                >
+                  {RAW_STATUS_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+                {onTrackFull && (
                   <button
-                    className="adm-create-btn"
-                    style={{ width: '100%', justifyContent: 'center', gap: '0.4rem', padding: '0.625rem 1rem', backgroundColor: '#25D366', borderColor: '#25D366' }}
-                    onClick={() => {
-                      const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu']
-                      let pickupDateObj = new Date()
-                      try {
-                        const parts = selectedShipment.pickupDate.split(' ')
-                        if (parts.length === 3) {
-                          const monthMap = { Jan:0, Feb:1, Mar:2, Apr:3, Mei:4, Jun:5, Jul:6, Ags:7, Sep:8, Okt:9, Nov:10, Des:11 }
-                          pickupDateObj = new Date(parts[2], monthMap[parts[1]] || 0, parts[0])
-                        }
-                      } catch (e) {}
-                      const dayName = dayNames[pickupDateObj.getDay() || 0]
-                      const msg = `Informasi Klien\nNama Perusahaan: ${selectedShipment.client}\nAlamat Pick-up: ${selectedShipment.originCity}\nAlamat Drop off: ${selectedShipment.destinationCity}\nHari & Tanggal Pickup: ${dayName}, ${selectedShipment.pickupDate}\n\nDetail Muatan\nDeskripsi: ${selectedShipment.cargoDescription}\nJumlah Unit /pcs: ${selectedShipment.units}${selectedShipment.weightKg && Number(selectedShipment.weightKg) > 0 ? `\nBerat: ${selectedShipment.weightKg} kg` : ''}\n\n-Admin MPL`
-                      window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
-                      showToast('Membuka WhatsApp untuk mengirim notifikasi driver...', 'success')
-                    }}
+                    className="px-3 py-1.5 bg-[#fec330]/15 hover:bg-[#fec330]/25 text-[#795900] rounded-lg text-xs font-bold transition-colors"
+                    onClick={() => onTrackFull(selectedShipment.id)}
                   >
-                    <Icon name="chat" size={14} /> Kirim Notifikasi WhatsApp Driver
+                    Lacak Penuh
                   </button>
-                ) : (
-                  <p style={{ fontSize: '0.78rem', color: '#94a3b8', fontStyle: 'italic', margin: 0, textAlign: 'center', padding: '0.5rem 0' }}>
-                    Tugaskan driver terlebih dahulu untuk mengirim notifikasi.
-                  </p>
                 )}
               </div>
-              {selectedShipment.notes && (
-                <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'rgba(254,195,48,0.06)', borderRadius: '8px', border: '1px solid rgba(254,195,48,0.12)' }}>
-                  <p style={{ fontSize: '0.75rem', fontWeight: 600, color: '#795900', fontStyle: 'italic', margin: 0 }}>
-                    &ldquo;{selectedShipment.notes}&rdquo;
-                  </p>
-                </div>
-              )}
             </div>
 
-            {/* Harga */}
-            <div className="adm-detail-section">
-              <h4 className="adm-detail-section__title"><Icon name="payments" size={16} /> Harga</h4>
-              <div className="adm-detail-row">
-                <span className="adm-detail-label">Invoice</span>
-                <span className="adm-detail-value" style={{ fontWeight: 700 }}>
-                  {selectedShipment.price !== null && selectedShipment.price !== undefined
-                    ? 'Rp ' + Number(selectedShipment.price).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                    : '-'}
-                </span>
+            {/* Panel Body */}
+            <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-8 custom-scrollbar">
+              {/* Info Klien */}
+              <div className="flex flex-col gap-3">
+                <h4 className="flex items-center gap-2 text-sm font-bold text-gray-900 border-b border-gray-100 pb-2">
+                  <Icon name="people" size={18} className="text-gray-400" /> Informasi Klien
+                </h4>
+                <div className="grid grid-cols-3 gap-2">
+                  <span className="text-sm text-gray-500 font-medium">Perusahaan</span>
+                  <span className="text-sm font-bold text-gray-900 col-span-2">{selectedShipment.client}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <span className="text-sm text-gray-500 font-medium">Dibuat oleh</span>
+                  <span className="text-sm font-bold text-gray-900 col-span-2">{selectedShipment.createdBy}</span>
+                </div>
+              </div>
+
+              {/* Rute Pengiriman */}
+              <div className="flex flex-col gap-3">
+                <h4 className="flex items-center gap-2 text-sm font-bold text-gray-900 border-b border-gray-100 pb-2">
+                  <Icon name="route" size={18} className="text-gray-400" /> Rute Pengiriman
+                </h4>
+                <div className="grid grid-cols-3 gap-2">
+                  <span className="text-sm text-gray-500 font-medium">Asal</span>
+                  <span className="text-sm font-bold text-gray-900 col-span-2">{selectedShipment.originCity}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <span className="text-sm text-gray-500 font-medium">Tujuan</span>
+                  <span className="text-sm font-bold text-gray-900 col-span-2">{selectedShipment.destinationCity}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <span className="text-sm text-gray-500 font-medium">Pickup</span>
+                  <span className="text-sm font-bold text-gray-900 col-span-2">{selectedShipment.pickupDate}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <span className="text-sm text-gray-500 font-medium">Est. Tiba</span>
+                  <span className="text-sm font-bold text-gray-900 col-span-2">{selectedShipment.estimatedArrival}</span>
+                </div>
+              </div>
+
+              {/* Detail Muatan */}
+              <div className="flex flex-col gap-3">
+                <h4 className="flex items-center gap-2 text-sm font-bold text-gray-900 border-b border-gray-100 pb-2">
+                  <Icon name="inventory_2" size={18} className="text-gray-400" /> Detail Muatan
+                </h4>
+                <div className="grid grid-cols-3 gap-2">
+                  <span className="text-sm text-gray-500 font-medium">Deskripsi</span>
+                  <span className="text-sm font-bold text-gray-900 col-span-2">{selectedShipment.cargoDescription}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <span className="text-sm text-gray-500 font-medium">Berat</span>
+                  <span className="text-sm font-bold text-gray-900 col-span-2">{selectedShipment.weightKg} kg</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <span className="text-sm text-gray-500 font-medium">Units / Pcs</span>
+                  <span className="text-sm font-bold text-gray-900 col-span-2">{selectedShipment.units}</span>
+                </div>
+              </div>
+
+              {/* Driver & Kendaraan */}
+              <div className="flex flex-col gap-3">
+                <h4 className="flex items-center gap-2 text-sm font-bold text-gray-900 border-b border-gray-100 pb-2">
+                  <Icon name="directions_car" size={18} className="text-gray-400" /> Driver &amp; Kendaraan
+                </h4>
+                <div className="grid grid-cols-3 gap-2">
+                  <span className="text-sm text-gray-500 font-medium">Driver</span>
+                  <span className="text-sm font-bold text-gray-900 col-span-2">{selectedShipment.driverName || 'Belum ditugaskan'}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <span className="text-sm text-gray-500 font-medium">Kendaraan</span>
+                  <span className="text-sm font-bold text-gray-900 col-span-2">{selectedShipment.vehicleName || 'Belum ditugaskan'}</span>
+                </div>
+                
+                <div className="mt-2">
+                  {selectedShipment.driverName ? (
+                    <button
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold rounded-xl shadow-sm transition-all"
+                      onClick={() => {
+                        const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu']
+                        let pickupDateObj = new Date()
+                        try {
+                          const parts = selectedShipment.pickupDate.split(' ')
+                          if (parts.length === 3) {
+                            const monthMap = { Jan:0, Feb:1, Mar:2, Apr:3, Mei:4, Jun:5, Jul:6, Ags:7, Sep:8, Okt:9, Nov:10, Des:11 }
+                            pickupDateObj = new Date(parts[2], monthMap[parts[1]] || 0, parts[0])
+                          }
+                        } catch (e) {}
+                        const dayName = dayNames[pickupDateObj.getDay() || 0]
+                        const msg = `Informasi Klien\nNama Perusahaan: ${selectedShipment.client}\nAlamat Pick-up: ${selectedShipment.originCity}\nAlamat Drop off: ${selectedShipment.destinationCity}\nHari & Tanggal Pickup: ${dayName}, ${selectedShipment.pickupDate}\n\nDetail Muatan\nDeskripsi: ${selectedShipment.cargoDescription}\nJumlah Unit /pcs: ${selectedShipment.units}${selectedShipment.weightKg && Number(selectedShipment.weightKg) > 0 ? `\nBerat: ${selectedShipment.weightKg} kg` : ''}\n\n-Admin MPL`
+                        window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
+                        showToast('Membuka WhatsApp untuk mengirim notifikasi driver...', 'success')
+                      }}
+                    >
+                      <Icon name="chat" size={18} /> Kirim Notifikasi WhatsApp Driver
+                    </button>
+                  ) : (
+                    <p className="text-xs text-center text-gray-400 italic">
+                      Tugaskan driver terlebih dahulu untuk mengirim notifikasi.
+                    </p>
+                  )}
+                </div>
+
+                {selectedShipment.notes && (
+                  <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                    <p className="text-xs font-bold text-amber-800 italic">
+                      &ldquo;{selectedShipment.notes}&rdquo;
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Harga */}
+              <div className="flex flex-col gap-3">
+                <h4 className="flex items-center gap-2 text-sm font-bold text-gray-900 border-b border-gray-100 pb-2">
+                  <Icon name="payments" size={18} className="text-gray-400" /> Harga
+                </h4>
+                <div className="grid grid-cols-3 gap-2">
+                  <span className="text-sm text-gray-500 font-medium">Invoice</span>
+                  <span className="text-sm font-black text-green-700 col-span-2">
+                    {selectedShipment.price !== null && selectedShipment.price !== undefined
+                      ? 'Rp ' + Number(selectedShipment.price).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                      : '-'}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        </>
       )}
 
       {/* ── Assign Driver Modal ── */}
@@ -612,11 +629,12 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
           onSubmit={handleAssignDriver}
           submitLabel="Tugaskan"
         >
-          <div className="adm-form-grid">
+          <div className="flex flex-col gap-5">
             <AdminFormField label="Pilih Driver" required>
               <select
                 value={assignDriverId}
                 onChange={e => setAssignDriverId(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-white"
               >
                 <option value="">-- Pilih Driver --</option>
                 {availableDrivers.map(d => (
@@ -628,6 +646,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
               <select
                 value={assignVehicleId}
                 onChange={e => setAssignVehicleId(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-white"
               >
                 <option value="">-- Pilih Armada --</option>
                 {availableVehicles.map(v => (
@@ -648,10 +667,14 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
           onSubmit={handleCreateShipment}
           submitLabel="Simpan Pengiriman"
         >
-          <div className="adm-form-grid">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* Klien */}
             <AdminFormField label="Klien" required fullWidth>
-              <select value={formClientId} onChange={e => setFormClientId(e.target.value)}>
+              <select 
+                value={formClientId} 
+                onChange={e => setFormClientId(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
+              >
                 <option value="">-- Pilih Klien --</option>
                 {clientOptions.map(c => (
                   <option key={c.id} value={c.id}>{c.label}</option>
@@ -661,7 +684,11 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
 
             {/* Jenis Layanan */}
             <AdminFormField label="Jenis Layanan" required>
-              <select value={formService} onChange={e => setFormService(e.target.value)}>
+              <select 
+                value={formService} 
+                onChange={e => setFormService(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
+              >
                 <option value="Darat">Darat</option>
                 <option value="Laut">Laut</option>
                 <option value="Udara">Udara</option>
@@ -675,6 +702,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
                 placeholder="Cth: Jakarta Timur"
                 value={formOrigin}
                 onChange={e => setFormOrigin(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
               />
             </AdminFormField>
 
@@ -685,6 +713,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
                 placeholder="Cth: Surabaya"
                 value={formDestination}
                 onChange={e => setFormDestination(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
               />
             </AdminFormField>
 
@@ -694,6 +723,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
                 type="date"
                 value={formPickupDate}
                 onChange={e => setFormPickupDate(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
               />
             </AdminFormField>
 
@@ -703,6 +733,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
                 type="datetime-local"
                 value={formEstimatedArrival}
                 onChange={e => setFormEstimatedArrival(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
               />
             </AdminFormField>
 
@@ -713,6 +744,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
                 placeholder="Cth: Elektronik, Suku Cadang"
                 value={formPackageType}
                 onChange={e => setFormPackageType(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
               />
             </AdminFormField>
 
@@ -725,6 +757,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
                 value={formUnits}
                 onChange={e => setFormUnits(e.target.value)}
                 required
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
               />
             </AdminFormField>
 
@@ -736,19 +769,12 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
                 placeholder="0"
                 value={formWeight}
                 onChange={e => setFormWeight(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
               />
             </AdminFormField>
 
             {/* Invoice Box */}
-            <div style={{
-              gridColumn: 'span 2',
-              padding: '1.25rem',
-              background: 'rgba(254,195,48,0.05)',
-              border: '1.5px solid rgba(254,195,48,0.3)',
-              borderRadius: '12px',
-              marginTop: '0.5rem',
-              marginBottom: '0.5rem'
-            }}>
+            <div className="col-span-1 md:col-span-2 p-5 bg-amber-50/50 border-2 border-amber-200 rounded-2xl my-2">
               <AdminFormField label="Total Invoice Price (Jumlah Harga Invoice)" required>
                 <input
                   type="text"
@@ -756,7 +782,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
                   value={formatRupiahInput(formPrice)}
                   onChange={e => setFormPrice(parseRupiahInput(e.target.value))}
                   required
-                  style={{ background: '#fff' }}
+                  className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-[#002442] focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-white"
                 />
               </AdminFormField>
             </div>
@@ -768,6 +794,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
                 value={formNotes}
                 onChange={e => setFormNotes(e.target.value)}
                 rows={3}
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white custom-scrollbar"
               />
             </AdminFormField>
           </div>
@@ -776,3 +803,4 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
     </div>
   )
 }
+
