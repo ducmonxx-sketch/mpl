@@ -1,6 +1,8 @@
 # CLAUDE.md
 
 ## Start here — every session
+**Resuming / continuing work?** Read **[DEV-PLAN.md](DEV-PLAN.md)** first — current state, locked decisions, and the prioritized next steps.
+
 Before doing any work, read **[RUNBOOK.md](RUNBOOK.md)** in full and follow it:
 sync (§2) → integration audit (§3) → **report findings before editing** → append a
 dated **Session Log** entry (§5) before finishing.
