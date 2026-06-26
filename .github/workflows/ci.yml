@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+
+    # Postgres for migrate + seed + smoke. Matches apps/api/.env.example shape.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: mpl_logistics
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mpl_logistics
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/mpl_logistics
+      JWT_SECRET: ci-test-secret-not-for-production
+      CLIENT_URL: http://localhost:5173
+      PORT: "3001"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install (workspaces)
+        run: npm install
+
+      # ── Database (hard gate: schema must apply cleanly; guards migration drift) ──
+      - name: Prisma generate
+        working-directory: apps/api
+        run: npx prisma generate
+
+      - name: Prisma migrate deploy
+        working-directory: apps/api
+        run: npx prisma migrate deploy
+
+      - name: Prisma migrate status (drift guard)
+        working-directory: apps/api
+        run: npx prisma migrate status
+
+      - name: Seed database
+        working-directory: apps/api
+        run: npx prisma db seed
+
+      # ── Typecheck (NON-BLOCKING for now: ~55 pre-existing type-friction errors,
+      #    Prisma-7 include payloads + Express req.query typing — see RUNBOOK.
+      #    Flip continue-on-error to false once that debt is burned down.) ──
+      - name: Typecheck (api)
+        working-directory: apps/api
+        continue-on-error: true
+        run: npm run typecheck
+
+      # ── Frontend build (hard gate) ──
+      - name: Build web
+        working-directory: apps/web
+        run: npm run build
+
+      # ── Lint (NON-BLOCKING for now: pre-existing unused-var errors) ──
+      - name: Lint web
+        working-directory: apps/web
+        continue-on-error: true
+        run: npm run lint
+
+      # ── Smoke test (hard gate: boots the API, exercises every route end-to-end) ──
+      - name: Smoke test (api)
+        working-directory: apps/api
+        run: |
+          npx tsx src/index.ts &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:3001/health >/dev/null && break
+            sleep 1
+          done
+          npm run smoke

@@ -240,6 +240,15 @@ For each: file + line (`path:line`), what's wrong, blast radius (admin-only vs s
 
 ## 6. Session Log
 
+### 2026-06-27 — Tier-1 dev infra (typecheck + smoke + CI) + curated ECC agents/rules
+- **Branch:** `tier1-infra` (off `main`).
+- **Added:** `apps/api/tsconfig.json` + `npm run typecheck`; committed `apps/api/test/smoke.mjs` + `npm run smoke` (26/26 green locally); `.github/workflows/ci.yml` (Postgres service → generate → migrate deploy → migrate status → seed → typecheck → web build → web lint → smoke).
+- **Curated ECC:** `.claude/agents/` (code/ts/react/security/database reviewers + build-error-resolver), `.claude/rules/` (TS/React/common), `npm run security:scan` (AgentShield). No hooks copied.
+- **TS pin:** `typescript ^6.0.3 → ~5.8.3` in apps/api (tooling-only; runtime via `tsx` unaffected). Version did NOT change the error count.
+- **Known debt — typecheck is NON-BLOCKING in CI for now:** ~55 pre-existing `tsc` errors, all *type-friction, not runtime bugs* — ~11 Prisma-7 `include` payloads not resolving under `tsc` (code is correct; runtime verified by the green smoke), ~42 Express `req.query`/`req.params` `string | string[]` widenings, 2 minor. To make typecheck a hard gate: coerce query/param values to `string` and resolve the Prisma include typing, then flip `continue-on-error: false` in `ci.yml`. Web lint also non-blocking (~26 pre-existing unused-var errors).
+- **Hard CI gates that DO pass:** install, prisma generate/migrate/seed, web build, smoke.
+- **Client-side follow-ups:** none.
+
 ### 2026-06-25 (cont.) — Reconciled diverged `origin/main` (revision-6) onto the OpenWA backend line; pushed to `main`
 - **Divergence found:** while preparing to land `update-6`, discovered the friend had pushed **revision-6** (`ae4312c`) to `origin/main` — a large admin dashboard UI/UX overhaul (new sidebar/topbar layout, profile section, rewritten sections, landing-page components, `revision-6.md`/`revision-6-backend.md`). It **branched from before revision-5**, so relative to our line it *lacked/reverted* the OpenWA `whatsapp.ts`, the expanded seed, `polling.js`, the `admin-notifications` migration, and it **deleted** `RUNBOOK.md`/`CLAUDE.md`. `local main` (revision-5, `f1a72e8`) and `origin/main` (`ae4312c`) had genuinely **diverged** (neither an ancestor of the other).
 - **Per user — frontend only, do not touch backend:** on a branch off `update-6`, ran `git checkout origin/main -- apps/web/` to overlay revision-6's **entire frontend**, leaving **all of `apps/api` untouched** (verified `git diff --name-only update-6 -- apps/api/` = empty → OpenWA backend + `notify-driver` route intact). Re-applied our OpenWA wiring on top of revision-6's rewritten `ShipmentsSection.jsx`: restored `shipmentsAPI.notifyDriver` in `api.js` and re-pointed the green "Kirim Notifikasi WhatsApp Driver" button at the backend (revision-6 had the old `wa.me` browser-tab button). Removed orphaned `polling.js` (revision-6 dropped the polling refactor; nothing imported it). Grabbed `revision-6.md`/`revision-6-backend.md` from `origin/main`; kept our `RUNBOOK.md`/`CLAUDE.md`/`.env.example`.
