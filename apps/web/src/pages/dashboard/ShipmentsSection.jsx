@@ -71,10 +71,12 @@ export default function ShipmentsSection({ onCreateShipment, onChangeNav, onTrac
           <h2 className="dash-header__title">Daftar Pengiriman</h2>
           <p className="dash-header__subtitle">Kelola dan pantau semua pengiriman Anda.</p>
         </div>
-        <button className="ship-create-btn" onClick={onCreateShipment}>
-          <Icon name="add" size={18} />
-          <span>Buat Pengiriman</span>
-        </button>
+        {false && (
+          <button className="ship-create-btn" onClick={onCreateShipment}>
+            <Icon name="add" size={18} />
+            <span>Buat Pengiriman</span>
+          </button>
+        )}
       </section>
 
       {/* Filter Tabs */}

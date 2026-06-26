@@ -77,11 +77,22 @@ export default function AdminDashboardPage() {
   })
   
   const searchWrapperRef = useRef(null)
+  const notifWrapperRef = useRef(null)
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 1024)
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (notifWrapperRef.current && !notifWrapperRef.current.contains(e.target)) {
+        setShowNotifPanel(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
   // Fetch notifications and scan for dynamic alerts
@@ -264,6 +275,7 @@ export default function AdminDashboardPage() {
         <AdminTopbar 
           setSidebarOpen={setSidebarOpen}
           searchWrapperRef={searchWrapperRef}
+          notifWrapperRef={notifWrapperRef}
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
           showNotifPanel={showNotifPanel}

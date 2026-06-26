@@ -127,7 +127,7 @@ export default function ClientAuthPage() {
                   height="32"
                 />
                 <span className="auth-brand__logo-text">
-                  Mahkota Putra Logistik
+                  PT Mahkota Putra Logistik
                 </span>
               </div>
 
@@ -399,7 +399,7 @@ export default function ClientAuthPage() {
               width="20"
               height="20"
             />
-            Mahkota Putra Logistik
+            PT Mahkota Putra Logistik
           </div>
           <div className="auth-footer__links">
             <a href="#privacy">Privacy Policy</a>
@@ -407,7 +407,7 @@ export default function ClientAuthPage() {
             <a href="#support">Contact Support</a>
           </div>
           <span className="auth-footer__copy">
-            © 2026 Mahkota Putra Logistik. All rights reserved.
+            © 2026 PT Mahkota Putra Logistik. All rights reserved.
           </span>
         </div>
       </footer>

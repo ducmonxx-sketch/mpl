@@ -12,6 +12,7 @@ export default function DashboardSection() {
   const [activeTab, setActiveTab] = useState('monthly')
   const [isHistoryExpanded, setIsHistoryExpanded] = useState(false)
   const [stats, setStats] = useState(null)
+  const [allShipments, setAllShipments] = useState([])
   const [recentShipments, setRecentShipments] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -25,6 +26,7 @@ export default function DashboardSection() {
           shipmentsAPI.list(),
         ])
         setStats(statsData)
+        setAllShipments(shipmentsData.shipments || [])
         // Get the 5 most recent for history
         const recent = (shipmentsData.shipments || []).slice(0, 5)
         setRecentShipments(recent)
@@ -39,7 +41,7 @@ export default function DashboardSection() {
 
   // Map API period to chart display format
   const chart = useMemo(() => {
-    if (!stats) return null
+    if (!stats || !allShipments) return null
 
     const periodLabels = {
       daily: { labels: ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'] },
@@ -50,23 +52,46 @@ export default function DashboardSection() {
 
     const config = periodLabels[activeTab] || periodLabels.monthly
     
-    // Generate proportional bar heights from stats
-    const total = stats.total || 1
-    const barValues = config.labels.map(() => {
-      // Distribute proportionally - use random variation for visual interest
-      return `${Math.max(10, Math.round(Math.random() * 100))}%`
+    // Aggregation logic
+    const counts = new Array(config.labels.length).fill(0)
+    const now = new Date()
+
+    allShipments.forEach(s => {
+      const d = new Date(s.createdAt)
+      if (activeTab === 'monthly' && d.getFullYear() === now.getFullYear()) {
+        counts[d.getMonth()]++
+      } else if (activeTab === 'yearly') {
+        const idx = config.labels.indexOf(d.getFullYear().toString())
+        if (idx !== -1) counts[idx]++
+      } else if (activeTab === 'daily') {
+        let dayIdx = d.getDay() - 1
+        if (dayIdx === -1) dayIdx = 6
+        const diffTime = Math.abs(now - d)
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+        if (diffDays <= 7) counts[dayIdx]++
+      } else if (activeTab === 'weekly') {
+        const dateDate = d.getDate()
+        const week = Math.min(Math.floor((dateDate - 1) / 7), 3)
+        if (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) {
+          counts[week]++
+        }
+      }
     })
+
+    const maxCount = Math.max(...counts, 1)
+    const dataPoints = counts.map((count) => ({
+      value: count,
+      heightPercent: Math.max(5, (count / maxCount) * 100)
+    }))
 
     return {
       labels: config.labels,
-      bars: barValues,
+      dataPoints,
       highlightIndex: config.labels.length - 1,
-      linePath: 'M0 170C65 155 130 140 200 120C265 100 330 80 400 70C465 55 530 30 600 25C665 30 730 40 800 50',
-      fillPath: 'M0 170C65 155 130 140 200 120C265 100 330 80 400 70C465 55 530 30 600 25C665 30 730 40 800 50V200H0V170Z',
       metric: `${stats.total}`,
       change: `${stats.delivered} terkirim, ${stats.transit} transit`,
     }
-  }, [stats, activeTab])
+  }, [stats, activeTab, allShipments])
 
   // Map recent shipments to display format
   const recentHistory = useMemo(() => {

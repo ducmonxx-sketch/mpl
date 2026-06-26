@@ -14,12 +14,12 @@ export default function NotificationSettings({ notifs, onToggle }) {
             
             {/* Email Toggle */}
             <div className="settings-notif-item">
-              <div className="settings-notif-item__text" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                <div style={{ background: '#e0e7ff', color: '#4f46e5', padding: '8px', borderRadius: '50%', display: 'flex' }}>
+              <div className="settings-notif-item__text flex gap-3 items-center">
+                <div className="bg-[#e0e7ff] text-[#4f46e5] p-2 rounded-full flex">
                    <Icon name="email" size={18} />
                 </div>
                 <div>
-                  <span style={{ fontWeight: 700 }}>Pembaruan Email</span>
+                  <span className="font-bold">Pembaruan Email</span>
                   <p className="settings-notif-item__desc">Terima dokumen resmi dan struk</p>
                 </div>
               </div>
@@ -31,12 +31,12 @@ export default function NotificationSettings({ notifs, onToggle }) {
 
             {/* WA Toggle */}
             <div className="settings-notif-item" style={{ marginTop: '1rem' }}>
-              <div className="settings-notif-item__text" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                <div style={{ background: '#dcfce7', color: '#16a34a', padding: '8px', borderRadius: '50%', display: 'flex' }}>
+              <div className="settings-notif-item__text flex gap-3 items-center">
+                <div className="bg-[#dcfce7] text-[#16a34a] p-2 rounded-full flex">
                    <Icon name="chat" size={18} />
                 </div>
                 <div>
-                  <span style={{ fontWeight: 700 }}>Pembaruan WhatsApp</span>
+                  <span className="font-bold">Pembaruan WhatsApp</span>
                   <p className="settings-notif-item__desc">Terima pelacakan real-time instan</p>
                 </div>
               </div>

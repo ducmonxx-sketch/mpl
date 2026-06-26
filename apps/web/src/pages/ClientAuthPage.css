@@ -61,6 +61,15 @@
   }
 }
 
+@keyframes buttonShine {
+  0% {
+    left: -100%;
+  }
+  20%, 100% {
+    left: 200%;
+  }
+}
+
 /* ─── Page Layout ─── */
 .auth-page {
   position: relative;
@@ -94,9 +103,9 @@
   inset: 0;
   background: linear-gradient(
     135deg,
-    rgba(19, 25, 31, 0.85) 0%,
-    rgba(27, 59, 95, 0.7) 50%,
-    rgba(19, 25, 31, 0.8) 100%
+    rgba(255, 255, 255, 0.65) 0%,
+    rgba(243, 244, 246, 0.55) 50%,
+    rgba(255, 255, 255, 0.70) 100%
   );
   z-index: 1;
 }
@@ -135,12 +144,12 @@
   justify-content: space-between;
   background: linear-gradient(
     160deg,
-    rgba(27, 59, 95, 0.6) 0%,
-    rgba(19, 25, 31, 0.75) 100%
+    rgba(255, 255, 255, 0.9) 0%,
+    rgba(248, 249, 250, 0.95) 100%
   );
   backdrop-filter: blur(24px) saturate(1.2);
   -webkit-backdrop-filter: blur(24px) saturate(1.2);
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  border-right: 1px solid rgba(0, 0, 0, 0.06);
   min-height: 560px;
 }
 
@@ -161,7 +170,7 @@
 .auth-brand__logo-text {
   font-size: 1.05rem;
   font-weight: 700;
-  color: #f2b824;
+  color: #1b3b5f;
   letter-spacing: 0.02em;
 }
 
@@ -169,21 +178,21 @@
   font-size: 2.5rem;
   font-weight: 800;
   line-height: 1.15;
-  color: #ffffff;
+  color: #13191f;
   margin-bottom: 1.5rem;
   animation: fadeInUp 0.8s ease-out 0.2s both;
 }
 
 .auth-brand__heading em {
   font-style: normal;
-  color: #f2b824;
+  color: #1b3b5f;
 }
 
 .auth-brand__desc {
   font-family: 'Noto Sans', sans-serif;
   font-size: 0.95rem;
   line-height: 1.7;
-  color: rgba(255, 255, 255, 0.55);
+  color: #4b5563;
   max-width: 320px;
   animation: fadeInUp 0.8s ease-out 0.35s both;
 }
@@ -197,8 +206,8 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(27, 59, 95, 0.04);
+  border: 1px solid rgba(27, 59, 95, 0.08);
   border-radius: 12px;
   padding: 0.75rem 1rem;
   margin-bottom: 1.5rem;
@@ -217,13 +226,13 @@
 }
 
 .auth-brand__badge-icon svg {
-  color: #13191f;
+  color: #1b3b5f;
 }
 
 .auth-brand__badge-text {
   font-size: 0.85rem;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.85);
+  color: #1b3b5f;
   letter-spacing: 0.01em;
 }
 
@@ -235,7 +244,7 @@
   font-weight: 600;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.35);
+  color: #9ca3af;
   animation: fadeInUp 0.8s ease-out 0.6s both;
 }
 
@@ -244,7 +253,7 @@
   display: block;
   width: 32px;
   height: 1px;
-  background: rgba(255, 255, 255, 0.25);
+  background: #d1d5db;
 }
 
 /* ─── Right Panel (Form) ─── */
@@ -329,7 +338,8 @@
 }
 
 .auth-field__input-wrap:focus-within .auth-field__icon {
-  color: #1b3b5f;
+  color: #f2b824;
+  filter: drop-shadow(0 0 4px rgba(242, 184, 36, 0.3));
 }
 
 .auth-field__input {
@@ -485,6 +495,18 @@
   overflow: hidden;
 }
 
+.auth-submit::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(to right, rgba(255,255,255,0) 0%, rgba(255,255,255,0.4) 50%, rgba(255,255,255,0) 100%);
+  transform: skewX(-25deg);
+  animation: buttonShine 4s infinite;
+}
+
 .auth-submit:hover {
   transform: translateY(-1px);
   box-shadow: 0 6px 24px rgba(242, 184, 36, 0.45);
@@ -554,7 +576,9 @@
 .auth-footer {
   position: relative;
   z-index: 10;
-  background: rgba(248, 249, 250, 0.97);
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border-top: 1px solid rgba(0, 0, 0, 0.06);
   padding: 1.25rem 2rem;
 }
@@ -575,7 +599,7 @@
   gap: 0.5rem;
   font-size: 0.8rem;
   font-weight: 700;
-  color: #1f2937;
+  color: #1b3b5f;
 }
 
 .auth-footer__brand img {
@@ -595,17 +619,38 @@
   font-size: 0.78rem;
   color: #6b7280;
   text-decoration: none;
-  transition: color 0.2s;
+  transition: color 0.3s ease;
+  position: relative;
+}
+
+.auth-footer__links a::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -4px;
+  width: 100%;
+  height: 2px;
+  background: #f2b824;
+  transform: scaleX(0);
+  transform-origin: right;
+  transition: transform 0.3s ease;
+  border-radius: 2px;
 }
 
 .auth-footer__links a:hover {
   color: #1b3b5f;
 }
 
+.auth-footer__links a:hover::after {
+  transform: scaleX(1);
+  transform-origin: left;
+}
+
 .auth-footer__copy {
   font-family: 'Noto Sans', sans-serif;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: #9ca3af;
+  letter-spacing: 0.02em;
 }
 
 /* ─── Responsive ─── */

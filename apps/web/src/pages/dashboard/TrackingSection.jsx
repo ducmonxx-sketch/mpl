@@ -14,12 +14,12 @@ const statusDisplayMap = {
   CANCELLED: 'Dibatalkan',
 }
 
-const statusColorMap = {
-  PENDING: { background: '#fff8e1', color: '#f59e0b', border: '1px solid #fcd34d' },
-  TRANSIT: { background: '#eff6ff', color: '#3b82f6', border: '1px solid #93c5fd' },
-  DELIVERED: { background: '#f0fdf4', color: '#22c55e', border: '1px solid #86efac' },
-  FAILED: { background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5' },
-  CANCELLED: { background: '#f9fafb', color: '#6b7280', border: '1px solid #d1d5db' },
+const statusColorClasses = {
+  PENDING: 'bg-amber-50 text-amber-600 border-amber-200',
+  TRANSIT: 'bg-blue-50 text-blue-600 border-blue-200',
+  DELIVERED: 'bg-green-50 text-green-600 border-green-200',
+  FAILED: 'bg-red-50 text-red-600 border-red-200',
+  CANCELLED: 'bg-gray-50 text-gray-500 border-gray-200',
 }
 
 const STATUS_OPTIONS = [
@@ -335,16 +335,9 @@ export default function TrackingSection({ initialSearchQuery = '', isAdmin = fal
     setAddEventForm(EMPTY_ADD_EVENT_FORM)
   }
 
-  const badgeStyle = selectedShipment
-    ? {
-        ...(statusColorMap[selectedShipment.rawStatus] || {}),
-        padding: '2px 10px',
-        borderRadius: '999px',
-        fontSize: '12px',
-        fontWeight: 600,
-        display: 'inline-block',
-      }
-    : {}
+  const badgeClasses = selectedShipment
+    ? (statusColorClasses[selectedShipment.rawStatus] || 'bg-gray-100 text-gray-700 border-gray-200')
+    : ''
 
   return (
     <div className="flex flex-col gap-6 w-full">
@@ -424,7 +417,7 @@ export default function TrackingSection({ initialSearchQuery = '', isAdmin = fal
                   <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-3">
                       <h3 className="text-xl font-black text-[#002442]">#{selectedShipment.id}</h3>
-                      <span style={badgeStyle} className="px-3 py-1 rounded-full text-xs font-bold border">
+                      <span className={`px-3 py-1 rounded-full text-xs font-bold border ${badgeClasses}`}>
                         {selectedShipment.status}
                       </span>
                     </div>

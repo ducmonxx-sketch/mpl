@@ -6,25 +6,42 @@ export default function RecentHistory({ displayedHistory, isExpanded, onToggleEx
       <div className="dash-history-card dash-history-card--full glass-card">
         <div className="dash-history-header">
           <h3>Riwayat Terkini</h3>
-          <button onClick={onToggleExpand}>
+          <button className="dash-ghost-btn" onClick={onToggleExpand}>
             {isExpanded ? 'Tutup' : 'Lihat Semua'}
           </button>
         </div>
-        <div className="dash-history-list" style={{ transition: 'all 0.5s ease', overflow: 'hidden' }}>
-          {displayedHistory.map((item) => (
-            <div key={item.id} className="dash-history-item" style={{ animation: 'dashFadeUp 0.3s ease both' }}>
-              <div className="dash-history-item__icon"><Icon name={item.icon} size={20} /></div>
-              <div className="dash-history-item__info">
-                <p className="dash-history-item__id">{item.id}</p>
-                <p className="dash-history-item__desc">{item.desc}</p>
-                <p className="dash-history-item__dest">Ke: {item.dest}</p>
-              </div>
-              <div className="dash-history-item__status">
-                <p className={`dash-history-item__status-text dash-history-item__status-text--${item.statusClass}`}>{item.statusText}</p>
-                <p className="dash-history-item__time">{item.time}</p>
-              </div>
-            </div>
-          ))}
+        <div className="dash-table-container" style={{ transition: 'max-height 0.5s ease', overflowX: 'auto', overflowY: 'hidden' }}>
+          <table className="dash-table">
+            <thead>
+              <tr>
+                <th>ID Pengiriman</th>
+                <th>Tanggal</th>
+                <th>Jenis Paket</th>
+                <th>Tujuan</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {displayedHistory.map((item, index) => (
+                <tr key={item.id} style={{ animation: `dashFadeUp 0.3s ease forwards ${index * 0.05}s`, opacity: 0 }}>
+                  <td className="dash-table-cell--id">
+                    <div className="dash-table-id-wrapper">
+                      <Icon name={item.icon} size={16} />
+                      <span>{item.id}</span>
+                    </div>
+                  </td>
+                  <td>{item.time}</td>
+                  <td>{item.desc}</td>
+                  <td className="dash-table-cell--dest">{item.dest}</td>
+                  <td>
+                    <span className={`dash-status-pill dash-status-pill--${item.statusClass}`}>
+                      {item.statusText}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

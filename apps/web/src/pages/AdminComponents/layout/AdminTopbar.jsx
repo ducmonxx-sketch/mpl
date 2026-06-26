@@ -4,6 +4,7 @@ import AdminNotificationPanel from '../components/AdminNotificationPanel'
 export default function AdminTopbar({
   setSidebarOpen,
   searchWrapperRef, // kept to prevent breaking prop
+  notifWrapperRef,
   searchQuery,      // kept to prevent breaking prop
   setSearchQuery,   // kept to prevent breaking prop
   showNotifPanel,
@@ -34,7 +35,7 @@ export default function AdminTopbar({
       <div className="flex items-center gap-6 lg:gap-8">
         
         {/* Notifications */}
-        <div className="relative">
+        <div className="relative" ref={notifWrapperRef}>
           <button 
             className="relative p-3 rounded-full text-gray-500 hover:text-[#002442] hover:bg-gray-100 transition-colors"
             onClick={() => setShowNotifPanel(prev => !prev)}

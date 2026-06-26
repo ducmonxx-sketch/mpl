@@ -1,8 +1,8 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import anime from 'animejs'
 import { useAuth } from '../contexts/AuthContext'
 import { shipmentsAPI } from '../lib/api'
-import Icon from '../components/Icon'
 import DashboardSection from './dashboard/DashboardSection'
 import ShipmentsSection from './dashboard/ShipmentsSection'
 import TrackingSection from './dashboard/TrackingSection'
@@ -10,14 +10,48 @@ import HistorySection from './dashboard/HistorySection'
 import SettingsSection from './dashboard/SettingsSection'
 import InvoicesSection from './dashboard/InvoicesSection'
 import CreateShipmentModal from '../components/ClientComponents/CreateShipmentModal'
+import ClientSidebar from './ClientComponents/layout/ClientSidebar'
+import ClientTopbar from './ClientComponents/layout/ClientTopbar'
 import './ClientDashboardPage.css'
+
+const AnimatedSection = ({ children }) => {
+  const containerRef = useRef(null)
+
+  useLayoutEffect(() => {
+    if (!containerRef.current) return;
+
+    const wrapper = containerRef.current.firstElementChild;
+    const targets = (wrapper && wrapper.children.length > 0) 
+      ? Array.from(wrapper.children) 
+      : containerRef.current;
+
+    anime.set(targets, { opacity: 0, translateY: 15 });
+
+    anime({
+      targets,
+      opacity: [0, 1],
+      translateY: [15, 0],
+      easing: 'spring(1, 80, 10, 0)',
+      delay: anime.stagger(75),
+      duration: 1000
+    });
+  }, []) 
+
+  return (
+    <div ref={containerRef} style={{ width: '100%', height: '100%' }}>
+      {children}
+    </div>
+  )
+}
 
 export default function ClientDashboardPage() {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
+  
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [activeNav, setActiveNav] = useState('dashboard')
   const [isCreateModalOpen, setCreateModalOpen] = useState(false)
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 1024)
   
   // Search state
   const [searchQuery, setSearchQuery] = useState('')
@@ -29,13 +63,85 @@ export default function ClientDashboardPage() {
   // Refresh trigger for child sections after shipment creation
   const [refreshKey, setRefreshKey] = useState(0)
 
-  const toggleSidebar = useCallback(() => setSidebarOpen((prev) => !prev), [])
-  const closeSidebar = useCallback(() => setSidebarOpen(false), [])
+  // Notification state
+  const [showNotifPanel, setShowNotifPanel] = useState(false)
+  const [notifications, setNotifications] = useState([
+    {
+      id: 1,
+      category: 'shipment',
+      title: 'Pengiriman Dalam Perjalanan',
+      message: 'Pengiriman SHP-9821 sedang dalam perjalanan menuju gudang transit di Surabaya.',
+      isRead: false,
+      createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
+      linkTo: 'tracking',
+      linkId: 'SHP-9821'
+    },
+    {
+      id: 2,
+      category: 'invoice',
+      title: 'Faktur Baru Terbit',
+      message: 'Faktur INV-2026/05 telah terbit dan menunggu pembayaran.',
+      isRead: false,
+      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
+      linkTo: 'invoices',
+      linkId: null
+    },
+    {
+      id: 3,
+      category: 'alert',
+      title: 'Kendala Cuaca',
+      message: 'Pengiriman SHP-1123 mengalami sedikit penundaan akibat cuaca buruk di area tujuan.',
+      isRead: true,
+      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
+      linkTo: 'tracking',
+      linkId: 'SHP-1123'
+    },
+    {
+      id: 4,
+      category: 'tracking',
+      title: 'Pengiriman Selesai',
+      message: 'Pengiriman SHP-8472 telah berhasil diterima oleh Budi Santoso.',
+      isRead: true,
+      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
+      linkTo: 'history',
+      linkId: 'SHP-8472'
+    }
+  ])
+
+  const unreadCount = notifications.filter(n => !n.isRead).length
+
+  const handleMarkAllRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, isRead: true })))
+  }
+
+  const handleMarkRead = (id) => {
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n))
+  }
+
+  const handleNotifNavigate = (navId, linkId) => {
+    if (linkId && navId === 'tracking') {
+      navigateToTracking(linkId)
+    } else {
+      handleNavChange(navId)
+    }
+    setShowNotifPanel(false)
+  }
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 1024)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  const notifWrapperRef = useRef(null)
 
   useEffect(() => {
     function handleClickOutside(e) {
       if (searchWrapperRef.current && !searchWrapperRef.current.contains(e.target)) {
         setShowSearchDropdown(false)
+      }
+      if (notifWrapperRef.current && !notifWrapperRef.current.contains(e.target)) {
+        setShowNotifPanel(false)
       }
     }
     document.addEventListener("mousedown", handleClickOutside)
@@ -64,15 +170,6 @@ export default function ClientDashboardPage() {
 
     return () => clearTimeout(timer)
   }, [searchQuery])
-
-  const navItems = [
-    { id: 'dashboard', label: 'Dasbor', icon: 'dashboard' },
-    { id: 'invoices', label: 'Faktur', icon: 'receipt' },
-    { id: 'shipments', label: 'Pengiriman', icon: 'local_shipping' },
-    { id: 'tracking', label: 'Pelacakan', icon: 'location_on' },
-    { id: 'history', label: 'Riwayat', icon: 'history' },
-    { id: 'settings', label: 'Pengaturan', icon: 'settings' },
-  ]
 
   const navigateToTracking = (id) => {
     setTrackingId(id)
@@ -106,126 +203,62 @@ export default function ClientDashboardPage() {
     logout('/client')
   }
 
+  const handleNavChange = (id) => {
+    setActiveNav(id)
+    if (id !== 'tracking') setTrackingId('')
+    if (isMobile) setSidebarOpen(false)
+  }
+
   // Build display name from user data
   const displayName = user?.fullName || 'User'
   const displayRole = user?.companyName || 'Klien'
 
   return (
-    <div className="dashboard-page">
-      {/* ═══ Mobile Overlay ═══ */}
-      <div
-        className={`dash-overlay${sidebarOpen ? ' dash-overlay--visible' : ''}`}
-        onClick={closeSidebar}
-        aria-hidden="true"
+    <div className="flex h-screen bg-[#f8f9fa] font-display overflow-hidden text-[#333333]">
+      <ClientSidebar 
+        sidebarOpen={sidebarOpen}
+        setSidebarOpen={setSidebarOpen}
+        isMobile={isMobile}
+        activeNav={activeNav}
+        handleNavChange={handleNavChange}
+        handleLogout={handleLogout}
+        onCreateShipment={() => setCreateModalOpen(true)}
+        userData={user}
       />
 
-      {/* ═══ Sidebar ═══ */}
-      <aside className={`dash-sidebar${sidebarOpen ? ' dash-sidebar--open' : ''}`}>
-        <div className="dash-sidebar__brand">
-          <img src="/mpl_logo_proto.svg" alt="PT Mahkota Putra Logistik" className="dash-sidebar__logo" />
-          <div className="dash-sidebar__brand-text">
-            <h1>PT Mahkota Putra Logistik</h1>
-            <p>Dasbor Klien</p>
-          </div>
-        </div>
+      <div className="flex flex-col flex-1 min-w-0">
+        <ClientTopbar 
+          setSidebarOpen={setSidebarOpen}
+          searchWrapperRef={searchWrapperRef}
+          notifWrapperRef={notifWrapperRef}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          showSearchDropdown={showSearchDropdown}
+          setShowSearchDropdown={setShowSearchDropdown}
+          searchResults={searchResults}
+          handleSearchSelect={handleSearchSelect}
+          showNotifPanel={showNotifPanel}
+          setShowNotifPanel={setShowNotifPanel}
+          unreadCount={unreadCount}
+          notifications={notifications}
+          handleMarkAllRead={handleMarkAllRead}
+          handleMarkRead={handleMarkRead}
+          handleNotifNavigate={handleNotifNavigate}
+          displayName={displayName}
+          displayRole={displayRole}
+          onProfileClick={() => handleNavChange('settings')}
+        />
 
-        <nav className="dash-sidebar__nav">
-          {navItems.map((item) => (
-            <button
-              key={item.id}
-              className={`dash-nav-link${activeNav === item.id ? ' dash-nav-link--active' : ''}`}
-              onClick={() => {
-                setActiveNav(item.id)
-                if (item.id !== 'tracking') setTrackingId('')
-                closeSidebar()
-              }}
-            >
-              <Icon name={item.icon} size={20} />
-              <span>{item.label}</span>
-            </button>
-          ))}
-        </nav>
-
-        <div className="dash-sidebar__cta" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          <button className="dash-sidebar__cta-btn" onClick={() => setCreateModalOpen(true)}>
-            Buat Pengiriman
-          </button>
-          
-          <button 
-            className="dash-sidebar__logout-btn" 
-            onClick={handleLogout}
-          >
-            <Icon name="logout" size={16} /> Keluar Akun
-          </button>
-        </div>
-      </aside>
-
-      {/* ═══ Main Content ═══ */}
-      <main className="dash-main">
-        {/* ── Top Bar ── */}
-        <header className="dash-topbar">
-          <div className="dash-topbar__left">
-            <button className="dash-topbar__menu-btn" onClick={toggleSidebar}>
-              <Icon name="menu" size={24} />
-            </button>
-            <div className="dash-topbar__search" ref={searchWrapperRef} style={{ position: 'relative' }}>
-              <span className="dash-topbar__search-icon">
-                <Icon name="search" size={16} />
-              </span>
-              <input
-                type="text"
-                placeholder="Cari pengiriman..."
-                value={searchQuery}
-                onFocus={() => setShowSearchDropdown(true)}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-              {/* Search Dropdown */}
-              {showSearchDropdown && searchQuery.trim() && (
-                <div style={{ position: 'absolute', top: '110%', left: 0, right: 0, background: 'var(--dash-surface)', borderRadius: '8px', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', zIndex: 50, border: '1px solid rgba(0,0,0,0.05)', overflow: 'hidden' }}>
-                  {searchResults.length > 0 ? (
-                    searchResults.map(res => (
-                      <div key={res.id} onClick={() => handleSearchSelect(res.id)} style={{ cursor: 'pointer', padding: '12px 16px', display: 'flex', gap: '8px', alignItems: 'center', borderBottom: '1px solid rgba(0,0,0,0.05)' }} className="search-result-item">
-                        <Icon name="local_shipping" size={18} style={{ color: '#64748b' }} />
-                        <div>
-                          <p style={{ margin: 0, fontWeight: 700, fontSize: '0.85rem', color: 'var(--dash-primary)' }}>{res.id}</p>
-                          <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b' }}>{res.packageType}</p>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div style={{ padding: '16px', textAlign: 'center', color: '#64748b', fontSize: '0.85rem' }}>Tidak ditemukan</div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="dash-topbar__right">
-            {/* No Bell Here */}
-
-            <div className="dash-topbar__divider" />
-            <div className="dash-topbar__user" onClick={() => setActiveNav('settings')} style={{ cursor: 'pointer' }}>
-              <div className="dash-topbar__user-info">
-                <p>{displayName}</p>
-                <p>{displayRole}</p>
-              </div>
-              <img
-                src={`https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=fec330&color=002442&bold=true`}
-                alt="Foto profil pengguna"
-                className="dash-topbar__avatar"
-              />
-            </div>
-          </div>
-        </header>
-
-        {/* ── Section Content ── */}
-        <div key={activeNav}>
-          {renderSection()}
-        </div>
-      </main>
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 bg-[#f8f9fa] custom-scrollbar">
+          <AnimatedSection key={activeNav}>
+            {renderSection()}
+          </AnimatedSection>
+        </main>
+      </div>
 
       {/* Create Modal */}
       {isCreateModalOpen && <CreateShipmentModal onClose={() => setCreateModalOpen(false)} onCreated={handleShipmentCreated} />}
     </div>
   )
 }
+
