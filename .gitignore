@@ -57,3 +57,7 @@ Thumbs.db
 
 # TypeScript cache
 *.tsbuildinfo
+
+# External services (run standalone / via Docker — not part of this repo)
+# OpenWA WhatsApp gateway: cloned into services/, has its own git repo.
+services/OpenWA/

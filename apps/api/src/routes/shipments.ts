@@ -236,26 +236,68 @@ router.patch("/:id/assign", authenticate, adminOnly, async (req: AuthRequest, re
          })
       }
 
-      if (shipment.driver.phoneNumber) {
-         const waMessage = `Hello ${shipment.driver.fullName},\n\nYou have been assigned a new shipment ${shipment.id}.\nPickup: ${shipment.originLocation}\nDropoff: ${shipment.destinationLocation}\n\nPlease check your dashboard.`
-         await sendWhatsApp(shipment.driver.phoneNumber, waMessage)
-
-         await prisma.adminAuditLog.create({
-           data: {
-             adminId: req.user!.id,
-             actionType: "SEND_WHATSAPP_DRIVER",
-             targetTable: "drivers",
-             targetRecordId: shipment.driver.id,
-             changesSummary: `Sent WhatsApp assignment notification to driver ${shipment.driver.id}`,
-           }
-         })
-      }
     }
 
     res.json({ message: "Driver and vehicle assigned.", shipment })
   } catch (err) {
     console.error(err)
     res.status(500).json({ message: "Failed to assign shipment." })
+  }
+})
+
+// ── POST /api/shipments/:id/notify-driver ────────────────────
+// Admin mengirim notifikasi WhatsApp penugasan ke driver (via OpenWA).
+// Dipisah dari route assign agar pengiriman pesan dipicu lewat tombol, bukan otomatis saat assign.
+router.post("/:id/notify-driver", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+  try {
+    const shipment = await prisma.shipment.findUnique({
+      where: { id: req.params.id },
+      include: { driver: true },
+    })
+
+    if (!shipment) {
+      return res.status(404).json({ message: "Pengiriman tidak ditemukan." })
+    }
+    if (!shipment.driver) {
+      return res.status(400).json({ message: "Tugaskan driver terlebih dahulu sebelum mengirim notifikasi." })
+    }
+    if (!shipment.driver.phoneNumber) {
+      return res.status(400).json({ message: "Driver belum memiliki nomor telepon." })
+    }
+
+    // Kontak admin yang ditampilkan ke driver (hardcoded sementara — bisa dipindah ke env ADMIN_WHATSAPP nanti)
+    const ADMIN_PHONE = "087875387552"
+    // Alamat placeholder Indonesia — ganti dengan originLocation/destinationLocation asli bila datanya sudah lengkap
+    const pickupLocation  = "Mall Kelapa Gading, Jl. Boulevard Raya, Kelapa Gading, Jakarta Utara"
+    const dropoffLocation = "Jl. Asia Afrika No. 8, Sumur Bandung, Bandung, Jawa Barat"
+    // Link Google Maps dari alamat (di-encode agar aman dipakai sebagai query URL)
+    const mapsLink = (q: string) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`
+    // Waktu pickup dari tgl pickup shipment (format Indonesia, zona WIB)
+    const pickupTime = shipment.pickupDate
+      ? new Date(shipment.pickupDate).toLocaleString("id-ID", { dateStyle: "full", timeStyle: "short", timeZone: "Asia/Jakarta" })
+      : "Belum dijadwalkan"
+
+    const waMessage = `Halo ${shipment.driver.fullName},\n\nAnda ditugaskan untuk pengiriman baru ${shipment.id}.\n\nLokasi Pickup: ${pickupLocation}\nPeta: ${mapsLink(pickupLocation)}\nWaktu Pickup: ${pickupTime}\n\nLokasi Dropoff: ${dropoffLocation}\nPeta: ${mapsLink(dropoffLocation)}\n\nJika ada pertanyaan, mohon hubungi Admin ${ADMIN_PHONE}. Terima kasih dan hati-hati di jalan.`
+
+    const sent = await sendWhatsApp(shipment.driver.phoneNumber, waMessage)
+    if (!sent) {
+      return res.status(502).json({ message: "Gagal mengirim WhatsApp. Periksa koneksi gateway OpenWA." })
+    }
+
+    await prisma.adminAuditLog.create({
+      data: {
+        adminId:        req.user!.id,
+        actionType:     "SEND_WHATSAPP_DRIVER",
+        targetTable:    "drivers",
+        targetRecordId: shipment.driver.id,
+        changesSummary: `Sent WhatsApp assignment notification to driver ${shipment.driver.id}`,
+      }
+    })
+
+    res.json({ message: "Notifikasi WhatsApp terkirim ke driver." })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Gagal mengirim notifikasi WhatsApp." })
   }
 })
 

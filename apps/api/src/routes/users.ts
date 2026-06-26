@@ -82,7 +82,7 @@ router.post("/", authenticate, adminOnly, async (req: AuthRequest, res: Response
     // a temporary one (~12 chars). Flag whether we generated it so we only
     // surface it back to the admin in that case.
     const generated     = !password
-    const plainPassword = password || randomBytes(9).toString("base64url")
+    const plainPassword = password || crypto.randomBytes(9).toString("base64url")
     const passwordHash  = await bcrypt.hash(plainPassword, 10)
 
     const user = await prisma.user.create({

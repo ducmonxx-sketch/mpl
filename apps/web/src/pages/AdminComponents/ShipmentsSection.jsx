@@ -279,6 +279,16 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
     }
   }
 
+  const handleNotifyDriver = async () => {
+    try {
+      showToast('Mengirim notifikasi WhatsApp ke driver...', 'success')
+      await shipmentsAPI.notifyDriver(selectedShipment.id)
+      showToast('Notifikasi WhatsApp berhasil dikirim ke driver!', 'success')
+    } catch (err) {
+      showToast(err.message || 'Gagal mengirim notifikasi WhatsApp.', 'error')
+    }
+  }
+
   // ── Filtering & pagination ────────────────────────────────────
   const ITEMS_PER_PAGE = 20
 
@@ -567,21 +577,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
                   {selectedShipment.driverName ? (
                     <button
                       className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold rounded-xl shadow-sm transition-all"
-                      onClick={() => {
-                        const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu']
-                        let pickupDateObj = new Date()
-                        try {
-                          const parts = selectedShipment.pickupDate.split(' ')
-                          if (parts.length === 3) {
-                            const monthMap = { Jan:0, Feb:1, Mar:2, Apr:3, Mei:4, Jun:5, Jul:6, Ags:7, Sep:8, Okt:9, Nov:10, Des:11 }
-                            pickupDateObj = new Date(parts[2], monthMap[parts[1]] || 0, parts[0])
-                          }
-                        } catch (e) {}
-                        const dayName = dayNames[pickupDateObj.getDay() || 0]
-                        const msg = `Informasi Klien\nNama Perusahaan: ${selectedShipment.client}\nAlamat Pick-up: ${selectedShipment.originCity}\nAlamat Drop off: ${selectedShipment.destinationCity}\nHari & Tanggal Pickup: ${dayName}, ${selectedShipment.pickupDate}\n\nDetail Muatan\nDeskripsi: ${selectedShipment.cargoDescription}\nJumlah Unit /pcs: ${selectedShipment.units}${selectedShipment.weightKg && Number(selectedShipment.weightKg) > 0 ? `\nBerat: ${selectedShipment.weightKg} kg` : ''}\n\n-Admin MPL`
-                        window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
-                        showToast('Membuka WhatsApp untuk mengirim notifikasi driver...', 'success')
-                      }}
+                      onClick={handleNotifyDriver}
                     >
                       <Icon name="chat" size={18} /> Kirim Notifikasi WhatsApp Driver
                     </button>
