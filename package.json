@@ -3,5 +3,8 @@
   "private": true,
   "workspaces": [
     "apps/*"
-  ]
+  ],
+  "scripts": {
+    "security:scan": "npx --yes ecc-agentshield scan"
+  }
 }
