@@ -34,6 +34,35 @@ Build reusable primitives first; most items depend on the same few.
 
 **Recommended very-next action:** quick wins (#9 + helmet/rate-limit), then the **file upload helper** (unblocks the most).
 
+## Dev-infrastructure tiers (accelerators — how we go faster)
+Velocity/safety investments, separate from feature work. Tier-2 primitives overlap with the backend roadmap above — build the primitive once and many features speed up.
+
+**Tier 1 — Safety nets — ✅ DONE (this branch)**
+- ✅ `apps/api/tsconfig.json` + `npm run typecheck`
+- ✅ GitHub Actions CI (Postgres → prisma generate/migrate/seed → typecheck → web build → web lint → smoke)
+- ✅ Committed smoke test (`apps/api/test/smoke.mjs`, `npm run smoke`, 26/26)
+- ⏳ Follow-up: burn down the ~81 type/lint issues, then flip CI typecheck + lint to **blocking**.
+
+**Tier 2 — Reusable primitives (build once, reused everywhere)**
+- [ ] **File upload + storage helper** (multer→local, or Supabase/S3) → profile pic (#3), payment proof, tracking images, proof-of-delivery
+- [ ] **PDF generator** (pdfkit / pdf-lib) → invoice PDF + send-to-WhatsApp (#5)
+- [ ] **Zod validation layer** (one schema per route) → every endpoint: input validation + inferred types + consistent 400s
+- [ ] **`asyncHandler` wrapper + central error middleware** → removes ~49 repetitive try/catch blocks; uniform errors
+- [ ] **RBAC / permission helper** (matrix over existing `requireRole`) → super-admin vs admin (#10)
+
+**Tier 3 — Hardening & quality-of-life**
+- [ ] **helmet + express-rate-limit** → security basics (#7), quick pre-deploy win
+- [ ] **Structured logger (pino)** → faster debugging; replaces `console.error` (also fixes the buffered background-log pain)
+- [ ] **`predev` script** that frees :3001 / kills orphaned node before start (we hit orphan-process traps repeatedly)
+- [ ] **Shared types between `apps/web` and `apps/api`** → permanently kills frontend/backend drift (strategic fix)
+
+**Further (once the basics are in)**
+- [ ] Flip CI typecheck + web lint to **blocking** (after the ~81 cleanup).
+- [ ] **Pagination** on list endpoints (`/users`, `/shipments`, `/fleet/*`, `/invoices`) — currently unbounded.
+- [ ] Tests beyond smoke: unit/integration for business logic (points/totals, status transitions, auth).
+- [ ] `npm audit` in CI + a pre-commit hook running typecheck/lint locally.
+- [ ] Optional: error tracking (Sentry) + basic request logging/metrics.
+
 ## Full roadmap (the friend + user's original list — reference)
 **Backend (focus):**
 1. Cleaner notification integration · 2. Reset password in profile · 3. Profile picture change · 4. Notify driver via WhatsApp, one-time-use · 5. Send PDF invoice to WhatsApp · 6. Integrate client side to backend · 7. Security, rate limiter, etc. · 8. Bug: pengiriman section opens shipment detail without clicking (mostly frontend) · 9. Failed shipments excluded from faktur · 10. Super-admin vs admin roles.
