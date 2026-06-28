@@ -89,6 +89,7 @@ enum AuditActionType {
   CREATE_USER
   UPDATE_USER
   DELETE_USER
+  CREATE_ADMIN
 }
 
 enum InvoiceStatus {

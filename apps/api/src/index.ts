@@ -17,6 +17,7 @@ import fleetRouter         from "./routes/fleet"
 import notificationsRouter from "./routes/notifications"
 import invoicesRouter      from "./routes/invoices"
 import filesRouter         from "./routes/files"
+import adminsRouter        from "./routes/admins"
 import adminNotificationsRouter from "./routes/adminNotifications"
 import { startAlertScheduler } from "./services/alertScheduler"
 
@@ -83,6 +84,7 @@ app.use("/api/fleet",         fleetRouter)
 app.use("/api/notifications", notificationsRouter)
 app.use("/api/admin-notifications", adminNotificationsRouter)
 app.use("/api/invoices",      invoicesRouter)
+app.use("/api/admins",        adminsRouter)
 
 // ── 404 Fallback ──────────────────────────────────────────────
 

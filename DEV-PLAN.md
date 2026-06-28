@@ -30,7 +30,7 @@ Build reusable primitives first; most items depend on the same few.
 **2. Reusable primitives (build once → unlocks many)**
 - [x] **File upload helper** ✅ — StorageAdapter + LocalAdapter + multer + `saveUpload` (pluggable to cloud later).
 - [ ] **PDF generator** → ⏸ **PARKED — needs design first** (see Parked / handoffs below).
-- [ ] **RBAC / roles helper** → super-admin vs admin (#10) — full design in [RBAC-PLAN.md](RBAC-PLAN.md). ← **IN PROGRESS** (pieces 1–2 done: status machine + audit, expiry allow-late/log-missed; piece 3 admin-management next)
+- [x] **RBAC / roles helper** ✅ → super-admin vs admin (#10) — pieces 1–3 done (status state machine + audit, expiry allow-late/log-missed, admin management). Design + frontend handoffs in [RBAC-PLAN.md](RBAC-PLAN.md).
 
 **3. Features built on the primitives**
 - [~] **#3 profile picture** — backend ✅ (admin + client); **FRONTEND PENDING** (see Parked / handoffs).
@@ -59,7 +59,7 @@ Velocity/safety investments, separate from feature work. Tier-2 primitives overl
 - [ ] **PDF generator** (pdfkit / pdf-lib) → invoice PDF + send-to-WhatsApp (#5) — ⏸ parked, needs design
 - [ ] **Zod validation layer** (one schema per route) → every endpoint: input validation + inferred types + consistent 400s
 - [ ] **`asyncHandler` wrapper + central error middleware** → removes ~49 repetitive try/catch blocks; uniform errors
-- [ ] **RBAC / permission helper** (matrix over existing `requireRole`) → super-admin vs admin (#10) — **IN PROGRESS**
+- [x] **RBAC / permission helper** ✅ (matrix over `requireRole`) → super-admin vs admin (#10) — pieces 1–3 done
 
 **Tier 3 — Hardening & quality-of-life**
 - [x] **helmet + express-rate-limit** ✅ → security basics (#7), shipped with the quick wins

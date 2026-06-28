@@ -40,13 +40,20 @@ admin notification (`category: "compliance"`) is raised for manual cross-check.
 - `alertScheduler` also sweeps **already-expired** docs daily (previously it only flagged
   expiring-within-30-days), so a lapse stays visible until fixed. No migration (reuses `adminNotification`).
 
-## Piece 3 — Admin management (TODO; mostly reuse existing infra)
-SUPERADMIN-only (`admin:manage`):
-- **Reset an admin's password** → reuse the existing reset-password-**link** flow (no new password
-  UI; super-admin never sees the password).
-- **Create an admin** → reuse the **magic-link invite** (the `MagicLink` model may need an "is-admin" flag).
-- **List admins / view internal users** → `GET /api/admins` (backend trivial); needs a small new
-  frontend list page (friend's side).
+## Piece 3 — Admin management  ✅ DONE
+SUPERADMIN-only (`admin:manage`), in [`routes/admins.ts`](apps/api/src/routes/admins.ts):
+- `GET  /api/admins` — list admin accounts.
+- `POST /api/admins` — create an admin; returns a **one-time temp password** to relay.
+- `POST /api/admins/:id/reset-password` — reset; returns a new one-time temp password.
+
+**Approach note:** went **direct (temp-password returned once)** instead of reusing the magic-link /
+reset-link flow — that infra is client-coupled (`MagicLink.companyName` required, reset routes update
+`User`, the link targets the client frontend page), so reusing it would mean touching shared client
+flows + a frontend page. Direct keeps it backend-only. A self-service link flow can be added later
+(needs frontend work). Migration: added the `CREATE_ADMIN` audit action.
+
+**Frontend handoff (friend):** an "Admins" list page + a Create-Admin form that shows the returned
+`tempPassword` once, and a per-admin "Reset password" button that shows the returned temp password.
 
 ## Future / extensions (hold for now — keep easy to add)
 - **Page/feature-level access** (e.g. "regular admins can't see the Clients page") → add `page:clients`
