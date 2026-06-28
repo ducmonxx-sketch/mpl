@@ -6,6 +6,8 @@
 import "dotenv/config"
 import express    from "express"
 import cors       from "cors"
+import helmet     from "helmet"
+import rateLimit  from "express-rate-limit"
 
 import authRouter          from "./routes/auth"
 import shipmentsRouter     from "./routes/shipments"
@@ -22,12 +24,39 @@ const PORT = process.env.PORT || 3001
 
 // ── Middleware ───────────────────────────────────────────────
 
+app.use(helmet({
+  // The API is consumed cross-origin by the Vite SPA (:5173) — allow cross-origin reads.
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+}))
+
 app.use(cors({
   origin:      process.env.CLIENT_URL || "http://localhost:5173",
   credentials: true,
 }))
 
 app.use(express.json())
+
+// ── Rate limiting ────────────────────────────────────────────
+// General limiter caps abuse across the API; the auth limiter is stricter
+// to slow brute-force on login. Tuned generous enough not to trip the smoke test.
+const apiLimiter = rateLimit({
+  windowMs:        15 * 60 * 1000, // 15 minutes
+  max:             300,
+  standardHeaders: true,
+  legacyHeaders:   false,
+  message:         { message: "Terlalu banyak permintaan. Silakan coba lagi nanti." },
+})
+
+const authLimiter = rateLimit({
+  windowMs:        15 * 60 * 1000,
+  max:             50,
+  standardHeaders: true,
+  legacyHeaders:   false,
+  message:         { message: "Terlalu banyak percobaan. Silakan coba lagi nanti." },
+})
+
+app.use("/api/auth", authLimiter)
+app.use("/api",      apiLimiter)
 
 // ── Health Check ─────────────────────────────────────────────
 

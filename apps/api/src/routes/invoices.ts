@@ -144,6 +144,11 @@ router.post("/", authenticate, adminOnly, async (req: AuthRequest, res: Response
       return res.status(404).json({ message: "Shipment not found." })
     }
 
+    // #9 — failed shipments are not billable; do not let them appear in faktur.
+    if (shipment.status === "FAILED") {
+      return res.status(400).json({ message: "Tidak dapat membuat faktur untuk pengiriman yang berstatus GAGAL." })
+    }
+
     if (shipment.invoice) {
       return res.status(400).json({ message: "An invoice already exists for this shipment." })
     }
