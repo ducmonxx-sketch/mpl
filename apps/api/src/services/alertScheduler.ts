@@ -1,6 +1,7 @@
 import prisma from '../lib/prisma'
 import { sendWhatsApp } from './whatsapp'
 import { sendEmail } from './email'
+import { flagIfExpired } from '../lib/expiry'
 import 'dotenv/config'
 
 export async function checkDocumentExpiry() {
@@ -62,6 +63,19 @@ export async function checkDocumentExpiry() {
         await processExpiryAlert(vehicle.id + '-kir', 'vehicle', title, message, adminWhatsApp, adminEmail)
       }
     }
+    // Already-expired docs (admin forgot to renew) → compliance flag for manual cross-check.
+    const expiredDrivers = await prisma.driver.findMany({ where: { licenseExpiry: { lt: now } } })
+    for (const d of expiredDrivers) {
+      await flagIfExpired('driver', d.id, 'SIM/Lisensi', d.fullName, d.licenseExpiry)
+    }
+    const expiredVehicles = await prisma.vehicle.findMany({
+      where: { OR: [{ stnkExpiry: { lt: now } }, { kirExpiry: { lt: now } }] },
+    })
+    for (const v of expiredVehicles) {
+      await flagIfExpired('vehicle', v.id, 'STNK', v.licensePlate, v.stnkExpiry)
+      await flagIfExpired('vehicle', v.id, 'KIR', v.licensePlate, v.kirExpiry)
+    }
+
     console.log('[AlertScheduler] Expiry check complete.')
   } catch (error) {
     console.error('[AlertScheduler] Error checking document expiry:', error)

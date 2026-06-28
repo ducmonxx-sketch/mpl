@@ -13,6 +13,7 @@
 import { Router, Response } from "express"
 import prisma from "../lib/prisma"
 import { authenticate, adminOnly, AuthRequest } from "../middleware/auth"
+import { flagIfExpired } from "../lib/expiry"
 
 const router = Router()
 
@@ -62,6 +63,8 @@ router.post("/drivers", authenticate, adminOnly, async (req: AuthRequest, res: R
       },
     })
 
+    await flagIfExpired("driver", driver.id, "SIM/Lisensi", driver.fullName, driver.licenseExpiry)
+
     res.status(201).json({ message: "Driver created.", driver })
   } catch (err) {
     console.error(err)
@@ -95,6 +98,8 @@ router.patch("/drivers/:id", authenticate, adminOnly, async (req: AuthRequest, r
         changesSummary: `Updated driver ${driver.fullName}`,
       },
     })
+
+    await flagIfExpired("driver", driver.id, "SIM/Lisensi", driver.fullName, driver.licenseExpiry)
 
     res.json({ message: "Driver updated.", driver })
   } catch (err) {
@@ -189,6 +194,9 @@ router.post("/vehicles", authenticate, adminOnly, async (req: AuthRequest, res: 
       },
     })
 
+    await flagIfExpired("vehicle", vehicle.id, "STNK", vehicle.licensePlate, vehicle.stnkExpiry)
+    await flagIfExpired("vehicle", vehicle.id, "KIR", vehicle.licensePlate, vehicle.kirExpiry)
+
     res.status(201).json({ message: "Vehicle created.", vehicle })
   } catch (err) {
     console.error(err)
@@ -221,6 +229,9 @@ router.patch("/vehicles/:id", authenticate, adminOnly, async (req: AuthRequest, 
         changesSummary: `Updated vehicle ${vehicle.licensePlate}`,
       },
     })
+
+    await flagIfExpired("vehicle", vehicle.id, "STNK", vehicle.licensePlate, vehicle.stnkExpiry)
+    await flagIfExpired("vehicle", vehicle.id, "KIR", vehicle.licensePlate, vehicle.kirExpiry)
 
     res.json({ message: "Vehicle updated.", vehicle })
   } catch (err) {

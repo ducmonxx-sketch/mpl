@@ -31,10 +31,14 @@ Logic in [`lib/statusFlow.ts`](apps/api/src/lib/statusFlow.ts) (`canChangeStatus
 `isValidStatus`). Audit: every status change → `adminAuditLog` (`UPDATE_STATUS`) with `from → to`
 + a reversal flag. **No migration** — reuses the existing `UPDATE_STATUS` action.
 
-## Piece 2 — Driver expiry: allow-late + log-missed  (TODO)
-Admins can update `licenseExpiry` / `stnkExpiry` / `kirExpiry` **even after they lapse** (no
-past-date block). When the saved date was already expired at edit time, log a **"missed deadline"**
-(audit entry / admin notification) for manual cross-check later.
+## Piece 2 — Driver expiry: allow-late + log-missed  ✅ DONE
+Admins can update `licenseExpiry` / `stnkExpiry` / `kirExpiry` even after they lapse (already
+allowed — no past-date block). When a recorded date is already in the past, a **"missed deadline"**
+admin notification (`category: "compliance"`) is raised for manual cross-check.
+- [`lib/expiry.ts`](apps/api/src/lib/expiry.ts) `flagIfExpired()` (deduped per doc within 24h).
+- Wired into driver + vehicle **create & update** (`routes/fleet.ts`).
+- `alertScheduler` also sweeps **already-expired** docs daily (previously it only flagged
+  expiring-within-30-days), so a lapse stays visible until fixed. No migration (reuses `adminNotification`).
 
 ## Piece 3 — Admin management (TODO; mostly reuse existing infra)
 SUPERADMIN-only (`admin:manage`):

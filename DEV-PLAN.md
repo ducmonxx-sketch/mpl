@@ -30,7 +30,7 @@ Build reusable primitives first; most items depend on the same few.
 **2. Reusable primitives (build once → unlocks many)**
 - [x] **File upload helper** ✅ — StorageAdapter + LocalAdapter + multer + `saveUpload` (pluggable to cloud later).
 - [ ] **PDF generator** → ⏸ **PARKED — needs design first** (see Parked / handoffs below).
-- [ ] **RBAC / roles helper** → super-admin vs admin (#10) — full design in [RBAC-PLAN.md](RBAC-PLAN.md). ← **IN PROGRESS** (piece 1: status state machine + audit)
+- [ ] **RBAC / roles helper** → super-admin vs admin (#10) — full design in [RBAC-PLAN.md](RBAC-PLAN.md). ← **IN PROGRESS** (pieces 1–2 done: status machine + audit, expiry allow-late/log-missed; piece 3 admin-management next)
 
 **3. Features built on the primitives**
 - [~] **#3 profile picture** — backend ✅ (admin + client); **FRONTEND PENDING** (see Parked / handoffs).
