@@ -3,6 +3,7 @@
 // and an endpoint that runs `uploadImage` then `saveUpload`.
 
 import multer from "multer"
+import type { Request, Response, NextFunction } from "express"
 import { randomUUID } from "node:crypto"
 import { getStorage } from "./storage"
 
@@ -23,6 +24,21 @@ export const uploadImage = multer({
     else cb(new Error("Hanya gambar JPG, PNG, atau WEBP yang diperbolehkan."))
   },
 })
+
+// Route middleware: parse a single image field and turn multer errors (size/type)
+// into a clean 400 instead of bubbling to the default error handler.
+export function uploadImageField(field = "file") {
+  const handler = uploadImage.single(field)
+  return (req: Request, res: Response, next: NextFunction) => {
+    handler(req, res, (err: unknown) => {
+      if (err) {
+        const message = err instanceof Error ? err.message : "Gagal mengunggah file."
+        return res.status(400).json({ message })
+      }
+      next()
+    })
+  }
+}
 
 export interface SavedFile {
   key: string

@@ -15,6 +15,8 @@ import bcrypt from "bcrypt"
 import crypto from "crypto"
 import prisma from "../lib/prisma"
 import { authenticate, adminOnly, AuthRequest } from "../middleware/auth"
+import { uploadImageField, saveUpload, deleteUpload } from "../lib/upload"
+import { getStorage } from "../lib/storage"
 
 const router = Router()
 
@@ -147,6 +149,7 @@ router.get("/me", authenticate, async (req: AuthRequest, res: Response) => {
         companyName:        true,
         email:              true,
         phoneNumber:        true,
+        avatarKey:          true,
         verificationStatus: true,
         createdAt:          true,
         settings:           true,
@@ -155,7 +158,9 @@ router.get("/me", authenticate, async (req: AuthRequest, res: Response) => {
 
     if (!user) return res.status(404).json({ message: "User not found." })
 
-    res.json({ user })
+    const { avatarKey, ...rest } = user
+    const avatarUrl = avatarKey ? await getStorage().getUrl(avatarKey) : null
+    res.json({ user: { ...rest, avatarUrl } })
   } catch (err) {
     console.error(err)
     res.status(500).json({ message: "Failed to fetch profile." })
@@ -187,6 +192,28 @@ router.patch("/me", authenticate, async (req: AuthRequest, res: Response) => {
   } catch (err) {
     console.error(err)
     res.status(500).json({ message: "Failed to update profile." })
+  }
+})
+
+// ── POST /api/users/me/avatar ────────────────────────────────
+// Client uploads / replaces their profile picture.
+router.post("/me/avatar", authenticate, uploadImageField(), async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: "Tidak ada file gambar." })
+
+    const current = await prisma.user.findUnique({
+      where:  { id: req.user!.id },
+      select: { avatarKey: true },
+    })
+    if (current?.avatarKey) await deleteUpload(current.avatarKey).catch(() => {})
+
+    const { key, url } = await saveUpload("avatars", req.user!.id, req.file)
+    await prisma.user.update({ where: { id: req.user!.id }, data: { avatarKey: key } })
+
+    res.json({ message: "Foto profil diperbarui.", avatarUrl: url })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Gagal mengunggah foto profil." })
   }
 })
 

@@ -3,11 +3,16 @@
 //   POST /api/auth/register        → client registers
 //   POST /api/auth/login           → client logs in
 //   POST /api/auth/admin/login     → admin logs in
+//   GET  /api/auth/admin/me        → admin: own profile
+//   POST /api/auth/admin/me/avatar → admin: upload profile picture
 
 import { Router, Request, Response } from "express"
 import bcrypt from "bcrypt"
 import jwt from "jsonwebtoken"
 import prisma from "../lib/prisma"
+import { authenticate, adminOnly, AuthRequest } from "../middleware/auth"
+import { uploadImageField, saveUpload, deleteUpload } from "../lib/upload"
+import { getStorage } from "../lib/storage"
 
 const router = Router()
 
@@ -133,6 +138,47 @@ router.post("/admin/login", async (req: Request, res: Response) => {
   } catch (err) {
     console.error(err)
     res.status(500).json({ message: "Server error during login." })
+  }
+})
+
+// ── GET /api/auth/admin/me ───────────────────────────────────
+// Admin's own profile (also the server-side check needed for the future cookie auth).
+router.get("/admin/me", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+  try {
+    const admin = await prisma.admin.findUnique({
+      where:  { id: req.user!.id },
+      select: { id: true, fullName: true, email: true, role: true, avatarKey: true, createdAt: true },
+    })
+    if (!admin) return res.status(404).json({ message: "Admin not found." })
+
+    const { avatarKey, ...rest } = admin
+    const avatarUrl = avatarKey ? await getStorage().getUrl(avatarKey) : null
+    res.json({ admin: { ...rest, avatarUrl } })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to fetch admin profile." })
+  }
+})
+
+// ── POST /api/auth/admin/me/avatar ───────────────────────────
+// Admin uploads / replaces their profile picture.
+router.post("/admin/me/avatar", authenticate, adminOnly, uploadImageField(), async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: "Tidak ada file gambar." })
+
+    const current = await prisma.admin.findUnique({
+      where:  { id: req.user!.id },
+      select: { avatarKey: true },
+    })
+    if (current?.avatarKey) await deleteUpload(current.avatarKey).catch(() => {})
+
+    const { key, url } = await saveUpload("avatars", req.user!.id, req.file)
+    await prisma.admin.update({ where: { id: req.user!.id }, data: { avatarKey: key } })
+
+    res.json({ message: "Foto profil diperbarui.", avatarUrl: url })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Gagal mengunggah foto profil." })
   }
 })
 

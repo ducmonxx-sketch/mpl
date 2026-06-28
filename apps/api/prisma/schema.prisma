@@ -109,6 +109,7 @@ model Admin {
   email        String    @unique
   passwordHash String
   role         AdminRole @default(OPERATIONS)
+  avatarKey    String?   // storage key for profile picture (see lib/storage)
   createdAt    DateTime  @default(now())
 
   verifiedUsers     User[]          @relation("VerifiedByAdmin")
@@ -156,6 +157,7 @@ model User {
   city               String?
   address            String?
   npwp               String?
+  avatarKey          String?            // storage key for profile picture (see lib/storage)
   verificationStatus VerificationStatus @default(PENDING)
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt

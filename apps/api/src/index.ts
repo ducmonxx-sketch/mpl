@@ -16,6 +16,7 @@ import usersRouter         from "./routes/users"
 import fleetRouter         from "./routes/fleet"
 import notificationsRouter from "./routes/notifications"
 import invoicesRouter      from "./routes/invoices"
+import filesRouter         from "./routes/files"
 import adminNotificationsRouter from "./routes/adminNotifications"
 import { startAlertScheduler } from "./services/alertScheduler"
 
@@ -35,6 +36,10 @@ app.use(cors({
 }))
 
 app.use(express.json())
+
+// Static file serving (avatars, etc.) — public, mounted before rate limiting so
+// image loads are not counted against the API limit.
+app.use("/api/files", filesRouter)
 
 // ── Rate limiting ────────────────────────────────────────────
 // General limiter caps abuse across the API; the auth limiter is stricter
