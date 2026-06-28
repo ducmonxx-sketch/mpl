@@ -11,6 +11,7 @@ import { Router, Response } from "express"
 import prisma from "../lib/prisma"
 import { authenticate, adminOnly, AuthRequest } from "../middleware/auth"
 import { sendWhatsApp } from "../services/whatsapp"
+import { canChangeStatus, isReversal, isValidStatus } from "../lib/statusFlow"
 
 const router = Router()
 
@@ -305,10 +306,31 @@ router.post("/:id/notify-driver", authenticate, adminOnly, async (req: AuthReque
 // Admin updates shipment status and progress percent
 router.patch("/:id/status", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
   try {
+    const id = String(req.params.id)
     const { status, currentProgressPercent } = req.body
 
+    if (!isValidStatus("shipment", status)) {
+      return res.status(400).json({ message: "Status pengiriman tidak valid." })
+    }
+
+    const existing = await prisma.shipment.findUnique({
+      where:  { id },
+      select: { status: true },
+    })
+    if (!existing) {
+      return res.status(404).json({ message: "Pengiriman tidak ditemukan." })
+    }
+
+    // Forward moves: any admin. Reversal / off-flow: super-admin only (status:override).
+    if (!canChangeStatus(req.user!.role, "shipment", existing.status, status)) {
+      return res.status(403).json({
+        message: `Hanya Super Admin yang dapat mengubah status dari ${existing.status} ke ${status}.`,
+      })
+    }
+    const reversal = isReversal("shipment", existing.status, status)
+
     const shipment = await prisma.shipment.update({
-      where: { id: req.params.id },
+      where: { id },
       data: {
         status,
         currentProgressPercent,
@@ -323,7 +345,7 @@ router.patch("/:id/status", authenticate, adminOnly, async (req: AuthRequest, re
         actionType:     "UPDATE_STATUS",
         targetTable:    "shipments",
         targetRecordId: shipment.id,
-        changesSummary: `Status updated to ${status}`,
+        changesSummary: `Status ${existing.status} → ${status}${reversal ? ` (reversal by ${req.user!.role})` : ""}`,
       },
     })
 

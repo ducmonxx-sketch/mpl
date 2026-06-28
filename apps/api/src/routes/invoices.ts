@@ -6,10 +6,13 @@
 //   PATCH  /api/invoices/:id/send     → DRAFT → SENT, notifies client
 //   PATCH  /api/invoices/:id/paid     → SENT/OVERDUE → PAID, records paidAt
 //   PATCH  /api/invoices/:id/cancel   → DRAFT/SENT → CANCELLED
+//   PATCH  /api/invoices/:id/status   → SUPERADMIN: override/revert status (fix mistakes)
 
 import { Router, Response } from "express"
 import prisma from "../lib/prisma"
 import { authenticate, adminOnly, AuthRequest } from "../middleware/auth"
+import { requirePermission } from "../lib/rbac"
+import { isValidStatus } from "../lib/statusFlow"
 
 const router = Router()
 
@@ -313,6 +316,44 @@ router.patch("/:id/cancel", authenticate, adminOnly, async (req: AuthRequest, re
   } catch (err) {
     console.error(err)
     res.status(500).json({ message: "Failed to cancel invoice." })
+  }
+})
+
+// ── PATCH /api/invoices/:id/status ────────────────────────────
+// SUPERADMIN override — revert/fix an invoice's status off the normal flow
+// (e.g. un-cancel, undo a payment). Normal forward changes use send/paid/cancel.
+router.patch("/:id/status", authenticate, adminOnly, requirePermission("status:override"), async (req: AuthRequest, res: Response) => {
+  try {
+    const id = String(req.params.id)
+    const { status } = req.body
+    if (!isValidStatus("invoice", status)) {
+      return res.status(400).json({ message: "Status faktur tidak valid." })
+    }
+
+    const existing = await prisma.invoice.findUnique({ where: { id } })
+    if (!existing) {
+      return res.status(404).json({ message: "Invoice not found." })
+    }
+
+    const invoice = await prisma.invoice.update({
+      where: { id },
+      data:  { status, paidAt: status === "PAID" ? new Date() : null },
+    })
+
+    await prisma.adminAuditLog.create({
+      data: {
+        adminId:        req.user!.id,
+        actionType:     "UPDATE_STATUS",
+        targetTable:    "invoices",
+        targetRecordId: invoice.id,
+        changesSummary: `Status ${existing.status} → ${status} (override by ${req.user!.role})`,
+      },
+    })
+
+    res.json({ message: "Status faktur diperbarui.", invoice })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to update invoice status." })
   }
 })
 
