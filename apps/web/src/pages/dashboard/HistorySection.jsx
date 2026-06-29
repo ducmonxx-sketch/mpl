@@ -157,19 +157,19 @@ export default function HistorySection() {
       </section>
 
       {/* Controls: Tabs & Search */}
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-        <HistoryTabs tabs={TABS} activeTab={tab} onTabChange={setTab} history={displayHistory} />
-        
-        <div className="relative w-full lg:w-80">
-          <Icon name="search" size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mt-6">
+        <div className="relative w-full md:w-80">
+          <Icon name="search" size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
             placeholder="Cari ID, paket, atau tujuan..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white/60 backdrop-blur-md border border-white/50 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[var(--dash-secondary)] focus:border-transparent transition-all shadow-sm"
+            className="w-full pl-11 pr-4 py-2.5 bg-white border border-gray-200 shadow-sm rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[var(--dash-secondary)] focus:border-transparent transition-all placeholder:text-gray-400"
           />
         </div>
+        
+        <HistoryTabs tabs={TABS} activeTab={tab} onTabChange={setTab} history={displayHistory} />
       </div>
 
       {/* History Table */}
