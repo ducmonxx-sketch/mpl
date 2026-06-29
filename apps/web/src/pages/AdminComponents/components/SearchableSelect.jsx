@@ -32,44 +32,43 @@ export default function SearchableSelect({
   const selectedLabel = (value === 'all' && allLabel) ? allLabel : options.find(o => o.value === value)?.label || placeholder
 
   return (
-    <div className={`adm-searchable-select ${className}`} style={style} ref={containerRef}>
+    <div className={`relative ${className}`} style={style} ref={containerRef}>
       <button 
         type="button"
-        className="adm-searchable-select__trigger"
+        className={`w-full px-4 py-2.5 bg-white border rounded-xl text-sm flex items-center justify-between outline-none transition-all ${isOpen ? 'border-dash-secondary ring-2 ring-dash-secondary/20' : 'border-gray-300 hover:border-gray-400'}`}
         onClick={() => setIsOpen(!isOpen)}
-        style={{ borderBottomColor: isOpen ? 'var(--dash-secondary)' : 'transparent', background: isOpen ? '#fff' : '#f3f4f5' }}
       >
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedLabel}</span>
-        <Icon name={isOpen ? 'expand_less' : 'expand_more'} size={18} style={{ color: '#94a3b8', flexShrink: 0, marginLeft: '8px' }} />
+        <span className="truncate font-medium text-gray-700">{selectedLabel}</span>
+        <Icon name={isOpen ? 'expand_less' : 'expand_more'} size={18} className="text-gray-400 flex-shrink-0 ml-2" />
       </button>
 
       {isOpen && (
-        <div className="adm-searchable-select__dropdown">
-          <div className="adm-searchable-select__search">
-            <Icon name="search" size={16} />
+        <div className="absolute top-full mt-2 left-0 w-full bg-white border border-gray-100 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.1)] rounded-xl z-[60] overflow-hidden flex flex-col max-h-[300px] animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 bg-gray-50/50 shrink-0">
+            <Icon name="search" size={16} className="text-gray-400" />
             <input
               type="text"
               placeholder={searchPlaceholder}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              className="flex-1 bg-transparent border-none text-sm outline-none text-gray-700 placeholder-gray-400"
               autoFocus
             />
           </div>
           
-          <div className="adm-searchable-select__options">
+          <div className="flex-1 overflow-y-auto p-1 custom-scrollbar">
             {allLabel && (
               <button
                 type="button"
                 onClick={() => { onChange('all'); setIsOpen(false) }}
-                className={`adm-searchable-select__option ${value === 'all' ? 'adm-searchable-select__option--selected' : ''}`}
-                style={{ width: '100%', textAlign: 'left', border: 'none', display: 'block' }}
+                className={`w-full text-left px-3 py-2 text-sm rounded-lg transition-colors mb-1 ${value === 'all' ? 'bg-dash-secondary/15 text-dash-primary font-bold' : 'text-gray-600 hover:bg-gray-50'}`}
               >
                 {allLabel}
               </button>
             )}
             
             {filteredOptions.length === 0 ? (
-              <div style={{ padding: '0.6rem 1rem', fontSize: '0.85rem', color: '#94a3b8', textAlign: 'center' }}>
+              <div className="px-3 py-4 text-sm text-center text-gray-400">
                 Tidak ditemukan
               </div>
             ) : (
@@ -78,8 +77,7 @@ export default function SearchableSelect({
                   type="button"
                   key={opt.value}
                   onClick={() => { onChange(opt.value); setIsOpen(false) }}
-                  className={`adm-searchable-select__option ${value === opt.value ? 'adm-searchable-select__option--selected' : ''}`}
-                  style={{ width: '100%', textAlign: 'left', border: 'none', display: 'block' }}
+                  className={`w-full text-left px-3 py-2 text-sm rounded-lg transition-colors ${value === opt.value ? 'bg-dash-secondary/15 text-dash-primary font-bold' : 'text-gray-600 hover:bg-gray-50'}`}
                 >
                   {opt.label}
                 </button>

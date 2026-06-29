@@ -9,9 +9,7 @@ export default function InvoicesSection() {
   const [invoices, setInvoices] = useState([])
   const [loading, setLoading] = useState(true)
 
-  // Animated tabs state
-  const tabsContainerRef = useRef(null)
-  const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0 })
+  // Animated tabs state removed to use standard Tailwind tabs
 
   useEffect(() => {
     async function fetchInvoices() {
@@ -93,17 +91,7 @@ export default function InvoicesSection() {
     { id: 'overdue', label: 'Jatuh Tempo' },
   ]
 
-  // Update sliding indicator for tabs
-  useEffect(() => {
-    if (!tabsContainerRef.current) return
-    const activeEl = tabsContainerRef.current.querySelector('[data-active="true"]')
-    if (activeEl) {
-      setIndicatorStyle({
-        left: activeEl.offsetLeft,
-        width: activeEl.offsetWidth
-      })
-    }
-  }, [filter, clientInvoices.length])
+  // Update sliding indicator for tabs removed
 
   return (
     <div className="flex flex-col gap-6">
@@ -118,13 +106,8 @@ export default function InvoicesSection() {
       {/* Controls: Tabs & Search */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         
-        {/* Animated Tabs */}
-        <div className="relative inline-flex p-1.5 bg-white/40 backdrop-blur-md rounded-xl border border-white/50 shadow-sm overflow-x-auto max-w-full" ref={tabsContainerRef}>
-          <div 
-            className="absolute top-1.5 bottom-1.5 bg-white rounded-lg shadow-sm transition-all duration-300 ease-out"
-            style={{ left: indicatorStyle.left, width: indicatorStyle.width }}
-          />
-          
+        {/* Standard Tailwind Tabs */}
+        <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-px mt-4">
           {filters.map(f => {
             const count = f.id === 'all' 
               ? clientInvoices.length 
@@ -140,17 +123,12 @@ export default function InvoicesSection() {
             return (
               <button
                 key={f.id}
-                data-active={isActive}
                 onClick={() => setFilter(f.id)}
-                className={`relative z-10 flex items-center gap-2 px-5 py-2 text-sm font-bold rounded-lg transition-colors duration-200 whitespace-nowrap ${
-                  isActive ? 'text-[var(--dash-primary)]' : 'text-slate-500 hover:text-slate-700'
-                }`}
+                className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${isActive ? 'border-dash-primary text-dash-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
               >
                 {f.label}
                 {f.id !== 'all' && (
-                  <span className={`inline-flex items-center justify-center px-2 py-0.5 text-[0.65rem] rounded-full transition-colors ${
-                    isActive ? 'bg-[var(--dash-secondary)] text-[var(--dash-primary)]' : 'bg-slate-200/80 text-slate-600'
-                  }`}>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${isActive ? 'bg-dash-primary/10 text-dash-primary' : 'bg-gray-100 text-gray-500'}`}>
                     {count}
                   </span>
                 )}

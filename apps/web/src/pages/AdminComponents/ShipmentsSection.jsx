@@ -66,7 +66,6 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
 
   // ── Detail panel ─────────────────────────────────────────────
   const [selectedShipment, setSelectedShipment] = useState(null)
-
   // ── Create modal ─────────────────────────────────────────────
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [clientOptions, setClientOptions]     = useState([])
@@ -310,6 +309,18 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
         rawStatus: newRawStatus,
         status:    mapStatus(newRawStatus),
       }))
+
+      // Hardcoded tracking animation when status updates
+      import('animejs').then(animeModule => {
+        const anime = animeModule.default
+        anime({
+          targets: '.adm-status-badge',
+          scale: [0.8, 1.1, 1],
+          opacity: [0.5, 1],
+          easing: 'easeOutElastic(1, .5)',
+          duration: 800,
+        })
+      })
     } catch (err) {
       showToast(err.message, 'error')
     }
@@ -408,7 +419,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
       </section>
 
       {/* Toolbar: Search & Filters */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mt-2">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mt-2 relative z-20">
         <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
           <div className="relative w-full sm:w-72">
             <Icon name="search" size={20} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
