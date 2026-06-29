@@ -1,16 +1,45 @@
-import { useState, Fragment } from 'react'
+import { useState, useRef, useEffect, Fragment } from 'react'
 import Icon from '../../../components/Icon'
 
 export default function AdminDataTable({ columns, data, onRowClick, emptyMessage = 'Tidak ada data ditemukan.', expandableContent }) {
-  const [expandedRows, setExpandedRows] = useState(new Set())
+  const [expandedRowId, setExpandedRowId] = useState(null)
+  const rowRefs = useRef({})
+
+  const [hasAnimated, setHasAnimated] = useState(false)
 
   const toggleRow = (id, e) => {
     e?.stopPropagation()
-    const next = new Set(expandedRows)
-    if (next.has(id)) next.delete(id)
-    else next.add(id)
-    setExpandedRows(next)
+    setExpandedRowId(prev => (prev === id ? null : id))
   }
+
+  useEffect(() => {
+    // Row entrance animation
+    if (data && data.length > 0 && !hasAnimated) {
+      import('animejs').then((animeModule) => {
+        const anime = animeModule.default
+        anime({
+          targets: '.adm-table-row',
+          translateY: [10, 0],
+          opacity: [0, 1],
+          easing: 'easeOutExpo',
+          duration: 400,
+          delay: anime.stagger(50, { start: 100 })
+        })
+        setHasAnimated(true)
+      })
+    }
+  }, [data, hasAnimated])
+
+  useEffect(() => {
+    if (expandedRowId !== null && rowRefs.current[expandedRowId]) {
+      // Allow DOM to update layout before scrolling
+      setTimeout(() => {
+        if (rowRefs.current[expandedRowId]) {
+          rowRefs.current[expandedRowId].scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }
+      }, 100)
+    }
+  }, [expandedRowId])
 
   if (!data || data.length === 0) {
     return (
@@ -34,7 +63,7 @@ export default function AdminDataTable({ columns, data, onRowClick, emptyMessage
               ))}
             </tr>
             {columns.some(col => col.filterRender) && (
-              <tr className="bg-[#fec330]/5 border-b border-gray-200">
+              <tr style={{ backgroundColor: 'color-mix(in srgb, var(--dash-secondary) 5%, transparent)' }} className="border-b border-gray-200">
                 {columns.map((col) => (
                   <th key={`filter-${col.key}`} className="py-2 px-5 font-normal">
                     {col.filterRender ? col.filterRender() : null}
@@ -46,17 +75,18 @@ export default function AdminDataTable({ columns, data, onRowClick, emptyMessage
           <tbody className="divide-y divide-gray-100">
             {data.map((row, idx) => {
               const rowId = row.id || idx
-              const isExpanded = expandedRows.has(rowId)
+              const isExpanded = expandedRowId === rowId
               
               return (
                 <Fragment key={rowId}>
                   <tr
-                    className={`transition-colors duration-200 ${isExpanded ? 'bg-blue-50/30' : 'hover:bg-gray-50'}`}
+                    ref={el => rowRefs.current[rowId] = el}
+                    className={`adm-table-row transition-colors duration-200 ${isExpanded ? 'bg-blue-50/30' : 'hover:bg-gray-50'}`}
                     onClick={() => onRowClick?.(row)}
                     style={onRowClick ? { cursor: 'pointer' } : undefined}
                   >
                     {columns.map((col) => (
-                      <td key={col.key} className="py-4 px-5 text-sm font-medium text-[#333333] align-middle">
+                      <td key={col.key} className="py-4 px-5 text-sm font-medium text-[var(--neutral-dark)] align-middle">
                         {col.render ? col.render(row[col.key], row, { toggleRow: (e) => toggleRow(rowId, e), isExpanded }) : row[col.key]}
                       </td>
                     ))}
@@ -64,7 +94,7 @@ export default function AdminDataTable({ columns, data, onRowClick, emptyMessage
                   {expandableContent && isExpanded && (
                     <tr>
                       <td colSpan={columns.length} className="p-0 bg-gray-50 border-b border-gray-200">
-                        <div className="p-6 border-l-4 border-[#002442]">
+                        <div className="p-6 border-l-4" style={{ borderColor: 'var(--dash-primary)' }}>
                           {expandableContent(row)}
                         </div>
                       </td>

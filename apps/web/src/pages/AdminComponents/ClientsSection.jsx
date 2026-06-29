@@ -17,6 +17,12 @@ export default function ClientsSection() {
   const [CLIENTS, setCLIENTS] = useState([])
   const [loading, setLoading] = useState(true)
 
+  // Reset Password Modal State
+  const [showResetModal, setShowResetModal] = useState(false)
+  const [resetUser, setResetUser] = useState(null)
+  const [resetLink, setResetLink] = useState('')
+  const [resetLinkCopied, setResetLinkCopied] = useState(false)
+
   // Form state (controlled)
   const [formCompanyName, setFormCompanyName] = useState('')
   const [formPicName, setFormPicName] = useState('')
@@ -57,6 +63,37 @@ export default function ClientsSection() {
     const interval = setInterval(() => fetchClients({ silent: true }), 8000)
     return () => clearInterval(interval)
   }, [fetchClients])
+
+  useEffect(() => {
+    if (!loading) {
+      import('animejs').then(animeModule => {
+        const anime = animeModule.default
+        anime({
+          targets: '.adm-kpi-card',
+          translateY: [20, 0],
+          opacity: [0, 1],
+          easing: 'easeOutElastic(1, .8)',
+          duration: 800,
+          delay: anime.stagger(100)
+        })
+      })
+    }
+  }, [loading])
+
+  useEffect(() => {
+    if (selectedClient) {
+      import('animejs').then(animeModule => {
+        const anime = animeModule.default
+        anime({
+          targets: '.adm-detail-panel',
+          translateX: [50, 0],
+          opacity: [0, 1],
+          easing: 'easeOutExpo',
+          duration: 400
+        })
+      })
+    }
+  }, [selectedClient])
 
   const [isEditMode, setIsEditMode] = useState(false)
   const [editingClientId, setEditingClientId] = useState(null)
@@ -161,6 +198,24 @@ export default function ClientsSection() {
     }
   }
 
+  const handleGenerateResetLink = async (client) => {
+    try {
+      const res = await usersAPI.generateResetLink(client.id)
+      setResetLink(res.link)
+      setResetUser(client)
+      setShowResetModal(true)
+      setResetLinkCopied(false)
+    } catch(err) {
+      showToast('Gagal membuat link reset password', 'error')
+    }
+  }
+
+  const handleCopyResetLink = () => {
+    navigator.clipboard.writeText(resetLink).catch(() => {})
+    setResetLinkCopied(true)
+    setTimeout(() => setResetLinkCopied(false), 2000)
+  }
+
   const filters = [
     { id: 'all', label: 'Semua' },
     { id: 'verified', label: 'Terverifikasi' },
@@ -238,6 +293,13 @@ export default function ClientsSection() {
             <Icon name="edit" size={16} />
           </button>
           <button
+            className="adm-action-btn"
+            title="Reset Password"
+            onClick={(e) => { e.stopPropagation(); handleGenerateResetLink(row) }}
+          >
+            <Icon name="key" size={16} />
+          </button>
+          <button
             className="adm-action-btn adm-action-btn--danger"
             title="Hapus"
             onClick={(e) => { e.stopPropagation(); handleDeleteClient(row.id, row.companyName) }}
@@ -265,9 +327,9 @@ export default function ClientsSection() {
 
       {/* Premium KPI Cards */}
       <div className="adm-kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginTop: '1.25rem' }}>
-        <div className="adm-kpi-card" style={{ background: '#fff', borderRadius: '1rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
+        <div className="adm-kpi-card opacity-0" style={{ background: '#fff', borderRadius: '1rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
           <div className="adm-kpi-card__header">
-            <div className="adm-kpi-card__icon" style={{ background: 'rgba(0,36,66,0.05)', color: 'var(--dash-primary)' }}>
+            <div className="adm-kpi-card__icon" style={{ background: 'color-mix(in srgb, var(--dash-primary) 5%, transparent)', color: 'var(--dash-primary)' }}>
               <Icon name="business" size={24} />
             </div>
           </div>
@@ -278,9 +340,9 @@ export default function ClientsSection() {
           </div>
         </div>
 
-        <div className="adm-kpi-card" style={{ background: '#fff', borderRadius: '1rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
+        <div className="adm-kpi-card opacity-0" style={{ background: '#fff', borderRadius: '1rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
           <div className="adm-kpi-card__header">
-            <div className="adm-kpi-card__icon" style={{ background: 'rgba(59,130,246,0.08)', color: '#1d4ed8' }}>
+            <div className="adm-kpi-card__icon" style={{ background: 'color-mix(in srgb, var(--dash-tertiary-light) 8%, transparent)', color: 'var(--dash-tertiary-light)' }}>
               <Icon name="check_circle" size={24} />
             </div>
           </div>
@@ -291,9 +353,9 @@ export default function ClientsSection() {
           </div>
         </div>
 
-        <div className="adm-kpi-card" style={{ background: '#fff', borderRadius: '1rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
+        <div className="adm-kpi-card opacity-0" style={{ background: '#fff', borderRadius: '1rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
           <div className="adm-kpi-card__header">
-            <div className="adm-kpi-card__icon" style={{ background: 'rgba(186,26,26,0.08)', color: '#93000a' }}>
+            <div className="adm-kpi-card__icon" style={{ background: 'color-mix(in srgb, var(--dash-error) 8%, transparent)', color: 'var(--dash-error)' }}>
               <Icon name="warning" size={24} />
             </div>
           </div>
@@ -305,10 +367,11 @@ export default function ClientsSection() {
         </div>
       </div>
 
-      {/* Unified Search & Filters */}
-      <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginTop: '1.5rem', flexWrap: 'wrap' }}>
-        <div className="adm-search-bar" style={{ margin: 0, flex: '1', minWidth: '300px' }}>
-          <Icon name="search" size={18} />
+      {/* Search & Filters */}
+      <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center mt-6">
+        {/* Search */}
+        <div className="relative w-full md:w-96">
+          <Icon name="search" size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
             placeholder="Cari nama perusahaan atau PIC..."
@@ -317,25 +380,31 @@ export default function ClientsSection() {
               setSearchQuery(e.target.value)
               setCurrentPage(1)
             }}
+            className="w-full pl-11 pr-4 py-2.5 bg-white border border-gray-200 shadow-sm rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-dash-secondary/20 focus:border-dash-secondary transition-all placeholder:text-gray-400"
           />
         </div>
 
-        <div className="adm-filters" style={{ margin: 0 }}>
+        {/* Filters */}
+        <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-px">
           {filters.map((f) => {
             const count =
               f.id === 'all'
                 ? CLIENTS.length
                 : f.id === 'verified' ? verifiedCount : unverifiedCount;
+            const isActive = filter === f.id
             return (
               <button
                 key={f.id}
-                className={`adm-filter-tab${filter === f.id ? ' adm-filter-tab--active' : ''}`}
+                className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${isActive ? 'border-dash-primary text-dash-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
                 onClick={() => {
                   setFilter(f.id)
                   setCurrentPage(1)
                 }}
               >
-                {f.label} <span className="adm-filter-count">{count}</span>
+                {f.label} 
+                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${isActive ? 'bg-dash-primary/10 text-dash-primary' : 'bg-gray-100 text-gray-500'}`}>
+                  {count}
+                </span>
               </button>
             )
           })}
@@ -388,15 +457,15 @@ export default function ClientsSection() {
 
       {/* Detail Panel */}
       {selectedClient && (
-        <div className="adm-detail-panel glass-card">
+        <div className="adm-detail-panel glass-card opacity-0">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
             <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center' }}>
               <div 
                 style={{
                   width: '64px', height: '64px', borderRadius: '50%',
-                  background: 'linear-gradient(135deg, var(--dash-secondary) 0%, #d49811 100%)',
+                  background: 'var(--dash-secondary)',
                   color: 'var(--dash-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '1.5rem', fontWeight: 900, boxShadow: '0 4px 15px rgba(254,195,48,0.3)',
+                  fontSize: '1.5rem', fontWeight: 900, boxShadow: '0 4px 15px color-mix(in srgb, var(--dash-secondary) 30%, transparent)',
                   flexShrink: 0
                 }}
               >
@@ -509,6 +578,79 @@ export default function ClientsSection() {
                 required
               />
             </AdminFormField>
+          </div>
+        </AdminModal>
+      )}
+
+      {/* Reset Password Modal */}
+      {showResetModal && resetUser && (
+        <AdminModal
+          title="Reset Password Klien"
+          subtitle={`Bagikan link ini ke klien (${resetUser.companyName}) untuk mereset password mereka.`}
+          onClose={() => { setShowResetModal(false); setResetLink(''); setResetUser(null) }}
+          onSubmit={() => { setShowResetModal(false); setResetLink(''); setResetUser(null) }}
+          submitLabel="Selesai"
+        >
+          <div
+            style={{
+              padding: '1.5rem',
+              background: 'linear-gradient(135deg, rgba(242,184,36,0.05) 0%, rgba(242,184,36,0.15) 100%)',
+              border: '1px solid rgba(242,184,36,0.3)',
+              borderRadius: '16px',
+              boxShadow: '0 8px 32px rgba(242,184,36,0.05)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '1.25rem' }}>
+              <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'var(--dash-secondary)', color: 'var(--dash-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name="key" size={18} />
+              </div>
+              <span style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--dash-primary)' }}>
+                Link Reset Password
+              </span>
+            </div>
+
+            <div>
+              <div
+                style={{
+                  padding: '0.75rem',
+                  background: '#fff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  fontFamily: 'monospace',
+                  fontSize: '0.78rem',
+                  wordBreak: 'break-all',
+                  color: '#334155',
+                  marginBottom: '0.75rem',
+                  lineHeight: 1.5,
+                }}
+              >
+                {resetLink}
+              </div>
+              <button
+                type="button"
+                onClick={handleCopyResetLink}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '0.5rem 1rem',
+                  background: resetLinkCopied ? '#16a34a' : '#f1f5f9',
+                  color: resetLinkCopied ? '#fff' : 'var(--dash-primary)',
+                  border: '1px solid ' + (resetLinkCopied ? '#16a34a' : '#cbd5e1'),
+                  borderRadius: '8px',
+                  fontWeight: 600,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+              >
+                <Icon name={resetLinkCopied ? 'check' : 'content_copy'} size={16} />
+                {resetLinkCopied ? 'Tersalin!' : 'Salin Link'}
+              </button>
+            </div>
+            <p style={{ fontSize: '0.75rem', color: '#78716c', margin: '0.75rem 0 0', lineHeight: 1.6 }}>
+              ℹ️ Link ini hanya berlaku 1x pakai.
+            </p>
           </div>
         </AdminModal>
       )}

@@ -14,6 +14,11 @@ export default {
                 "background-light": "#f8f9fa",
                 "background-dark": "#13191f",
                 "footer-bg": "#152332",
+                "dash-primary": "var(--dash-primary)",
+                "dash-secondary": "var(--dash-secondary)",
+                "dash-accent": "var(--dash-accent)",
+                "dash-error": "var(--dash-error)",
+                "dash-tertiary-light": "var(--dash-tertiary-light)",
             },
             fontFamily: {
                 "display": ["Work Sans", "sans-serif"],

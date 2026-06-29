@@ -1,6 +1,14 @@
 import { useState } from 'react'
 import Icon from '../../../components/Icon'
 
+function getGreeting() {
+  const hour = new Date().getHours()
+  if (hour >= 5 && hour < 11) return 'Selamat Pagi 🌤️'
+  if (hour >= 11 && hour < 15) return 'Selamat Siang ☀️'
+  if (hour >= 15 && hour < 18) return 'Selamat Sore 🌇'
+  return 'Selamat Malam 🌙'
+}
+
 export const NAV_GROUPS = [
   {
     title: 'UTAMA',
@@ -13,7 +21,7 @@ export const NAV_GROUPS = [
     items: [
       { id: 'shipments', label: 'Pengiriman', icon: 'local_shipping' },
       { id: 'tracking', label: 'Pelacakan', icon: 'location_on' },
-      { id: 'armada', label: 'Armada', icon: 'directions_car' },
+      { id: 'armada', label: 'Daftar Kendaraan', icon: 'directions_car' },
       { id: 'drivers', label: 'Driver', icon: 'person' },
       { id: 'clients', label: 'Klien', icon: 'people' },
     ]
@@ -28,6 +36,7 @@ export const NAV_GROUPS = [
     title: 'SISTEM',
     items: [
       { id: 'users', label: 'Pengguna', icon: 'admin_panel_settings' },
+      { id: 'profile', label: 'Profil', icon: 'account_circle' },
     ]
   }
 ]
@@ -38,9 +47,13 @@ export default function AdminSidebar({
   isMobile,
   activeNav,
   handleNavChange,
-  handleLogout
+  handleLogout,
+  displayName
 }) {
   const [isCollapsed, setIsCollapsed] = useState(false)
+  
+  const firstName = displayName?.split(' ')[0] || 'Admin'
+  const greeting = getGreeting()
 
   // Force expand on mobile
   const collapsed = isCollapsed && !isMobile
@@ -70,15 +83,16 @@ export default function AdminSidebar({
           </button>
         )}
 
-        <div className={`flex items-center ${collapsed ? 'justify-center px-0 py-8' : 'gap-4 px-6 py-8'} border-b border-white/10 transition-all duration-300 overflow-hidden`}>
-          <img src="/mpl_logo_proto.svg" alt="MPL" className={`drop-shadow-xl transition-all duration-300 flex-shrink-0 ${collapsed ? 'w-10 h-10' : 'w-14 h-14'}`} />
+        {/* Brand/Logo Header with Greeting */}
+        <div className={`flex items-center ${collapsed ? 'justify-center px-0 py-8' : 'gap-4 px-6 py-6'} border-b border-white/10 transition-all duration-300 overflow-hidden`}>
+          <img src="/mpl_logo_proto.svg" alt="MPL" className={`drop-shadow-xl transition-all duration-300 flex-shrink-0 ${collapsed ? 'w-10 h-10' : 'w-12 h-12'}`} />
           
           <div className={`flex flex-col justify-center whitespace-nowrap transition-all duration-300 ${collapsed ? 'opacity-0 w-0' : 'opacity-100 w-auto'}`}>
-            <p className="text-sm font-extrabold uppercase tracking-widest text-[#fec330] m-0 leading-none">
-              Panel
+            <p className="text-[0.65rem] font-medium text-white/70 m-0 leading-tight">
+              {greeting}
             </p>
-            <p className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-white/80 m-0 mt-1 leading-none">
-              Administrasi
+            <p className="text-sm font-extrabold text-white m-0 mt-0.5 leading-tight truncate max-w-[130px]" title={firstName}>
+              {firstName}
             </p>
           </div>
           

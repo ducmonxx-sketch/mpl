@@ -21,6 +21,11 @@
   80% { transform: translateX(3px); }
 }
 
+@keyframes buttonShine {
+  0% { left: -100%; }
+  20%, 100% { left: 200%; }
+}
+
 /* ─── Page ─── */
 .adm-auth-page {
   position: relative; min-height: 100vh; display: flex; flex-direction: column;
@@ -181,6 +186,12 @@
   cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5rem;
   transition: transform 0.2s, box-shadow 0.25s, background-position 0.4s;
   box-shadow: 0 4px 16px rgba(254,195,48,0.3);
+  position: relative; overflow: hidden;
+}
+.adm-auth-submit::before {
+  content: ''; position: absolute; top: 0; left: -100%; width: 50%; height: 100%;
+  background: linear-gradient(to right, rgba(255,255,255,0) 0%, rgba(255,255,255,0.4) 50%, rgba(255,255,255,0) 100%);
+  transform: skewX(-25deg); animation: buttonShine 4s infinite;
 }
 .adm-auth-submit:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(254,195,48,0.45); background-position: right center; }
 .adm-auth-submit:active { transform: translateY(0); box-shadow: 0 2px 8px rgba(254,195,48,0.25); }
@@ -220,4 +231,13 @@
   .adm-auth-brand__heading { font-size: 1.5rem; }
   .adm-auth-form-panel { padding: 1.5rem 1.25rem; }
   .adm-auth-footer { padding: 1rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

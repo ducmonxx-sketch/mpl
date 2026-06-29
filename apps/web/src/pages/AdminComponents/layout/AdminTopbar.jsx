@@ -13,10 +13,8 @@ export default function AdminTopbar({
   notifications,
   handleMarkAllRead,
   handleMarkRead,
-  handleNotifNavigate,
-  displayName,
-  displayRole,
-  onProfileClick
+  handleDeleteNotif,
+  handleNotifNavigate
 }) {
   return (
     <header className="sticky top-0 z-30 flex items-center justify-between px-8 py-6 bg-[#f8f9fa]/80 backdrop-blur-xl border-b border-gray-200 shadow-[0_4px_30px_rgba(0,0,0,0.03)]">
@@ -53,27 +51,13 @@ export default function AdminTopbar({
               notifications={notifications}
               onMarkAllRead={handleMarkAllRead}
               onMarkRead={handleMarkRead}
+              onDelete={handleDeleteNotif}
               onNavigate={handleNotifNavigate}
               onClose={() => setShowNotifPanel(false)}
             />
           )}
         </div>
 
-        <div className="hidden sm:block w-px h-10 bg-gray-200" />
-
-        {/* User Profile */}
-        <div className="flex items-center gap-4 cursor-pointer group" onClick={onProfileClick}>
-          <div className="hidden sm:flex flex-col items-end">
-            <p className="text-base font-bold text-[#002442] leading-tight group-hover:text-[#fec330] transition-colors">{displayName}</p>
-            <p className="text-sm text-gray-500 font-medium">{displayRole}</p>
-          </div>
-          <img
-            src={`https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=fec330&color=002442&bold=true`}
-            alt="Profile"
-            className="w-12 h-12 rounded-full border-2 border-white shadow-sm transition-transform duration-300 group-hover:scale-105"
-          />
-        </div>
-        
       </div>
     </header>
   )

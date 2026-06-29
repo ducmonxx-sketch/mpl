@@ -1,4 +1,5 @@
 import Icon from '../../../components/Icon'
+import { useState } from 'react'
 
 const CATEGORY_STYLES = {
   shipment: { bg: 'bg-blue-50', text: 'text-blue-600', icon: 'local_shipping' },
@@ -28,9 +29,11 @@ export default function ClientNotificationPanel({
   notifications = [],
   onMarkAllRead,
   onMarkRead,
+  onDelete,
   onNavigate,
   onClose
 }) {
+  const [deletingId, setDeletingId] = useState(null)
   return (
     <div className="absolute top-full right-0 mt-4 w-80 md:w-96 bg-white/90 backdrop-blur-xl rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,36,66,0.15)] border border-gray-100 overflow-hidden z-50 transform origin-top-right transition-all">
       
@@ -61,10 +64,11 @@ export default function ClientNotificationPanel({
               return (
                 <div 
                   key={notif.id}
-                  className={`relative p-4 flex gap-4 cursor-pointer hover:bg-[#002442]/[0.02] transition-colors ${
+                  className={`relative p-4 flex gap-4 cursor-pointer hover:bg-[#002442]/[0.02] transition-colors group ${
                     !notif.isRead ? 'bg-[#fec330]/[0.04]' : ''
                   }`}
                   onClick={() => {
+                    if (deletingId === notif.id) return;
                     if (!notif.isRead) onMarkRead(notif.id)
                     if (onNavigate) {
                       onNavigate(notif.linkTo, notif.linkId)
@@ -72,6 +76,41 @@ export default function ClientNotificationPanel({
                     }
                   }}
                 >
+                  {/* Inline Delete Confirmation */}
+                  {deletingId === notif.id ? (
+                    <div className="absolute inset-0 z-10 bg-white/95 backdrop-blur-sm flex flex-col items-center justify-center p-4">
+                      <p className="text-sm font-bold text-gray-800 mb-2">Hapus notifikasi ini?</p>
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); onDelete(notif.id); setDeletingId(null); }}
+                          className="px-3 py-1 bg-red-50 text-red-600 text-xs font-bold rounded-lg hover:bg-red-100 transition-colors"
+                        >
+                          Ya, Hapus
+                        </button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); setDeletingId(null); }}
+                          className="px-3 py-1 bg-gray-50 text-gray-600 text-xs font-bold rounded-lg hover:bg-gray-100 transition-colors"
+                        >
+                          Batal
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {/* Delete Button (X) */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeletingId(notif.id);
+                    }}
+                    className="absolute top-2 right-2 p-1.5 rounded-md text-gray-400 opacity-0 group-hover:opacity-100 hover:text-red-500 hover:bg-red-50 transition-all z-20"
+                    title="Hapus Notifikasi"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                  </button>
                   {/* Unread indicator line */}
                   {!notif.isRead && (
                     <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#fec330]" />

@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react
 import { useNavigate } from 'react-router-dom'
 import anime from 'animejs'
 import { useAuth } from '../contexts/AuthContext'
+import { useToast } from '../contexts/ToastContext'
 import { shipmentsAPI } from '../lib/api'
 import DashboardSection from './dashboard/DashboardSection'
 import ShipmentsSection from './dashboard/ShipmentsSection'
@@ -47,6 +48,7 @@ const AnimatedSection = ({ children }) => {
 export default function ClientDashboardPage() {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
+  const { showToast } = useToast() // Note: need to import useToast from context
   
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [activeNav, setActiveNav] = useState('dashboard')
@@ -116,6 +118,15 @@ export default function ClientDashboardPage() {
 
   const handleMarkRead = (id) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n))
+  }
+
+  const handleDeleteNotif = async (id) => {
+    try {
+      setNotifications(prev => prev.filter(n => n.id !== id))
+      showToast('Notifikasi berhasil dihapus', 'success')
+    } catch {
+      showToast('Gagal menghapus notifikasi', 'error')
+    }
   }
 
   const handleNotifNavigate = (navId, linkId) => {
@@ -243,6 +254,7 @@ export default function ClientDashboardPage() {
           notifications={notifications}
           handleMarkAllRead={handleMarkAllRead}
           handleMarkRead={handleMarkRead}
+          handleDeleteNotif={handleDeleteNotif}
           handleNotifNavigate={handleNotifNavigate}
           displayName={displayName}
           displayRole={displayRole}
