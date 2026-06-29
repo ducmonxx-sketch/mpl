@@ -177,6 +177,21 @@ export default function TrackingSection({ initialSearchQuery = '', isAdmin = fal
     return () => clearInterval(interval)
   }, [fetchShipments])
 
+  useEffect(() => {
+    if (selectedShipment) {
+      import('animejs').then(animeModule => {
+        const anime = animeModule.default
+        anime({
+          targets: '.adm-detail-panel',
+          translateX: [50, 0],
+          opacity: [0, 1],
+          easing: 'easeOutExpo',
+          duration: 400
+        })
+      })
+    }
+  }, [selectedShipment])
+
 
 
   const handleUpdateStatus = async (newStatus) => {
@@ -411,12 +426,14 @@ export default function TrackingSection({ initialSearchQuery = '', isAdmin = fal
               />
               
               {/* Panel */}
-              <div className="fixed inset-y-0 right-0 w-full md:w-[500px] bg-white shadow-2xl z-50 flex flex-col animate-in slide-in-from-right duration-300 border-l border-gray-100">
+              <div className="adm-detail-panel opacity-0 fixed inset-y-0 right-0 w-full md:w-[500px] bg-white shadow-2xl z-50 flex flex-col border-l border-gray-100">
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 bg-gray-50/50">
                   <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-3">
-                      <h3 className="text-xl font-black text-[#002442]">#{selectedShipment.id}</h3>
+                      <h3 className="text-xl font-black text-[#002442]">
+                        {selectedShipment.id.startsWith('#') ? selectedShipment.id : `#${selectedShipment.id}`}
+                      </h3>
                       <span className={`px-3 py-1 rounded-full text-xs font-bold border ${badgeClasses}`}>
                         {selectedShipment.status}
                       </span>

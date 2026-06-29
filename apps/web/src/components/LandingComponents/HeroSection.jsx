@@ -87,7 +87,9 @@ export default function HeroSection() {
             ],
             "opens": "09:00",
             "closes": "17:00"
-        }
+        },
+        "telephone": "+622112345678",
+        "priceRange": "$$$"
     };
 
     return (
@@ -113,7 +115,7 @@ export default function HeroSection() {
                         </div>
 
                         <h1 className="hero-title font-display text-[40px] font-extrabold leading-[1.1] tracking-tight text-primary sm:text-5xl lg:text-[56px] will-change-transform">
-                            Solusi Logistik Terpercaya Untuk Bisnis Anda
+                            Jasa Pengiriman & Solusi Logistik Terpercaya Untuk Bisnis Anda
                         </h1>
 
                         <p className="hero-desc text-lg leading-relaxed text-neutral-dark max-w-lg will-change-transform">
@@ -157,7 +159,7 @@ export default function HeroSection() {
                     <div className="relative w-full lg:h-[600px] aspect-[4/3] lg:aspect-auto" style={{ perspective: '1200px' }}>
                         <div className="hero-image-container relative h-full w-full overflow-hidden rounded-2xl shadow-[0_20px_40px_rgba(0,0,0,0.08)] border border-white/50 bg-white will-change-transform" style={{ transformStyle: 'preserve-3d' }}>
                             <img
-                                alt="Logistics truck operation"
+                                alt="Operasional armada truk pengiriman PT Mahkota Putra Logistik"
                                 className="h-full w-full object-cover object-[center_40%] transition-transform duration-[2000ms] hover:scale-110"
                                 src="/1.webp"
                                 loading="eager"

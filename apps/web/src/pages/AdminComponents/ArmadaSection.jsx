@@ -6,6 +6,7 @@ import AdminStatusBadge from './components/AdminStatusBadge'
 import AdminPagination from './components/AdminPagination'
 import AdminModal from './components/AdminModal'
 import AdminFormField from './components/AdminFormField'
+import AdminDatePicker from './components/AdminDatePicker'
 import { fleetAPI } from '../../lib/api'
 
 const formatDate = (dateStr) => {
@@ -64,11 +65,19 @@ export default function ArmadaSection() {
   const [submitting, setSubmitting] = useState(false)
   const [type, setType] = useState('')
   const [licensePlate, setLicensePlate] = useState('')
+  const [chassisNumber, setChassisNumber] = useState('')
+  const [engineNumber, setEngineNumber] = useState('')
   const [stnkExpiry, setStnkExpiry] = useState('')
   const [kirExpiry, setKirExpiry] = useState('')
+  const [serviceDate, setServiceDate] = useState('')
   const [isEditMode, setIsEditMode] = useState(false)
   const [editingVehicleId, setEditingVehicleId] = useState(null)
   const [status, setStatus] = useState('AVAILABLE')
+
+  // Service Modal state
+  const [showServiceModal, setShowServiceModal] = useState(false)
+  const [serviceVehicleId, setServiceVehicleId] = useState(null)
+  const [serviceNotes, setServiceNotes] = useState('')
 
   const fetchVehicles = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true)
@@ -84,6 +93,10 @@ export default function ArmadaSection() {
         rawStnkExpiry: v.stnkExpiry,
         kirExpiry: formatDate(v.kirExpiry),
         rawKirExpiry: v.kirExpiry,
+        chassisNumber: v.chassisNumber || '-',
+        engineNumber: v.engineNumber || '-',
+        serviceDate: formatDate(v.serviceDate),
+        rawServiceDate: v.serviceDate,
         assignments: v._count?.shipments ?? 0,
       }))
       setVehicles(mapped)
@@ -101,13 +114,47 @@ export default function ArmadaSection() {
     return () => clearInterval(interval)
   }, [fetchVehicles])
 
+  useEffect(() => {
+    if (!loading) {
+      import('animejs').then((animeModule) => {
+        const anime = animeModule.default
+        anime({
+          targets: '.adm-kpi-card',
+          translateY: [20, 0],
+          opacity: [0, 1],
+          easing: 'easeOutElastic(1, .8)',
+          duration: 800,
+          delay: anime.stagger(100)
+        })
+      })
+    }
+  }, [loading])
+
+  useEffect(() => {
+    if (selectedVehicle) {
+      import('animejs').then((animeModule) => {
+        const anime = animeModule.default
+        anime({
+          targets: '.adm-detail-panel',
+          translateX: [50, 0],
+          opacity: [0, 1],
+          easing: 'easeOutExpo',
+          duration: 400
+        })
+      })
+    }
+  }, [selectedVehicle])
+
   const resetForm = () => {
     setIsEditMode(false)
     setEditingVehicleId(null)
     setType('')
     setLicensePlate('')
+    setChassisNumber('')
+    setEngineNumber('')
     setStnkExpiry('')
     setKirExpiry('')
+    setServiceDate('')
     setStatus('AVAILABLE')
   }
 
@@ -126,6 +173,8 @@ export default function ArmadaSection() {
     setEditingVehicleId(row.id)
     setType(row.type || '')
     setLicensePlate(row.licensePlate || '')
+    setChassisNumber(row.chassisNumber !== '-' ? row.chassisNumber : '')
+    setEngineNumber(row.engineNumber !== '-' ? row.engineNumber : '')
     
     let stnkDate = ''
     if (row.rawStnkExpiry) {
@@ -138,8 +187,27 @@ export default function ArmadaSection() {
       kirDate = new Date(row.rawKirExpiry).toISOString().substring(0, 10)
     }
     setKirExpiry(kirDate)
+    
+    let serviceDateStr = ''
+    if (row.rawServiceDate) {
+      serviceDateStr = new Date(row.rawServiceDate).toISOString().substring(0, 10)
+    }
+    setServiceDate(serviceDateStr)
+
     setStatus(row.rawStatus || 'AVAILABLE')
     setShowCreateModal(true)
+  }
+
+  const handleOpenService = (row) => {
+    setServiceVehicleId(row.id)
+    
+    let serviceDateStr = ''
+    if (row.rawServiceDate) {
+      serviceDateStr = new Date(row.rawServiceDate).toISOString().substring(0, 10)
+    }
+    setServiceDate(serviceDateStr)
+    setServiceNotes('')
+    setShowServiceModal(true)
   }
 
   const handleCreateVehicle = async () => {
@@ -149,7 +217,7 @@ export default function ArmadaSection() {
     }
     setSubmitting(true)
     try {
-      await fleetAPI.addVehicle({ type, licensePlate, stnkExpiry, kirExpiry })
+      await fleetAPI.addVehicle({ type, licensePlate, stnkExpiry, kirExpiry, chassisNumber, engineNumber, serviceDate })
       showToast('Kendaraan baru berhasil ditambahkan!', 'success')
       setShowCreateModal(false)
       resetForm()
@@ -173,6 +241,9 @@ export default function ArmadaSection() {
         licensePlate,
         stnkExpiry,
         kirExpiry,
+        chassisNumber,
+        engineNumber,
+        serviceDate,
         status,
       })
       showToast('Kendaraan berhasil diperbarui!', 'success')
@@ -181,6 +252,41 @@ export default function ArmadaSection() {
       await fetchVehicles()
     } catch (err) {
       showToast(err.message || 'Gagal memperbarui kendaraan.', 'error')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleSaveService = async () => {
+    if (!serviceDate) {
+      showToast('Harap pilih Tanggal Service.', 'error')
+      return
+    }
+    setSubmitting(true)
+    try {
+      // Find the existing vehicle to merge its other properties
+      const existing = vehicles.find(v => v.id === serviceVehicleId)
+      
+      // Update just the service date (we send everything else as is since backend expects full update currently)
+      await fleetAPI.updateVehicle(serviceVehicleId, {
+        type: existing.type,
+        licensePlate: existing.licensePlate,
+        stnkExpiry: existing.rawStnkExpiry,
+        kirExpiry: existing.rawKirExpiry,
+        chassisNumber: existing.chassisNumber !== '-' ? existing.chassisNumber : '',
+        engineNumber: existing.engineNumber !== '-' ? existing.engineNumber : '',
+        status: existing.rawStatus,
+        serviceDate,
+        // Service notes could be sent here if backend supported it: serviceNotes
+      })
+      showToast('Jadwal service berhasil diperbarui!', 'success')
+      setShowServiceModal(false)
+      setServiceVehicleId(null)
+      setServiceDate('')
+      setServiceNotes('')
+      await fetchVehicles()
+    } catch (err) {
+      showToast(err.message || 'Gagal memperbarui jadwal service.', 'error')
     } finally {
       setSubmitting(false)
     }
@@ -295,6 +401,24 @@ export default function ArmadaSection() {
       },
     },
     {
+      key: 'serviceDate',
+      label: 'Tanggal Service',
+      render: (v, row) => {
+        const warning = getExpiryStatus(row.rawServiceDate)
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span>{v}</span>
+            {warning && (
+              <span className={`adm-expiry-badge adm-expiry-badge--${warning.status}`} title={warning.label}>
+                <Icon name={warning.status === 'expired' ? 'error' : 'warning'} size={12} />
+                {warning.label}
+              </span>
+            )}
+          </div>
+        )
+      },
+    },
+    {
       key: 'actions',
       label: '',
       render: (_, row) => (
@@ -308,6 +432,17 @@ export default function ArmadaSection() {
             }}
           >
             <Icon name="visibility" size={16} />
+          </button>
+          <button
+            className="adm-action-btn"
+            title="Update Service"
+            style={{ color: '#eab308', backgroundColor: 'rgba(234, 179, 8, 0.1)' }}
+            onClick={(e) => {
+              e.stopPropagation()
+              handleOpenService(row)
+            }}
+          >
+            <Icon name="build" size={16} />
           </button>
           <button
             className="adm-action-btn"
@@ -339,16 +474,36 @@ export default function ArmadaSection() {
       {/* Header */}
       <section className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex flex-col gap-1">
-          <h2 className="text-2xl md:text-3xl font-black text-[#002442] tracking-tight">Armada Kendaraan</h2>
+          <h2 className="text-2xl md:text-3xl font-black text-dash-primary tracking-tight">Daftar Kendaraan</h2>
           <p className="text-sm text-gray-500 font-medium">Kelola kendaraan, status, dan dokumen armada.</p>
         </div>
         <button 
-          className="flex items-center justify-center gap-2 px-5 py-2.5 bg-[#fec330] hover:bg-[#eab308] text-[#002442] font-bold rounded-xl shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5" 
+          className="flex items-center justify-center gap-2 px-5 py-2.5 bg-dash-secondary hover:brightness-110 text-dash-primary font-bold rounded-xl shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5" 
           onClick={handleOpenCreateModal}
         >
           <Icon name="add" size={18} /> Tambah Kendaraan
         </button>
       </section>
+
+      {/* Summary Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2">
+        {[
+          { label: 'Total Kendaraan', value: vehicles.length, icon: 'directions_car', color: 'text-gray-600', bg: 'bg-gray-50' },
+          { label: 'Tersedia', value: availableCount, icon: 'check_circle', color: 'text-green-600', bg: 'bg-green-50' },
+          { label: 'Digunakan', value: inUseCount, icon: 'local_shipping', color: 'text-blue-600', bg: 'bg-blue-50' },
+          { label: 'Perawatan', value: maintenanceCount, icon: 'build', color: 'text-red-600', bg: 'bg-red-50' },
+        ].map((stat, i) => (
+          <div key={i} className="adm-kpi-card bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
+            <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${stat.bg} ${stat.color}`}>
+              <Icon name={stat.icon} size={24} />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-2xl font-black text-dash-primary">{stat.value}</span>
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">{stat.label}</span>
+            </div>
+          </div>
+        ))}
+      </div>
 
       {/* Search & Filters */}
       <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
@@ -363,7 +518,7 @@ export default function ArmadaSection() {
               setSearchQuery(e.target.value)
               setCurrentPage(1)
             }}
-            className="w-full pl-11 pr-4 py-2.5 bg-white border border-gray-200 shadow-sm rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] transition-all placeholder:text-gray-400"
+            className="w-full pl-11 pr-4 py-2.5 bg-white border border-gray-200 shadow-sm rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-dash-secondary/20 focus:border-dash-secondary transition-all placeholder:text-gray-400"
           />
         </div>
 
@@ -378,14 +533,14 @@ export default function ArmadaSection() {
             return (
               <button
                 key={f.id}
-                className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${isActive ? 'border-[#002442] text-[#002442]' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+                className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${isActive ? 'border-dash-primary text-dash-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
                 onClick={() => {
                   setFilter(f.id)
                   setCurrentPage(1)
                 }}
               >
                 {f.label} 
-                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${isActive ? 'bg-[#002442]/10 text-[#002442]' : 'bg-gray-100 text-gray-500'}`}>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${isActive ? 'bg-dash-primary/10 text-dash-primary' : 'bg-gray-100 text-gray-500'}`}>
                   {count}
                 </span>
               </button>
@@ -415,37 +570,17 @@ export default function ArmadaSection() {
         )}
       </div>
 
-      {/* Summary Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: 'Total Kendaraan', value: vehicles.length, icon: 'directions_car', color: 'text-gray-600', bg: 'bg-gray-50' },
-          { label: 'Tersedia', value: availableCount, icon: 'check_circle', color: 'text-green-600', bg: 'bg-green-50' },
-          { label: 'Digunakan', value: inUseCount, icon: 'local_shipping', color: 'text-blue-600', bg: 'bg-blue-50' },
-          { label: 'Perawatan', value: maintenanceCount, icon: 'build', color: 'text-red-600', bg: 'bg-red-50' },
-        ].map((stat, i) => (
-          <div key={i} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
-            <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${stat.bg} ${stat.color}`}>
-              <Icon name={stat.icon} size={24} />
-            </div>
-            <div className="flex flex-col">
-              <span className="text-2xl font-black text-[#002442]">{stat.value}</span>
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">{stat.label}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-
       {/* Slide-over Detail Panel */}
       {selectedVehicle && (
-        <div className="fixed inset-0 z-50 flex justify-end">
+        <div className="fixed inset-0 z-[100] flex justify-end">
           {/* Backdrop */}
           <div 
-            className="absolute inset-0 bg-[#002442]/20 backdrop-blur-sm animate-in fade-in duration-300"
+            className="absolute inset-0 bg-dash-primary/20 backdrop-blur-sm transition-opacity"
             onClick={() => setSelectedVehicle(null)}
           />
           
           {/* Panel */}
-          <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300 border-l border-gray-100">
+          <div className="adm-detail-panel opacity-0 relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col border-l border-gray-100">
             {/* Header */}
             <div className="flex justify-between items-start p-6 border-b border-gray-100 bg-gray-50/50">
               <div>
@@ -457,12 +592,12 @@ export default function ArmadaSection() {
                 >
                   {VEHICLE_STATUS_DISPLAY[selectedVehicle.status] || selectedVehicle.status}
                 </span>
-                <h3 className="text-2xl font-black text-[#002442] mt-3">
+                <h3 className="text-2xl font-black text-dash-primary mt-3">
                   {selectedVehicle.licensePlate}
                 </h3>
               </div>
               <button 
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-white border border-gray-200 text-gray-500 hover:text-[#002442] hover:bg-gray-50 transition-colors shadow-sm"
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-white border border-gray-200 text-gray-500 hover:text-dash-primary hover:bg-gray-50 transition-colors shadow-sm"
                 onClick={() => setSelectedVehicle(null)}
               >
                 <Icon name="close" size={18} />
@@ -478,15 +613,23 @@ export default function ArmadaSection() {
                 <div className="grid grid-cols-2 gap-y-4">
                   <div className="flex flex-col gap-1">
                     <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">No. Plat</span>
-                    <span className="text-sm font-bold text-[#002442]">{selectedVehicle.licensePlate}</span>
+                    <span className="text-sm font-bold text-dash-primary">{selectedVehicle.licensePlate}</span>
                   </div>
                   <div className="flex flex-col gap-1">
                     <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Jenis</span>
-                    <span className="text-sm font-bold text-[#002442]">{selectedVehicle.type}</span>
+                    <span className="text-sm font-bold text-dash-primary">{selectedVehicle.type}</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Nomor Rangka</span>
+                    <span className="text-sm font-bold text-dash-primary">{selectedVehicle.chassisNumber}</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Nomor Mesin</span>
+                    <span className="text-sm font-bold text-dash-primary">{selectedVehicle.engineNumber}</span>
                   </div>
                   <div className="flex flex-col gap-1">
                     <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Total Penugasan</span>
-                    <span className="text-sm font-bold text-[#002442]">{selectedVehicle.assignments}</span>
+                    <span className="text-sm font-bold text-dash-primary">{selectedVehicle.assignments}</span>
                   </div>
                 </div>
               </div>
@@ -499,23 +642,39 @@ export default function ArmadaSection() {
                   <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 flex justify-between items-center">
                     <div className="flex flex-col gap-1">
                       <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Masa Berlaku STNK</span>
-                      <span className="text-sm font-bold text-[#002442]">{selectedVehicle.stnkExpiry}</span>
+                      <span className="text-sm font-bold text-dash-primary">{selectedVehicle.stnkExpiry}</span>
                     </div>
                     <Icon name="event" size={24} className="text-gray-300" />
                   </div>
                   <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 flex justify-between items-center">
                     <div className="flex flex-col gap-1">
                       <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Masa Berlaku KIR</span>
-                      <span className="text-sm font-bold text-[#002442]">{selectedVehicle.kirExpiry}</span>
+                      <span className="text-sm font-bold text-dash-primary">{selectedVehicle.kirExpiry}</span>
                     </div>
                     <Icon name="event" size={24} className="text-gray-300" />
+                  </div>
+                  <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 flex justify-between items-center">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Tanggal Service</span>
+                      <span className="text-sm font-bold text-dash-primary">{selectedVehicle.serviceDate}</span>
+                    </div>
+                    <Icon name="build" size={24} className="text-gray-300" />
                   </div>
                 </div>
               </div>
             </div>
             
             {/* Footer actions */}
-            <div className="p-6 border-t border-gray-100 bg-gray-50/50">
+            <div className="p-6 border-t border-gray-100 bg-gray-50/50 flex flex-col gap-3">
+              <button
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-[#fec330] hover:bg-[#eab308] text-[#002442] font-bold rounded-xl transition-all shadow-sm"
+                onClick={() => {
+                  handleOpenService(selectedVehicle)
+                  setSelectedVehicle(null)
+                }}
+              >
+                <Icon name="build" size={18} /> Perbarui Jadwal Service
+              </button>
               <button
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-gray-200 hover:bg-gray-50 hover:border-gray-300 text-gray-700 font-bold rounded-xl transition-all shadow-sm"
                 onClick={() => {
@@ -544,7 +703,7 @@ export default function ArmadaSection() {
               <select 
                 value={type} 
                 onChange={(e) => setType(e.target.value)}
-                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-dash-secondary/20 focus:border-dash-secondary outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
               >
                 <option value="" disabled>
                   Pilih Jenis...
@@ -563,25 +722,51 @@ export default function ArmadaSection() {
                 placeholder="B 1234 XY"
                 value={licensePlate}
                 onChange={(e) => setLicensePlate(e.target.value)}
-                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-dash-secondary/20 focus:border-dash-secondary outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
+              />
+            </AdminFormField>
+
+            <AdminFormField label="Nomor Rangka">
+              <input
+                type="text"
+                placeholder="MH123..."
+                value={chassisNumber}
+                onChange={(e) => setChassisNumber(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-dash-secondary/20 focus:border-dash-secondary outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
+              />
+            </AdminFormField>
+
+            <AdminFormField label="Nomor Mesin">
+              <input
+                type="text"
+                placeholder="4D56..."
+                value={engineNumber}
+                onChange={(e) => setEngineNumber(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-dash-secondary/20 focus:border-dash-secondary outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
               />
             </AdminFormField>
 
             <AdminFormField label="Masa Berlaku STNK" required>
-              <input
-                type="date"
+              <AdminDatePicker
                 value={stnkExpiry}
-                onChange={(e) => setStnkExpiry(e.target.value)}
-                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
+                onChange={setStnkExpiry}
+                placeholder="Pilih Tanggal STNK"
               />
             </AdminFormField>
 
             <AdminFormField label="Masa Berlaku KIR" required>
-              <input
-                type="date"
+              <AdminDatePicker
                 value={kirExpiry}
-                onChange={(e) => setKirExpiry(e.target.value)}
-                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
+                onChange={setKirExpiry}
+                placeholder="Pilih Tanggal KIR"
+              />
+            </AdminFormField>
+
+            <AdminFormField label="Tanggal Service">
+              <AdminDatePicker
+                value={serviceDate}
+                onChange={setServiceDate}
+                placeholder="Pilih Tanggal Service"
               />
             </AdminFormField>
 
@@ -590,7 +775,7 @@ export default function ArmadaSection() {
                 <select
                   value={status}
                   onChange={(e) => setStatus(e.target.value)}
-                  className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
+                  className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-dash-secondary/20 focus:border-dash-secondary outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
                 >
                   <option value="AVAILABLE">Tersedia</option>
                   <option value="IN_USE">Digunakan</option>
@@ -598,6 +783,41 @@ export default function ArmadaSection() {
                 </select>
               </AdminFormField>
             )}
+          </div>
+        </AdminModal>
+      )}
+
+      {/* Service Modal */}
+      {showServiceModal && (
+        <AdminModal
+          title="Perbarui Jadwal Service"
+          subtitle="Tentukan tanggal service berikutnya untuk kendaraan ini."
+          onClose={() => {
+            setShowServiceModal(false)
+            setServiceDate('')
+            setServiceNotes('')
+          }}
+          onSubmit={handleSaveService}
+          submitLabel={submitting ? 'Menyimpan...' : 'Simpan Jadwal Service'}
+        >
+          <div className="flex flex-col gap-4">
+            <AdminFormField label="Tanggal Service Berikutnya" required>
+              <AdminDatePicker
+                value={serviceDate}
+                onChange={setServiceDate}
+                placeholder="Pilih Tanggal Service"
+              />
+            </AdminFormField>
+            
+            <AdminFormField label="Catatan Service (Opsional)">
+              <textarea
+                placeholder="Cth: Ganti oli mesin, cek rem depan..."
+                value={serviceNotes}
+                onChange={(e) => setServiceNotes(e.target.value)}
+                rows={3}
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-dash-secondary/20 focus:border-dash-secondary outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white resize-none"
+              />
+            </AdminFormField>
           </div>
         </AdminModal>
       )}

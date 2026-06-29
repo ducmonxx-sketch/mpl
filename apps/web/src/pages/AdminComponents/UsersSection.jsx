@@ -46,6 +46,12 @@ export default function UsersSection() {
   const [createdCredentials, setCreatedCredentials] = useState({ email: '', password: '' })
   const [credentialsCopied, setCredentialsCopied] = useState(false)
 
+  // Reset Password Modal State
+  const [showResetModal, setShowResetModal] = useState(false)
+  const [resetUser, setResetUser] = useState(null)
+  const [resetLink, setResetLink] = useState('')
+  const [resetLinkCopied, setResetLinkCopied] = useState(false)
+
   const fetchUsers = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true)
     try {
@@ -91,6 +97,37 @@ export default function UsersSection() {
     if (userType === 'client') return USERS.filter(u => u.role === 'client')
     return USERS
   }, [userType, USERS])
+
+  useEffect(() => {
+    if (!loading) {
+      import('animejs').then(animeModule => {
+        const anime = animeModule.default
+        anime({
+          targets: '.adm-kpi-card',
+          translateY: [20, 0],
+          opacity: [0, 1],
+          easing: 'easeOutElastic(1, .8)',
+          duration: 800,
+          delay: anime.stagger(100)
+        })
+      })
+    }
+  }, [loading])
+
+  useEffect(() => {
+    if (selectedUser) {
+      import('animejs').then(animeModule => {
+        const anime = animeModule.default
+        anime({
+          targets: '.adm-detail-panel',
+          translateX: [50, 0],
+          opacity: [0, 1],
+          easing: 'easeOutExpo',
+          duration: 400
+        })
+      })
+    }
+  }, [selectedUser])
 
   const resetModal = () => {
     setFormName('')
@@ -141,6 +178,24 @@ export default function UsersSection() {
     } catch (err) {
       showToast('Gagal membuat magic link', 'error')
     }
+  }
+
+  const handleGenerateResetLink = async (user) => {
+    try {
+      const res = await usersAPI.generateResetLink(user.id)
+      setResetLink(res.link)
+      setResetUser(user)
+      setShowResetModal(true)
+      setResetLinkCopied(false)
+    } catch(err) {
+      showToast('Gagal membuat link reset password', 'error')
+    }
+  }
+
+  const handleCopyResetLink = () => {
+    navigator.clipboard.writeText(resetLink).catch(() => {})
+    setResetLinkCopied(true)
+    setTimeout(() => setResetLinkCopied(false), 2000)
   }
 
   const handleCopyMagicLink = () => {
@@ -230,16 +285,7 @@ export default function UsersSection() {
           <button
             className="adm-action-btn"
             title="Reset Password"
-            onClick={async (e) => { 
-              e.stopPropagation()
-              try {
-                const res = await usersAPI.generateResetLink(row.id)
-                navigator.clipboard.writeText(res.link).catch(() => {})
-                showToast(`Link reset password untuk ${row.name} berhasil dibuat dan disalin ke clipboard!`, 'success')
-              } catch(err) {
-                showToast('Gagal membuat link reset password', 'error')
-              }
-            }}
+            onClick={(e) => { e.stopPropagation(); handleGenerateResetLink(row) }}
           >
             <Icon name="key" size={16} />
           </button>
@@ -277,22 +323,22 @@ export default function UsersSection() {
 
       {/* KPI Grid */}
       <div className="adm-kpi-grid" style={{ marginBottom: '1.5rem' }}>
-        <div className="adm-kpi-card glass-card">
+        <div className="adm-kpi-card glass-card opacity-0">
           <div className="adm-kpi-card__icon"><Icon name="group" size={24} /></div>
           <div className="adm-kpi-card__info">
             <h3 className="adm-kpi-card__title">Total Pengguna</h3>
             <p className="adm-kpi-card__value">{statsTotalUsers}</p>
           </div>
         </div>
-        <div className="adm-kpi-card glass-card">
-          <div className="adm-kpi-card__icon" style={{ color: '#16a34a', background: 'rgba(22,163,74,0.1)' }}><Icon name="verified_user" size={24} /></div>
+        <div className="adm-kpi-card glass-card opacity-0">
+          <div className="adm-kpi-card__icon" style={{ color: 'var(--dash-accent, #4a6d55)', background: 'color-mix(in srgb, var(--dash-accent, #4a6d55) 10%, transparent)' }}><Icon name="verified_user" size={24} /></div>
           <div className="adm-kpi-card__info">
             <h3 className="adm-kpi-card__title">Klien Aktif</h3>
             <p className="adm-kpi-card__value">{statsActiveClients}</p>
           </div>
         </div>
-        <div className="adm-kpi-card glass-card">
-          <div className="adm-kpi-card__icon" style={{ color: 'var(--dash-primary)', background: 'rgba(0,36,66,0.1)' }}><Icon name="admin_panel_settings" size={24} /></div>
+        <div className="adm-kpi-card glass-card opacity-0">
+          <div className="adm-kpi-card__icon" style={{ color: 'var(--dash-primary)', background: 'color-mix(in srgb, var(--dash-primary) 10%, transparent)' }}><Icon name="admin_panel_settings" size={24} /></div>
           <div className="adm-kpi-card__info">
             <h3 className="adm-kpi-card__title">Tim Internal</h3>
             <p className="adm-kpi-card__value">{statsInternalTeam}</p>
@@ -300,24 +346,34 @@ export default function UsersSection() {
         </div>
       </div>
 
-      <div className="adm-filters" style={{ marginTop: '0' }}>
+      {/* Filters */}
+      <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-px mt-6">
         <button
-          className={`adm-filter-tab ${userType === 'all' ? 'adm-filter-tab--active' : ''}`}
+          className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${userType === 'all' ? 'border-dash-primary text-dash-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
           onClick={() => setUserType('all')}
         >
-          Semua <span className="adm-filter-count">{USERS.length}</span>
+          Semua 
+          <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${userType === 'all' ? 'bg-dash-primary/10 text-dash-primary' : 'bg-gray-100 text-gray-500'}`}>
+            {USERS.length}
+          </span>
         </button>
         <button
-          className={`adm-filter-tab ${userType === 'internal' ? 'adm-filter-tab--active' : ''}`}
+          className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${userType === 'internal' ? 'border-dash-primary text-dash-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
           onClick={() => setUserType('internal')}
         >
-          Internal <span className="adm-filter-count">{USERS.filter(u => u.role !== 'client').length}</span>
+          Internal 
+          <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${userType === 'internal' ? 'bg-dash-primary/10 text-dash-primary' : 'bg-gray-100 text-gray-500'}`}>
+            {USERS.filter(u => u.role !== 'client').length}
+          </span>
         </button>
         <button
-          className={`adm-filter-tab ${userType === 'client' ? 'adm-filter-tab--active' : ''}`}
+          className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${userType === 'client' ? 'border-dash-primary text-dash-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
           onClick={() => setUserType('client')}
         >
-          Klien <span className="adm-filter-count">{USERS.filter(u => u.role === 'client').length}</span>
+          Klien 
+          <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${userType === 'client' ? 'bg-dash-primary/10 text-dash-primary' : 'bg-gray-100 text-gray-500'}`}>
+            {USERS.filter(u => u.role === 'client').length}
+          </span>
         </button>
       </div>
 
@@ -331,15 +387,15 @@ export default function UsersSection() {
 
       {/* Detail Panel */}
       {selectedUser && (
-        <div className="adm-detail-panel glass-card">
+        <div className="adm-detail-panel glass-card opacity-0">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
             <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center' }}>
               <div 
                 style={{
                   width: '64px', height: '64px', borderRadius: '50%',
-                  background: 'linear-gradient(135deg, var(--dash-secondary) 0%, #d49811 100%)',
+                  background: 'var(--dash-secondary)',
                   color: 'var(--dash-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '1.5rem', fontWeight: 900, boxShadow: '0 4px 15px rgba(254,195,48,0.3)',
+                  fontSize: '1.5rem', fontWeight: 900, boxShadow: '0 4px 15px color-mix(in srgb, var(--dash-secondary) 30%, transparent)',
                   flexShrink: 0
                 }}
               >
@@ -499,8 +555,8 @@ export default function UsersSection() {
                     alignItems: 'center',
                     gap: '8px',
                     padding: '0.65rem 1.25rem',
-                    background: '#eab308',
-                    color: '#fff',
+                    background: 'var(--dash-secondary)',
+                    color: 'var(--dash-primary)',
                     border: 'none',
                     borderRadius: '8px',
                     fontWeight: 700,
@@ -657,6 +713,79 @@ export default function UsersSection() {
               </div>
             </div>
           )}
+        </AdminModal>
+      )}
+
+      {/* Reset Password Modal */}
+      {showResetModal && resetUser && (
+        <AdminModal
+          title="Reset Password Pengguna"
+          subtitle={`Bagikan link ini ke pengguna (${resetUser.name}) untuk mereset password mereka.`}
+          onClose={() => { setShowResetModal(false); setResetLink(''); setResetUser(null) }}
+          onSubmit={() => { setShowResetModal(false); setResetLink(''); setResetUser(null) }}
+          submitLabel="Selesai"
+        >
+          <div
+            style={{
+              padding: '1.5rem',
+              background: 'linear-gradient(135deg, rgba(242,184,36,0.05) 0%, rgba(242,184,36,0.15) 100%)',
+              border: '1px solid rgba(242,184,36,0.3)',
+              borderRadius: '16px',
+              boxShadow: '0 8px 32px rgba(242,184,36,0.05)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '1.25rem' }}>
+              <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'var(--dash-secondary)', color: 'var(--dash-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name="key" size={18} />
+              </div>
+              <span style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--dash-primary)' }}>
+                Link Reset Password
+              </span>
+            </div>
+
+            <div>
+              <div
+                style={{
+                  padding: '0.75rem',
+                  background: '#fff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  fontFamily: 'monospace',
+                  fontSize: '0.78rem',
+                  wordBreak: 'break-all',
+                  color: '#334155',
+                  marginBottom: '0.75rem',
+                  lineHeight: 1.5,
+                }}
+              >
+                {resetLink}
+              </div>
+              <button
+                type="button"
+                onClick={handleCopyResetLink}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '0.5rem 1rem',
+                  background: resetLinkCopied ? '#16a34a' : '#f1f5f9',
+                  color: resetLinkCopied ? '#fff' : 'var(--dash-primary)',
+                  border: '1px solid ' + (resetLinkCopied ? '#16a34a' : '#cbd5e1'),
+                  borderRadius: '8px',
+                  fontWeight: 600,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+              >
+                <Icon name={resetLinkCopied ? 'check' : 'content_copy'} size={16} />
+                {resetLinkCopied ? 'Tersalin!' : 'Salin Link'}
+              </button>
+            </div>
+            <p style={{ fontSize: '0.75rem', color: '#78716c', margin: '0.75rem 0 0', lineHeight: 1.6 }}>
+              ℹ️ Link ini hanya berlaku 1x pakai.
+            </p>
+          </div>
         </AdminModal>
       )}
     </div>

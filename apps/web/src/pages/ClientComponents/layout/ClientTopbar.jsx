@@ -17,6 +17,7 @@ export default function ClientTopbar({
   notifications,
   handleMarkAllRead,
   handleMarkRead,
+  handleDeleteNotif,
   handleNotifNavigate
 }) {
   return (
@@ -92,6 +93,7 @@ export default function ClientTopbar({
               notifications={notifications}
               onMarkAllRead={handleMarkAllRead}
               onMarkRead={handleMarkRead}
+              onDelete={handleDeleteNotif}
               onNavigate={handleNotifNavigate}
               onClose={() => setShowNotifPanel(false)}
             />

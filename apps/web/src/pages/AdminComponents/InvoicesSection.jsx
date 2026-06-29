@@ -7,11 +7,21 @@ import AdminPagination from './components/AdminPagination'
 import AdminModal from './components/AdminModal'
 import AdminFormField from './components/AdminFormField'
 import SearchableSelect from './components/SearchableSelect'
+import AdminDatePicker from './components/AdminDatePicker'
 import { shipmentsAPI, invoicesAPI } from '../../lib/api'
 
 const formatIDR = (num) => {
   if (num === null || num === undefined || isNaN(Number(num))) return '-'
   return 'Rp ' + Number(num).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+const formatRupiahInput = (value) => {
+  const num = String(value || '').replace(/\D/g, '')
+  return num.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+}
+
+const parseRupiahInput = (formatted) => {
+  return formatted.replace(/,/g, '')
 }
 
 export default function InvoicesSection() {
@@ -24,6 +34,36 @@ export default function InvoicesSection() {
   const [currentPage, setCurrentPage] = useState(1)
   const [INVOICES, setINVOICES] = useState([])
   const [loading, setLoading] = useState(true)
+
+  // Payment terms state
+  const [paymentType, setPaymentType] = useState('full')
+  const [paymentTerms, setPaymentTerms] = useState([])
+
+  useEffect(() => {
+    if (selectedInvoice) {
+      setPaymentType('full')
+      setPaymentTerms([])
+    }
+  }, [selectedInvoice])
+
+  const handleAddPaymentTerm = () => {
+    setPaymentTerms([...paymentTerms, { amount: '', file: null, date: new Date().toISOString().split('T')[0] }])
+  }
+
+  const handleUpdatePaymentTerm = (index, field, value) => {
+    const updated = [...paymentTerms]
+    updated[index][field] = value
+    setPaymentTerms(updated)
+  }
+
+  const handleRemovePaymentTerm = (index) => {
+    const updated = [...paymentTerms]
+    updated.splice(index, 1)
+    setPaymentTerms(updated)
+  }
+
+  const sumOfTerms = paymentTerms.reduce((sum, term) => sum + (Number(term.amount) || 0), 0)
+  const remainingBalance = Math.max(0, (selectedInvoice?.totalAmount || 0) - sumOfTerms)
 
   // Create invoice form state
   const [availableShipments, setAvailableShipments] = useState([])
@@ -282,59 +322,66 @@ export default function InvoicesSection() {
       </div>
 
       {/* Unified Search & Filters */}
-      <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginTop: '1.5rem', flexWrap: 'wrap' }}>
-        <SearchableSelect
-          options={Array.from(new Set(INVOICES.map(inv => inv.client))).sort().map(c => ({ value: c, label: c }))}
-          value={filterClient}
-          onChange={(v) => { setFilterClient(v); setCurrentPage(1) }}
-          placeholder="Semua Klien (A-Z)"
-          searchPlaceholder="Cari klien..."
-          allLabel="Semua Klien (A-Z)"
-          style={{ width: '250px', margin: 0 }}
-        />
-        <SearchableSelect
-          options={[
-            { value: 'draft', label: 'Draft' },
-            { value: 'sent', label: 'Terkirim' },
-            { value: 'paid', label: 'Lunas' },
-            { value: 'overdue', label: 'Lewat Jatuh Tempo' },
-            { value: 'cancelled', label: 'Dibatalkan' },
-          ]}
-          value={filterStatus}
-          onChange={(v) => { setFilterStatus(v); setCurrentPage(1) }}
-          placeholder="Semua Status"
-          searchPlaceholder="Cari status..."
-          allLabel="Semua Status"
-          style={{ width: '200px', margin: 0 }}
-        />
-
-        <div className="adm-filters" style={{ margin: 0 }}>
-          {filters.map(f => {
-            const count =
-              f.id === 'all'
-                ? INVOICES.filter(inv => filterClient === 'all' || inv.client === filterClient).length
-                : INVOICES.filter(
-                    inv => {
-                      const matchClient = filterClient === 'all' || inv.client === filterClient
-                      const matchFilterStatus = filterStatus === 'all' || inv.paymentStatus === filterStatus
-                      if (!matchClient || !matchFilterStatus) return false
-                      if (f.id === 'unpaid') return inv.paymentStatus === 'draft' || inv.paymentStatus === 'sent'
-                      if (f.id === 'paid') return inv.paymentStatus === 'paid'
-                      if (f.id === 'overdue') return inv.paymentStatus === 'overdue'
-                      return false
-                    }
-                  ).length
-            return (
-              <button
-                key={f.id}
-                className={`adm-filter-tab${filter === f.id ? ' adm-filter-tab--active' : ''}`}
-                onClick={() => { setFilter(f.id); setCurrentPage(1) }}
-              >
-                {f.label} <span className="adm-filter-count">{count}</span>
-              </button>
-            )
-          })}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mt-6">
+        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+          <SearchableSelect
+            options={Array.from(new Set(INVOICES.map(inv => inv.client))).sort().map(c => ({ value: c, label: c }))}
+            value={filterClient}
+            onChange={(v) => { setFilterClient(v); setCurrentPage(1) }}
+            placeholder="Semua Klien (A-Z)"
+            searchPlaceholder="Cari klien..."
+            allLabel="Semua Klien (A-Z)"
+            className="w-full sm:w-64"
+          />
+          <SearchableSelect
+            options={[
+              { value: 'draft', label: 'Draft' },
+              { value: 'sent', label: 'Terkirim' },
+              { value: 'paid', label: 'Lunas' },
+              { value: 'overdue', label: 'Lewat Jatuh Tempo' },
+              { value: 'cancelled', label: 'Dibatalkan' },
+            ]}
+            value={filterStatus}
+            onChange={(v) => { setFilterStatus(v); setCurrentPage(1) }}
+            placeholder="Semua Status"
+            searchPlaceholder="Cari status..."
+            allLabel="Semua Status"
+            className="w-full sm:w-56"
+          />
         </div>
+      </div>
+
+      {/* Status filter tabs */}
+      <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-px mt-4">
+        {filters.map(f => {
+          const count =
+            f.id === 'all'
+              ? INVOICES.filter(inv => filterClient === 'all' || inv.client === filterClient).length
+              : INVOICES.filter(
+                  inv => {
+                    const matchClient = filterClient === 'all' || inv.client === filterClient
+                    const matchFilterStatus = filterStatus === 'all' || inv.paymentStatus === filterStatus
+                    if (!matchClient || !matchFilterStatus) return false
+                    if (f.id === 'unpaid') return inv.paymentStatus === 'draft' || inv.paymentStatus === 'sent'
+                    if (f.id === 'paid') return inv.paymentStatus === 'paid'
+                    if (f.id === 'overdue') return inv.paymentStatus === 'overdue'
+                    return false
+                  }
+                ).length
+          const isActive = filter === f.id
+          return (
+            <button
+              key={f.id}
+              className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${isActive ? 'border-dash-primary text-dash-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+              onClick={() => { setFilter(f.id); setCurrentPage(1) }}
+            >
+              {f.label} 
+              <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${isActive ? 'bg-dash-primary/10 text-dash-primary' : 'bg-gray-100 text-gray-500'}`}>
+                {count}
+              </span>
+            </button>
+          )
+        })}
       </div>
 
       <div style={{ marginTop: '1.25rem' }}>
@@ -413,6 +460,122 @@ export default function InvoicesSection() {
               )}
               {selectedInvoice.paymentNotes && (
                 <div className="adm-detail-row"><span className="adm-detail-label">Catatan</span><span className="adm-detail-value">{selectedInvoice.paymentNotes}</span></div>
+              )}
+            </div>
+
+            {/* Payment Recording / Installments Section */}
+            <div className="adm-detail-section" style={{ gridColumn: '1 / -1' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h4 className="adm-detail-section__title" style={{ margin: 0 }}><Icon name="account_balance_wallet" size={16} /> Pencatatan Pembayaran</h4>
+                {selectedInvoice.paymentStatus !== 'paid' && selectedInvoice.paymentStatus !== 'cancelled' && (
+                  <select 
+                    value={paymentType}
+                    onChange={(e) => setPaymentType(e.target.value)}
+                    style={{
+                      padding: '0.4rem 0.8rem',
+                      borderRadius: '8px',
+                      border: '1px solid #e2e8f0',
+                      background: '#fff',
+                      fontSize: '0.85rem',
+                      fontWeight: 600,
+                      color: 'var(--dash-primary)',
+                      outline: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="full">Sekali Bayar (Full)</option>
+                    <option value="installments">Tempo / Cicilan</option>
+                  </select>
+                )}
+              </div>
+
+              {paymentType === 'installments' && selectedInvoice.paymentStatus !== 'cancelled' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  {paymentTerms.map((term, idx) => (
+                    <div key={idx} style={{ 
+                      display: 'flex', gap: '1rem', alignItems: 'center', background: 'rgba(255,255,255,0.5)', 
+                      padding: '1rem', borderRadius: '12px', border: '1px dashed #cbd5e1', flexWrap: 'wrap'
+                    }}>
+                      <div style={{ flex: 1, minWidth: '200px' }}>
+                        <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#64748b', marginBottom: '4px' }}>Nominal (Rp)</label>
+                        <input 
+                          type="text"
+                          value={formatRupiahInput(term.amount)}
+                          onChange={(e) => handleUpdatePaymentTerm(idx, 'amount', parseRupiahInput(e.target.value))}
+                          placeholder="Contoh: 5,000,000"
+                          style={{
+                            width: '100%', padding: '0.5rem 0.8rem', borderRadius: '8px',
+                            border: '1px solid #e2e8f0', fontSize: '0.9rem'
+                          }}
+                        />
+                      </div>
+                      <div style={{ flex: 1, minWidth: '200px' }}>
+                        <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#64748b', marginBottom: '4px' }}>Bukti Pembayaran</label>
+                        <input 
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => handleUpdatePaymentTerm(idx, 'file', e.target.files[0])}
+                          style={{
+                            width: '100%', padding: '0.4rem', borderRadius: '8px',
+                            border: '1px solid #e2e8f0', fontSize: '0.8rem', background: '#fff'
+                          }}
+                        />
+                      </div>
+                      <div style={{ paddingTop: '1.25rem' }}>
+                        <button 
+                          onClick={() => handleRemovePaymentTerm(idx)}
+                          style={{
+                            background: '#fee2e2', color: '#ef4444', border: 'none',
+                            width: '36px', height: '36px', borderRadius: '8px',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            cursor: 'pointer', transition: 'all 0.2s'
+                          }}
+                          title="Hapus"
+                        >
+                          <Icon name="delete" size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+
+                  {sumOfTerms < selectedInvoice.totalAmount && (
+                    <button 
+                      onClick={handleAddPaymentTerm}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
+                        padding: '0.75rem', borderRadius: '12px', border: '1px dashed var(--dash-secondary)',
+                        background: 'transparent', color: 'var(--dash-primary)', fontWeight: 600,
+                        cursor: 'pointer', fontSize: '0.85rem', transition: 'all 0.2s'
+                      }}
+                      onMouseOver={(e) => { e.target.style.background = 'rgba(242, 184, 36, 0.1)' }}
+                      onMouseOut={(e) => { e.target.style.background = 'transparent' }}
+                    >
+                      <Icon name="add" size={16} /> Tambah Termin Pembayaran
+                    </button>
+                  )}
+
+                  {/* Remaining Balance Tracker */}
+                  <div style={{ 
+                    marginTop: '0.5rem', padding: '1rem 1.25rem', borderRadius: '12px', 
+                    background: sumOfTerms >= selectedInvoice.totalAmount ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.05)',
+                    border: `1px solid ${sumOfTerms >= selectedInvoice.totalAmount ? '#22c55e' : '#fca5a5'}`,
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    transition: 'all 0.3s ease'
+                  }}>
+                    <span style={{ 
+                      fontSize: '0.9rem', fontWeight: 700, 
+                      color: sumOfTerms >= selectedInvoice.totalAmount ? '#15803d' : '#b91c1c' 
+                    }}>
+                      {sumOfTerms >= selectedInvoice.totalAmount ? 'Total Termin Memenuhi Tagihan' : 'Sisa Pembayaran (Outstanding)'}
+                    </span>
+                    <span style={{ 
+                      fontSize: '1.25rem', fontWeight: 900, 
+                      color: sumOfTerms >= selectedInvoice.totalAmount ? '#15803d' : '#b91c1c' 
+                    }}>
+                      {formatIDR(remainingBalance)}
+                    </span>
+                  </div>
+                </div>
               )}
             </div>
           </div>
@@ -516,11 +679,10 @@ export default function InvoicesSection() {
             </AdminFormField>
             <AdminFormField label="Nominal (IDR)" required>
               <input
-                type="number"
-                placeholder="4500000"
-                min="0"
-                value={formSubtotal}
-                onChange={(e) => setFormSubtotal(e.target.value)}
+                type="text"
+                placeholder="4,500,000"
+                value={formatRupiahInput(formSubtotal)}
+                onChange={(e) => setFormSubtotal(parseRupiahInput(e.target.value))}
                 readOnly={!!availableShipments.find(s => s.id === formShipmentId)?.price}
                 style={availableShipments.find(s => s.id === formShipmentId)?.price ? { background: '#f1f5f9', cursor: 'not-allowed' } : {}}
               />
@@ -532,10 +694,10 @@ export default function InvoicesSection() {
             </AdminFormField>
 
             <AdminFormField label="Jatuh Tempo" required>
-              <input
-                type="date"
+              <AdminDatePicker
                 value={formDueDate}
-                onChange={(e) => setFormDueDate(e.target.value)}
+                onChange={setFormDueDate}
+                placeholder="Pilih Tanggal Jatuh Tempo"
               />
             </AdminFormField>
             <AdminFormField label="Catatan Pembayaran" fullWidth>

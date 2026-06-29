@@ -94,13 +94,14 @@ async function request(endpoint, options = {}) {
   // Handle auth failures
   if (res.status === 401) {
     clearToken()
+    const path = window.location.pathname
     // Redirect to login if not already there
-    if (!window.location.pathname.startsWith('/client') || window.location.pathname === '/client/dashboard') {
+    if (path.startsWith('/admin/')) {
+      window.location.href = '/admin'
+    } else if (path.startsWith('/client/')) {
       window.location.href = '/client'
     }
-    if (window.location.pathname.startsWith('/admin/dashboard')) {
-      window.location.href = '/admin'
-    }
+    
     throw new ApiError(data.message || 'Session expired. Please log in again.', res.status, data)
   }
 

@@ -212,6 +212,20 @@ export default function AdminDashboardPage() {
     } catch {}
   }
 
+  const handleDeleteNotif = async (id) => {
+    try {
+      setNotifications(prev => prev.filter(n => n.id !== id))
+      // Adjust unread count if the deleted notification was unread
+      const removedNotif = notifications.find(n => n.id === id)
+      if (removedNotif && !removedNotif.isRead) {
+        setUnreadCount(prev => Math.max(0, prev - 1))
+      }
+      showToast('Notifikasi berhasil dihapus', 'success')
+    } catch {
+      showToast('Gagal menghapus notifikasi', 'error')
+    }
+  }
+
   const handleNotifNavigate = (linkTo, linkId) => {
     setShowNotifPanel(false)
     if (linkTo) {
@@ -269,6 +283,7 @@ export default function AdminDashboardPage() {
         activeNav={activeNav}
         handleNavChange={handleNavChange}
         handleLogout={handleLogout}
+        displayName={displayName}
       />
       
       <div className="flex flex-col flex-1 min-w-0">
@@ -284,10 +299,8 @@ export default function AdminDashboardPage() {
           notifications={notifications}
           handleMarkAllRead={handleMarkAllRead}
           handleMarkRead={handleMarkRead}
+          handleDeleteNotif={handleDeleteNotif}
           handleNotifNavigate={handleNotifNavigate}
-          displayName={displayName}
-          displayRole={displayRole}
-          onProfileClick={() => handleNavChange('profile')}
         />
         
         <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 bg-[#f8f9fa] custom-scrollbar">

@@ -175,7 +175,7 @@ export default function DashboardSection() {
     <div className="dash-content">
       <section className="dash-header">
         <div>
-          <h2 className="dash-header__title">Analitik Armada</h2>
+          <h2 className="dash-header__title">Analitik Kendaraan</h2>
           <p className="dash-header__subtitle">
             Ikhtisar performa real-time untuk PT Mahkota Putra Logistik.
           </p>
