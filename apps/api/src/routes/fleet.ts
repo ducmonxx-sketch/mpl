@@ -167,7 +167,7 @@ router.get("/vehicles", authenticate, adminOnly, async (req: AuthRequest, res: R
 
 router.post("/vehicles", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
   try {
-    const { type, licensePlate, stnkExpiry, kirExpiry } = req.body
+    const { type, licensePlate, stnkExpiry, kirExpiry, serviceDate, chassisNumber, engineNumber } = req.body
 
     const existing = await prisma.vehicle.findUnique({ where: { licensePlate } })
     if (existing) {
@@ -180,6 +180,9 @@ router.post("/vehicles", authenticate, adminOnly, async (req: AuthRequest, res: 
         licensePlate,
         stnkExpiry:           stnkExpiry ? new Date(stnkExpiry) : null,
         kirExpiry:            kirExpiry ? new Date(kirExpiry) : null,
+        serviceDate:          serviceDate ? new Date(serviceDate) : null,
+        chassisNumber:        chassisNumber || null,
+        engineNumber:         engineNumber || null,
         lastUpdatedByAdminId: req.user!.id,
       },
     })
@@ -196,6 +199,7 @@ router.post("/vehicles", authenticate, adminOnly, async (req: AuthRequest, res: 
 
     await flagIfExpired("vehicle", vehicle.id, "STNK", vehicle.licensePlate, vehicle.stnkExpiry)
     await flagIfExpired("vehicle", vehicle.id, "KIR", vehicle.licensePlate, vehicle.kirExpiry)
+    await flagIfExpired("vehicle", vehicle.id, "Jadwal Service", vehicle.licensePlate, vehicle.serviceDate)
 
     res.status(201).json({ message: "Vehicle created.", vehicle })
   } catch (err) {
@@ -206,7 +210,7 @@ router.post("/vehicles", authenticate, adminOnly, async (req: AuthRequest, res: 
 
 router.patch("/vehicles/:id", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
   try {
-    const { type, licensePlate, status, stnkExpiry, kirExpiry } = req.body
+    const { type, licensePlate, status, stnkExpiry, kirExpiry, serviceDate, chassisNumber, engineNumber } = req.body
 
     const vehicle = await prisma.vehicle.update({
       where: { id: req.params.id },
@@ -214,8 +218,11 @@ router.patch("/vehicles/:id", authenticate, adminOnly, async (req: AuthRequest, 
         ...(type         && { type }),
         ...(licensePlate && { licensePlate }),
         ...(status       && { status }),
-        ...(stnkExpiry   !== undefined && { stnkExpiry: stnkExpiry ? new Date(stnkExpiry) : null }),
-        ...(kirExpiry    !== undefined && { kirExpiry: kirExpiry ? new Date(kirExpiry) : null }),
+        ...(stnkExpiry    !== undefined && { stnkExpiry: stnkExpiry ? new Date(stnkExpiry) : null }),
+        ...(kirExpiry     !== undefined && { kirExpiry: kirExpiry ? new Date(kirExpiry) : null }),
+        ...(serviceDate   !== undefined && { serviceDate: serviceDate ? new Date(serviceDate) : null }),
+        ...(chassisNumber !== undefined && { chassisNumber: chassisNumber || null }),
+        ...(engineNumber  !== undefined && { engineNumber: engineNumber || null }),
         lastUpdatedByAdminId: req.user!.id,
       },
     })
@@ -232,6 +239,7 @@ router.patch("/vehicles/:id", authenticate, adminOnly, async (req: AuthRequest, 
 
     await flagIfExpired("vehicle", vehicle.id, "STNK", vehicle.licensePlate, vehicle.stnkExpiry)
     await flagIfExpired("vehicle", vehicle.id, "KIR", vehicle.licensePlate, vehicle.kirExpiry)
+    await flagIfExpired("vehicle", vehicle.id, "Jadwal Service", vehicle.licensePlate, vehicle.serviceDate)
 
     res.json({ message: "Vehicle updated.", vehicle })
   } catch (err) {

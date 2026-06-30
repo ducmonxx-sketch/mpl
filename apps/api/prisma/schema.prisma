@@ -223,6 +223,9 @@ model Vehicle {
   status       VehicleStatus @default(AVAILABLE)
   stnkExpiry   DateTime?     // masa berlaku STNK
   kirExpiry    DateTime?     // masa berlaku KIR
+  serviceDate  DateTime?     // jadwal service berikutnya (di-flag sebagai compliance bila terlewat)
+  chassisNumber String?      // nomor rangka
+  engineNumber  String?      // nomor mesin
 
   lastUpdatedByAdminId String?
   lastUpdatedByAdmin   Admin?  @relation("VehicleManagedBy", fields: [lastUpdatedByAdminId], references: [id])
