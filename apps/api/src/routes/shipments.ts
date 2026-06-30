@@ -268,9 +268,9 @@ router.post("/:id/notify-driver", authenticate, adminOnly, async (req: AuthReque
 
     // Kontak admin yang ditampilkan ke driver (hardcoded sementara — bisa dipindah ke env ADMIN_WHATSAPP nanti)
     const ADMIN_PHONE = "087875387552"
-    // Alamat placeholder Indonesia — ganti dengan originLocation/destinationLocation asli bila datanya sudah lengkap
-    const pickupLocation  = "Mall Kelapa Gading, Jl. Boulevard Raya, Kelapa Gading, Jakarta Utara"
-    const dropoffLocation = "Jl. Asia Afrika No. 8, Sumur Bandung, Bandung, Jawa Barat"
+    // Alamat asli dari shipment (origin/destination) — dipakai untuk teks + link Google Maps.
+    const pickupLocation  = shipment.originLocation
+    const dropoffLocation = shipment.destinationLocation
     // Link Google Maps dari alamat (di-encode agar aman dipakai sebagai query URL)
     const mapsLink = (q: string) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`
     // Waktu pickup dari tgl pickup shipment (format Indonesia, zona WIB)
@@ -278,7 +278,9 @@ router.post("/:id/notify-driver", authenticate, adminOnly, async (req: AuthReque
       ? new Date(shipment.pickupDate).toLocaleString("id-ID", { dateStyle: "full", timeStyle: "short", timeZone: "Asia/Jakarta" })
       : "Belum dijadwalkan"
 
-    const waMessage = `Halo ${shipment.driver.fullName},\n\nAnda ditugaskan untuk pengiriman baru ${shipment.id}.\n\nLokasi Pickup: ${pickupLocation}\nPeta: ${mapsLink(pickupLocation)}\nWaktu Pickup: ${pickupTime}\n\nLokasi Dropoff: ${dropoffLocation}\nPeta: ${mapsLink(dropoffLocation)}\n\nJika ada pertanyaan, mohon hubungi Admin ${ADMIN_PHONE}. Terima kasih dan hati-hati di jalan.`
+    // Deskripsi produk / detail muatan agar driver tahu barang yang diangkut.
+    const cargoDetail = `${shipment.packageType}${shipment.units != null ? ` (${shipment.units} unit)` : ""}`
+    const waMessage = `Halo ${shipment.driver.fullName},\n\nAnda ditugaskan untuk pengiriman baru ${shipment.id}.\n\nDetail Muatan: ${cargoDetail}\n\nLokasi Pickup: ${pickupLocation}\nPeta: ${mapsLink(pickupLocation)}\nWaktu Pickup: ${pickupTime}\n\nLokasi Dropoff: ${dropoffLocation}\nPeta: ${mapsLink(dropoffLocation)}\n\nJika ada pertanyaan, mohon hubungi Admin ${ADMIN_PHONE}. Terima kasih dan hati-hati di jalan.`
 
     const sent = await sendWhatsApp(shipment.driver.phoneNumber, waMessage)
     if (!sent) {
