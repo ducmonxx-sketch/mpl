@@ -44,18 +44,29 @@ app.use("/api/files", filesRouter)
 
 // ── Rate limiting ────────────────────────────────────────────
 // General limiter caps abuse across the API; the auth limiter is stricter
-// to slow brute-force on login. Tuned generous enough not to trip the smoke test.
+// to slow brute-force on login.
+const RATE_WINDOW_MS = 15 * 60 * 1000 // 15 minutes
+
+// The SPA polls several sections every 8s (~15 req/min while idle, more with
+// navigation + multiple tabs), so a low ceiling locks the dashboard out for the
+// rest of the window. 1500/15min (~100 req/min) leaves comfortable headroom for
+// legitimate use while still capping egregious abuse.
+const API_MAX  = 1500
+// Stricter on auth: protects login/magic-link against brute force. Nothing polls
+// these endpoints, so a low limit is safe.
+const AUTH_MAX = 50
+
 const apiLimiter = rateLimit({
-  windowMs:        15 * 60 * 1000, // 15 minutes
-  max:             300,
+  windowMs:        RATE_WINDOW_MS,
+  max:             API_MAX,
   standardHeaders: true,
   legacyHeaders:   false,
   message:         { message: "Terlalu banyak permintaan. Silakan coba lagi nanti." },
 })
 
 const authLimiter = rateLimit({
-  windowMs:        15 * 60 * 1000,
-  max:             50,
+  windowMs:        RATE_WINDOW_MS,
+  max:             AUTH_MAX,
   standardHeaders: true,
   legacyHeaders:   false,
   message:         { message: "Terlalu banyak percobaan. Silakan coba lagi nanti." },
