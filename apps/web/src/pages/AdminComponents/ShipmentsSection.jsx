@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Icon from '../../components/Icon'
 import { useToast } from '../../contexts/ToastContext'
+import { useAuth } from '../../contexts/AuthContext'
 import { shipmentsAPI, usersAPI, fleetAPI } from '../../lib/api'
 import AdminDataTable from './components/AdminDataTable'
 import AdminStatusBadge from './components/AdminStatusBadge'
@@ -29,6 +30,25 @@ const RAW_STATUS_OPTIONS = [
   { value: 'CANCELLED', label: 'Dibatalkan' },
 ]
 
+// Forward transitions a regular admin may perform — mirrors apps/api/src/lib/statusFlow.ts.
+// SUPERADMIN may move freely (status:override); OPERATIONS/SUPPORT are forward-only.
+// The backend enforces this with a 403; this is the matching UX gate in the status-change modal.
+const FORWARD_STATUS = {
+  PENDING:   ['TRANSIT', 'CANCELLED'],
+  TRANSIT:   ['DELIVERED', 'FAILED'],
+  DELIVERED: [],
+  FAILED:    [],
+  CANCELLED: [],
+}
+
+// Statuses a role may switch TO from the current state.
+// SUPERADMIN: any status except the current one (can reverse/override).
+// OPERATIONS/SUPPORT: forward-only per FORWARD_STATUS.
+const availableStatusOptions = (role, from) =>
+  role === 'SUPERADMIN'
+    ? RAW_STATUS_OPTIONS.filter(opt => opt.value !== from)
+    : RAW_STATUS_OPTIONS.filter(opt => (FORWARD_STATUS[from] ?? []).includes(opt.value))
+
 const mapStatus = (s) => {
   const map = { PENDING: 'pending', TRANSIT: 'in_transit', DELIVERED: 'delivered', FAILED: 'cancelled', CANCELLED: 'cancelled' }
   return map[s] || s.toLowerCase()
@@ -54,6 +74,7 @@ const parseRupiahInput = (formatted) => {
 
 export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
   const { showToast } = useToast()
+  const { user } = useAuth()
 
   // ── List / filter state ──────────────────────────────────────
   const [filter, setFilter]               = useState('all')
@@ -66,6 +87,13 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
 
   // ── Detail panel ─────────────────────────────────────────────
   const [selectedShipment, setSelectedShipment] = useState(null)
+  // Notify-driver button: id with an in-flight request + ids already notified
+  // this session — keeps the button frozen while sending and disabled after success.
+  const [notifyingId, setNotifyingId] = useState(null)
+  const [notifiedIds, setNotifiedIds] = useState(() => new Set())
+  // Status-change confirmation modal
+  const [showStatusModal, setShowStatusModal] = useState(false)
+  const [pendingStatus, setPendingStatus]     = useState(null)
   // ── Create modal ─────────────────────────────────────────────
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [clientOptions, setClientOptions]     = useState([])
@@ -274,8 +302,8 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
   }
 
   const openAssignModal = (row) => {
-    if (row.status === 'delivered') {
-      showToast('Tidak dapat menugaskan driver untuk pengiriman yang sudah terkirim.', 'error')
+    if (user?.role !== 'SUPERADMIN' && row.status !== 'pending') {
+      showToast('Hanya pengiriman berstatus "Menunggu" yang dapat ditugaskan driver.', 'error')
       return
     }
     setAssigningShipment(row)
@@ -321,20 +349,48 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
           duration: 800,
         })
       })
+      return true
     } catch (err) {
       showToast(err.message, 'error')
+      return false
+    }
+  }
+
+  const handleConfirmStatus = async () => {
+    if (!pendingStatus) {
+      showToast('Pilih status baru terlebih dahulu.', 'error')
+      return
+    }
+    const ok = await handleStatusUpdate(pendingStatus)
+    if (ok) {
+      setShowStatusModal(false)
+      setPendingStatus(null)
     }
   }
 
   const handleNotifyDriver = async () => {
+    const id = selectedShipment.id
+    setNotifyingId(id)               // freeze the button while OpenWA responds
     try {
-      showToast('Mengirim notifikasi WhatsApp ke driver...', 'success')
-      await shipmentsAPI.notifyDriver(selectedShipment.id)
+      await shipmentsAPI.notifyDriver(id)
       showToast('Notifikasi WhatsApp berhasil dikirim ke driver!', 'success')
+      setNotifiedIds(prev => {       // keep it disabled after a successful send
+        const next = new Set(prev)
+        next.add(id)
+        return next
+      })
     } catch (err) {
       showToast(err.message || 'Gagal mengirim notifikasi WhatsApp.', 'error')
+    } finally {
+      setNotifyingId(null)
     }
   }
+
+  // Notify-button state for the currently-open shipment.
+  const notifyInFlight = !!selectedShipment && notifyingId === selectedShipment.id
+  const notifySent     = !!selectedShipment && notifiedIds.has(selectedShipment.id)
+  // Status options the current admin role may switch the open shipment TO.
+  const statusOptions  = selectedShipment ? availableStatusOptions(user?.role, selectedShipment.rawStatus) : []
 
   // ── Filtering & pagination ────────────────────────────────────
   const ITEMS_PER_PAGE = 20
@@ -379,7 +435,11 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
     {
       key: 'actions',
       label: '',
-      render: (_, row) => (
+      render: (_, row) => {
+        // Normal admins may only assign while the shipment is still "Menunggu" (PENDING);
+        // SUPERADMIN can (re)assign at any status.
+        const assignBlocked = user?.role !== 'SUPERADMIN' && row.status !== 'pending'
+        return (
         <div className="flex items-center justify-end gap-2">
           <button
             className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 bg-gray-100 hover:bg-dash-primary hover:text-white transition-colors"
@@ -389,15 +449,16 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
             <Icon name="visibility" size={16} />
           </button>
           <button
-            className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${row.status === 'delivered' ? 'text-gray-300 bg-gray-50 cursor-not-allowed' : 'text-gray-500 bg-gray-100 hover:bg-dash-secondary hover:text-dash-primary'}`}
-            title={row.status === 'delivered' ? 'Pengiriman Selesai (Terkunci)' : 'Tugaskan Driver'}
+            className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${assignBlocked ? 'text-gray-300 bg-gray-50 cursor-not-allowed' : 'text-gray-500 bg-gray-100 hover:bg-dash-secondary hover:text-dash-primary'}`}
+            title={assignBlocked ? 'Hanya bisa ditugaskan saat status Menunggu' : 'Tugaskan Driver'}
             onClick={(e) => { e.stopPropagation(); openAssignModal(row) }}
-            disabled={row.status === 'delivered'}
+            disabled={assignBlocked}
           >
             <Icon name="person_add" size={16} />
           </button>
         </div>
-      ),
+        )
+      },
     },
   ]
 
@@ -529,15 +590,14 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
                 Detail {selectedShipment.id.startsWith('#') ? selectedShipment.id : `#${selectedShipment.id}`}
               </h3>
               <div className="flex gap-2">
-                <select
-                  className="px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-xs font-bold text-gray-700 focus:outline-none focus:border-dash-secondary"
-                  value={selectedShipment.rawStatus}
-                  onChange={(e) => handleStatusUpdate(e.target.value)}
+                <button
+                  className="px-3 py-1.5 bg-dash-secondary hover:opacity-90 text-dash-primary rounded-lg text-xs font-bold transition-opacity disabled:bg-gray-100 disabled:text-gray-400 disabled:opacity-100 disabled:cursor-not-allowed"
+                  onClick={() => { setPendingStatus(null); setShowStatusModal(true) }}
+                  disabled={statusOptions.length === 0}
+                  title={statusOptions.length === 0 ? 'Status sudah final' : 'Ubah status pengiriman'}
                 >
-                  {RAW_STATUS_OPTIONS.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
+                  Ubah Status
+                </button>
                 {onTrackFull && (
                   <button
                     className="px-3 py-1.5 bg-dash-secondary/15 hover:bg-dash-secondary/25 text-[#795900] rounded-lg text-xs font-bold transition-colors"
@@ -625,10 +685,20 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
                 <div className="mt-2">
                   {selectedShipment.driverName ? (
                     <button
-                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold rounded-xl shadow-sm transition-all"
+                      disabled={notifyInFlight || notifySent}
+                      className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 font-bold rounded-xl shadow-sm transition-all ${
+                        notifyInFlight || notifySent
+                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          : 'bg-[#25D366] hover:bg-[#20bd5a] text-white'
+                      }`}
                       onClick={handleNotifyDriver}
                     >
-                      <Icon name="chat" size={18} /> Kirim Notifikasi WhatsApp Driver
+                      <Icon name={notifySent ? 'check_circle' : 'chat'} size={18} />
+                      {notifyInFlight
+                        ? 'Mengirim…'
+                        : notifySent
+                          ? 'Notifikasi Terkirim'
+                          : 'Kirim Notifikasi WhatsApp Driver'}
                     </button>
                   ) : (
                     <p className="text-xs text-center text-gray-400 italic">
@@ -866,6 +936,43 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
                   className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white custom-scrollbar"
                 />
               </AdminFormField>
+            </div>
+          </div>
+        </AdminModal>
+      )}
+
+      {/* Status-change confirmation modal */}
+      {showStatusModal && selectedShipment && (
+        <AdminModal
+          title="Ubah Status Pengiriman"
+          subtitle={`${selectedShipment.id.startsWith('#') ? selectedShipment.id : `#${selectedShipment.id}`} — pilih status baru`}
+          onClose={() => { setShowStatusModal(false); setPendingStatus(null) }}
+          onSubmit={handleConfirmStatus}
+          submitLabel="Konfirmasi"
+        >
+          <div className="flex flex-col gap-5">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-gray-500">Status saat ini:</span>
+              <AdminStatusBadge status={selectedShipment.status} type="shipment" />
+            </div>
+            <div className="flex flex-col gap-2">
+              <span className="text-sm font-bold text-gray-900">Pilih status baru</span>
+              <div className="grid grid-cols-2 gap-3">
+                {statusOptions.map(opt => (
+                  <button
+                    type="button"
+                    key={opt.value}
+                    onClick={() => setPendingStatus(opt.value)}
+                    className={`px-4 py-3 rounded-xl border text-sm font-bold transition-colors ${
+                      pendingStatus === opt.value
+                        ? 'border-dash-secondary bg-dash-secondary/15 text-dash-primary'
+                        : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </AdminModal>
