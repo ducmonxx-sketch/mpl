@@ -108,6 +108,12 @@ run the same code against the same DB; just control *exposure* per instance.
 - [ ] **Secrets** — production `JWT_SECRET` (+ `CSRF_SECRET` if cookie/CSRF), real SMTP/OpenWA creds, etc. (none in git).
 - [ ] **HTTPS/TLS** — reverse proxy / platform-managed certs for the public surfaces.
 - [ ] **OpenWA** — where the WhatsApp gateway runs (local with admin? its own host?) and how the API reaches it.
+- [ ] **Rate-limit hardening (security-reviewed 2026-06-29)** — the general limiter was raised 300→1500/15min for the polling SPA; that flat ceiling now also covers unauthenticated CPU-heavy routes. Before public deploy:
+  - **[CRITICAL]** Set `app.set("trust proxy", 1)` (only after confirming exactly one proxy hop) — behind a LB/Nginx the limiter keys on the proxy IP and is otherwise useless; blind `trust proxy: true` makes `X-Forwarded-For` spoofable → full bypass.
+  - **[HIGH]** Dedicated strict sub-limiter (~10–20/15min) on the unauth account/token routes — `POST /api/auth/register`, `POST /api/users/magic-link/:token/register`, `POST /api/users/reset-password/:token`, and the `GET` token-validation endpoints (all unauthenticated + `bcrypt.hash` / token-probing; only the general 1500 today).
+  - **[HIGH]** `/api/files/*` has **no** limiter (mounted before `apiLimiter` on purpose) — add its own limiter or move it under the general one; it's an unbounded storage-IO DoS surface.
+  - **[HIGH]** Swap the in-memory store for Redis (`rate-limit-redis`) before any multi-instance/cluster deploy (per-process counters otherwise multiply the limit by replica count).
+  - **[MED/LOW]** Consider sliding window (fixed-window allows ~2× burst at boundaries); `/api/auth` double-counting is benign (slightly protective); 404 handler reflects `req.path` (info-disclosure only, already URL-decoded — low).
 
 ---
 

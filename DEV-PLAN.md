@@ -1,16 +1,80 @@
 # DEV-PLAN — resume point
 
 > **Resuming?** Read this first, then [RUNBOOK.md](RUNBOOK.md) (sync + audit) and [CLAUDE.md](CLAUDE.md) (scope).
-> Last updated: 2026-06-28.
+> Last updated: 2026-07-01. **Latest accurate state is the RUNBOOK Session Log (2026-06-30 + 2026-07-01)** (the "Where we are" section below predates recent work).
 
-## Where we are right now
-- **Branch:** `tier1-infra` (checked out), **NOT pushed** (per lock). Commits ahead of `main`: Tier-1 infra (`08c0096` agents/rules, `a213cad` tsconfig/smoke/CI) + this session:
-  - `d81c9db` quick wins (#9 + #7 helmet/rate-limit) · `5e21f8f` DEPLOYMENT.md · `1789e45` auth-rehaul deferred note
-  - `a9f20f5` file-upload storage primitive (Tier-2) · `48a9e50` profile pictures #3 (backend) · **RBAC helper IN PROGRESS**
-- **`main`:** behind `tier1-infra`; origin has only `main` + `tier1-infra`.
-- **DB:** migration `add_avatar_key` applied locally → friend needs `npx prisma migrate deploy` on pull.
-- **New `apps/api` deps:** helmet, express-rate-limit, multer → friend needs `npm install` on pull.
-- **Working tree:** clean. Local reminder hook in `.claude/settings.local.json` (gitignored).
+## ✅ DONE (2026-06-30) — Shipment status-change UX rework
+**Implemented** (original frontend roadmap item #8 "Apply-status button + confirm box on shipment status"). Decisions used: **SUPERADMIN = all-except-current**; **selectable option buttons**. See RUNBOOK Session Log `2026-06-30 (cont.)`. Spec below kept as a record.
+
+**Scope:** `apps/web/src/pages/AdminComponents/ShipmentsSection.jsx` — **frontend only**. Backend `lib/statusFlow.ts` already enforces transitions (403) → **no backend change**. Admin-dashboard scope; friend's frontend is frozen until ~next week (ownership clear).
+
+**Goal:** Replace the inline status `<select>` in the shipment **detail panel** with a **"Ubah Status" button → confirmation modal**, and make the offered options **dynamic per role + current state** (only show *valid* targets — not the current disabled-greyed approach from today).
+
+**Target options (dynamic):**
+- Regular admin (OPERATIONS/SUPPORT) — forward-only, by current state:
+  - `PENDING` → **Dalam Perjalanan** (TRANSIT), **Dibatalkan** (CANCELLED)
+  - `TRANSIT` → **Terkirim** (DELIVERED), **Gagal** (FAILED)
+  - `DELIVERED` / `FAILED` / `CANCELLED` (terminal) → no options → hide/disable the button ("Status final")
+- **SUPERADMIN** → all statuses except the current one (can reverse/override).
+
+**Implementation sketch:**
+1. Reuse `FORWARD_STATUS` + `canSelectStatus` (added 2026-06-30). Add `availableStatusOptions(role, currentRawStatus)` → returns the `{value,label}` list to offer (SUPERADMIN: all except current; else `FORWARD_STATUS[current]`).
+2. Remove the inline `<select>` (detail panel header) **and** today's `disabled`-options approach — superseded (dynamic list only renders valid options). Keep the `FORWARD_STATUS`/`canSelectStatus` helpers; repurpose for the modal.
+3. Add a **"Ubah Status"** button in the detail header. New state: `showStatusModal`, `pendingStatus`.
+4. Confirmation modal (reuse existing `AdminModal`): show current-status badge + available targets as a choice (radio list or buttons) + **"Konfirmasi Ubah Status"**. Confirm → existing `handleStatusUpdate(pendingStatus)` (toast + refetch + badge animation) → close. Disable confirm until a target is picked.
+5. Edge case: empty option list (terminal + regular admin) → hide/disable button with a hint; SUPERADMIN is never empty.
+
+**Confirm tomorrow before building:** (a) SUPERADMIN = all-statuses-except-current (plan's assumption) vs literally all 5? (b) modal choice as radio list vs buttons (cosmetic).
+
+## 🛠️ Planned — Driver↔Vehicle pairing (provisional) + substitute-driver swap + On-Duty + "Ditugaskan" status
+**Source:** end-user flowchart (2026-07-01) + design Q&A (signed off). **No code yet.** Build admin-side now; client-dashboard display of the new statuses is deferred to the user's later client-side pass.
+
+> ⚠️ **The driver↔vehicle pairing model is PROVISIONAL** — the user's current thinking, explicitly subject to change. Don't treat cardinality/derivation as locked; re-confirm before building phase ①.
+
+### Model
+- **Driver ↔ Vehicle = 1:1** (provisional): each vehicle has one **primary driver** (the "Assign Driver ke Armada" step). e.g. `Vehicle.primaryDriverId String? @unique` (+ relation), nullable.
+- **Shipment ↔ Vehicle = 1:1**: one vehicle per shipment, it **stays** for the shipment's life; assigning a vehicle brings its primary driver by default.
+- **Substitute driver:** if the primary is unavailable, an admin assigns a substitute *for that shipment only* — the vehicle's pairing is untouched. "Substitute" is **derived** (shipment.driverId ≠ the vehicle's primary driver) and shown as a **"Pengganti" badge**; no stored flag.
+
+### Driver status (enum change) — add **On Duty**
+`DriverStatus`: **ACTIVE** (free, green) · **ON_DUTY** (driving an in-transit shipment, blue) · **UNAVAILABLE** (sick/leave, red/gray).
+- **ON_DUTY is auto-managed by the shipment lifecycle:** ACTIVE → ON_DUTY when the driver's shipment goes **Dalam Perjalanan**; ON_DUTY → ACTIVE when it **completes** (Terkirim/Gagal).
+- **UNAVAILABLE ↔ ACTIVE is manual** (admin, via driver form). On a successful shipment the vehicle's rightful primary driver is the default again automatically (pairing was never changed); the primary is **not** auto-reactivated (sick ≠ recovered).
+
+### Shipment status (enum change) — add **Ditugaskan**
+Flow: **Menunggu → Ditugaskan → Dalam Perjalanan → Terkirim/Gagal**.
+- Assigning a driver/vehicle sets status → **Ditugaskan** (today it auto-jumps to TRANSIT — remove that).
+- **Ditugaskan → Dalam Perjalanan is a manual admin action** (the status modal's forward move).
+- Client-visible → coordinate when the client dashboard is built (deferred).
+- *(Open: exact Menunggu→Ditugaskan mechanic — manual "finalize" vs auto-on-assign — settle at build.)*
+
+### Ganti Driver (the swap)
+- **Button on the shipment detail panel**, available for shipments in **Menunggu** status (driver changeable while waiting; locks once it moves on).
+- Opens a **confirmation modal** with a **radio list of selectable drivers** — **excludes ON_DUTY + UNAVAILABLE** (so a driver merely assigned to other *waiting* shipments stays ACTIVE and selectable — matches "set as substitute but not yet Dalam Perjalanan = still available") — plus a checkbox **"Tandai driver lama tidak tersedia"** (default checked).
+- Confirm → shipment.driverId = substitute (**vehicle unchanged**); if checked, old driver → UNAVAILABLE. A mis-click is fixed by re-editing.
+
+### Departure guard
+A driver can be pre-assigned to **several waiting** shipments, but only **one** may be in transit. At the **Dalam Perjalanan** transition, block if that driver is already ON_DUTY elsewhere; the other waiting shipments holding them must swap drivers before they can depart. Surface this in the UI.
+
+### Phasing (smallest → biggest blast radius)
+1. **Driver↔Vehicle pairing** (provisional — re-confirm first): schema + fleet pair/unpair endpoint + Armada/Drivers UI.
+2. **Substitute swap + On-Duty + badge:** Ganti-Driver confirmation modal (radio list + checkbox) on the detail panel; auto-UNAVAILABLE on swap-out; ON_DUTY auto-lifecycle; "Pengganti" badge.
+3. **"Ditugaskan" status** (last; client-coordination deferred): enum + migration, `statusFlow.ts`, assign route (stop auto-TRANSIT), status modal/badges/filters/`mapStatus`. **Supersedes parts of the 2026-06-30 status work** (assign → Ditugaskan instead of TRANSIT; modal gains the new status).
+
+### Blast radius / shared-contract notes
+Schema (`Vehicle`/`Driver` + `DriverStatus` & `ShipmentStatus` enums — shared contract), `fleet.ts` (+pairing route), shipment `assign` + `status` routes, `ShipmentsSection` (assign + new Ganti-Driver modal + "Pengganti" badge), Armada/Drivers sections, and the **seed** (driver+vehicle combos become consistent pairings; statuses gain Ditugaskan; driver statuses gain On Duty). Both new enum values are **client-visible** → coordinate during the client-dashboard pass. All build is admin-scope.
+
+## Where we are right now (2026-07-01)
+> Authoritative session history = RUNBOOK Session Log. This is the quick snapshot.
+- **Branch:** `tier1-infra`, **ahead of `origin/tier1-infra` by 4 commits, NOT pushed** (per lock). `main` has nothing new (friend's frontend frozen ~until next week → we have ownership of `apps/web`).
+- **⚠️ Big UNCOMMITTED batch on disk — 9 modified files + 1 new migration** (not yet committed):
+  - **Backend:** `prisma/schema.prisma` (vehicle `serviceDate`/`chassisNumber`/`engineNumber`), `prisma/seed.ts` (full reseed dataset), new migration `20260629175841_add_vehicle_service_chassis_engine`, `src/routes/fleet.ts` (persist new vehicle fields + service expiry flag), `src/routes/shipments.ts` (WA driver msg: cargo line + real origin/destination), `src/index.ts` (rate limit 300→1500).
+  - **Frontend:** `apps/web/src/pages/AdminComponents/ShipmentsSection.jsx` — status-change "Ubah Status" modal (RBAC dynamic options), WA-notify button freeze, assign-button gated (normal admins: Menunggu only; super: anytime).
+  - **Docs:** `DEV-PLAN.md`, `RUNBOOK.md`, `DEPLOYMENT.md`.
+- **DB:** dev DB **freshly reseeded** — 2 admins (`admin@mpl.com`/`admin1234` SUPER, `ops@mpl.com`/`ops1234` OPS), 10 clients, 8 drivers, 9 vehicles, 13 shipments. ⚠️ **After any reseed: re-login** (stale localStorage JWT stays "logged in" but writes 500 — FK to wiped admin id), and re-seed after any `npm run smoke` (it pollutes; `migrate reset` does NOT auto-seed → run `npx prisma db seed`).
+- **Recently DONE:** quick wins (#9/#7) · file-upload primitive · profile-pics backend (#3) · **RBAC #10** · WA driver-notify (cargo + real addresses) · status-change UX (frontend #8) · assign-button RBAC gate.
+- **Next:** either **commit this batch** to `tier1-infra`, or start **phase ① of the driver↔vehicle plan** (the 🛠️ Planned section above — pairing is *provisional*, re-confirm before building).
+- Local reminder hook in `.claude/settings.local.json` (gitignored).
 
 ## Decisions locked (don't redo these)
 - **typecheck + web lint are NON-BLOCKING in CI on purpose.** There are ~55 `tsc` + ~26 lint pre-existing issues — all **type-friction / dead-code, NOT runtime bugs** (verified: smoke is green). Details in RUNBOOK 2026-06-27.
