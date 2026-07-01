@@ -114,6 +114,28 @@ A driver can be assigned to **several Ditugaskan** shipments, but only **one** m
 ### Blast radius / shared-contract notes
 Schema (`Vehicle`/`Driver` + `DriverStatus` & `ShipmentStatus` enums — shared contract), `fleet.ts` (+pairing route), shipment `assign` + `status` routes, `ShipmentsSection` (assign UI inside modal, Ganti-Driver modal, "Pengganti" badge, link-shipment), Armada/Drivers sections, seed (pairings + new enum values). Both new/changed enum values are **client-visible** → coordinate during the client-dashboard pass. Gagal removal is client-visible too — flag for friend. All build is admin-scope.
 
+## ✅ DONE (2026-07-02) — Create-time driver pairing in Armada
+Adding a vehicle now **requires** selecting a primary driver — a radio list of available (unpaired, non-UNAVAILABLE; ON_DUTY shown disabled) drivers in the "Tambah Kendaraan" form. On submit it creates the vehicle then pairs via `fleetAPI.pairDriver` (frontend-only, `ArmadaSection.jsx`, no backend change). Build ✓ / lint ✓.
+
+## 🚧 Next planned — Driver lifecycle / archive (resign / deceased) — DESIGN ONLY, not built
+**Source:** user (2026-07-02). Permanently removing a driver (resign/death) must NOT lose history. **No code yet.**
+
+**Problem:** the only removal path today is `DELETE /api/fleet/drivers/:id`, which `SET NULL`s the vehicle pairing **and nulls `driverId` on the driver's past shipments** → erases the record of who drove them. Bad for a logistics audit trail.
+
+**Recommendation — soft-delete / archive, never hard-delete:**
+- Add **`Driver.archivedAt DateTime?`** (nullable) — a lifecycle marker kept *separate* from operational `status` (ACTIVE / ON_DUTY / UNAVAILABLE). Migration needed.
+- New **Arsipkan/Resign action** (DriversSection) → `PATCH /api/fleet/drivers/:id/archive` (+ a reactivate for undo / return).
+
+**Archive flow + guards:**
+1. **Block if ON_DUTY** (driver mid-transit) — must finish/substitute that shipment first (same spirit as the departure guard).
+2. **Auto-unpair** — if they're a vehicle's `primaryDriver`, clear it and **flag "vehicle needs a new primary driver"** (matters more now that every new vehicle *requires* a primary — an archived primary leaves the vehicle unassignable until re-paired).
+3. **Preserve history** — do NOT null `shipment.driverId`; the soft-deleted row stays so past shipments still resolve the driver's name.
+4. **Exclude everywhere** — archived drivers drop out of every picker (create-pairing list, pair modal, Ganti-Driver/substitute list, assign). Add an `archived` filter to `GET /api/fleet/drivers` (default excludes archived).
+5. **Reversible** — reactivate covers accidental-archive / "they came back."
+
+**Interplay:** ties to the create-time pairing above — archiving a primary driver must surface the widowed vehicle for re-pairing.
+**Blast radius:** schema (`Driver.archivedAt` + migration — shared contract) · `fleet.ts` (archive/reactivate + exclude-archived) · `DriversSection` (Resign button, hide archived, re-pair prompt). Admin-scope; client shipment reads unaffected.
+
 ## Where we are right now (2026-07-01)
 > Authoritative session history = RUNBOOK Session Log. This is the quick snapshot.
 - **Branch:** `tier1-infra`, NOT pushed (per lock). `main` has nothing new (friend's frontend frozen → we have ownership of `apps/web`).
