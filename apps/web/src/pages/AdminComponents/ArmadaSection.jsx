@@ -165,11 +165,22 @@ export default function ArmadaSection() {
     setKirExpiry('')
     setServiceDate('')
     setStatus('AVAILABLE')
+    setSelectedDriverId('')
   }
 
-  const handleOpenCreateModal = () => {
+  const handleOpenCreateModal = async () => {
     resetForm()
     setShowCreateModal(true)
+    // Load drivers so a primary driver can be paired at creation time.
+    setLoadingDrivers(true)
+    try {
+      const data = await fleetAPI.getDrivers()
+      setAvailableDrivers((data.drivers || []).filter(d => d.status !== 'UNAVAILABLE'))
+    } catch {
+      showToast('Gagal memuat daftar driver.', 'error')
+    } finally {
+      setLoadingDrivers(false)
+    }
   }
 
   const handleCloseCreateModal = () => {
@@ -224,10 +235,20 @@ export default function ArmadaSection() {
       showToast('Harap lengkapi semua field yang wajib diisi.', 'error')
       return
     }
+    if (!selectedDriverId) {
+      showToast('Pilih driver utama untuk kendaraan ini.', 'error')
+      return
+    }
     setSubmitting(true)
     try {
-      await fleetAPI.addVehicle({ type, licensePlate, stnkExpiry, kirExpiry, chassisNumber, engineNumber, serviceDate })
-      showToast('Kendaraan baru berhasil ditambahkan!', 'success')
+      const { vehicle } = await fleetAPI.addVehicle({ type, licensePlate, stnkExpiry, kirExpiry, chassisNumber, engineNumber, serviceDate })
+      // Vehicle created → pair the chosen primary driver (separate endpoint).
+      try {
+        await fleetAPI.pairDriver(vehicle.id, selectedDriverId)
+        showToast('Kendaraan baru ditambahkan & driver utama dipasangkan!', 'success')
+      } catch (pairErr) {
+        showToast(`Kendaraan dibuat, tetapi gagal memasangkan driver: ${pairErr.message}. Pasangkan manual dari daftar armada.`, 'error')
+      }
       setShowCreateModal(false)
       resetForm()
       await fetchVehicles()
@@ -310,7 +331,7 @@ export default function ArmadaSection() {
       const data = await import('../../lib/api').then(m => m.fleetAPI.getDrivers())
       // Show all non-UNAVAILABLE drivers; ON_DUTY ones are shown but disabled
       setAvailableDrivers((data.drivers || []).filter(d => d.status !== 'UNAVAILABLE'))
-    } catch (err) {
+    } catch {
       showToast('Gagal memuat daftar driver.', 'error')
       setShowPairModal(false)
     } finally {
@@ -911,6 +932,60 @@ export default function ArmadaSection() {
               </AdminFormField>
             )}
           </div>
+
+          {/* Pair a primary driver at creation time (required for new vehicles) */}
+          {!isEditMode && (
+            <div className="mt-5">
+              <label className="block text-sm font-bold text-dash-primary mb-1">
+                Driver Utama <span className="text-red-500">*</span>
+              </label>
+              <p className="text-xs text-gray-500 mb-2">
+                Pasangkan driver utama untuk kendaraan ini (wajib). Driver yang sudah dipasangkan ke kendaraan lain atau tidak tersedia tidak ditampilkan.
+              </p>
+              {loadingDrivers ? (
+                <div className="text-center py-4 text-gray-400 text-sm">Memuat daftar driver...</div>
+              ) : (() => {
+                const opts = availableDrivers.filter(d => !vehicles.some(v => v.primaryDriver?.id === d.id))
+                if (opts.length === 0) {
+                  return <p className="text-sm text-amber-600 py-2">Tidak ada driver bebas untuk dipasangkan. Tambah driver baru atau lepaskan driver dari kendaraan lain terlebih dahulu.</p>
+                }
+                return (
+                  <div className="flex flex-col gap-2 max-h-56 overflow-y-auto custom-scrollbar pr-1">
+                    {opts.map((d) => {
+                      const isOnDuty = d.status === 'ON_DUTY'
+                      return (
+                        <label
+                          key={d.id}
+                          className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
+                            isOnDuty
+                              ? 'opacity-50 cursor-not-allowed border-gray-100 bg-gray-50'
+                              : selectedDriverId === d.id
+                              ? 'border-dash-secondary bg-dash-secondary/10 cursor-pointer'
+                              : 'border-gray-200 hover:border-dash-secondary/50 bg-white cursor-pointer'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="createPairDriver"
+                            value={d.id}
+                            disabled={isOnDuty}
+                            checked={selectedDriverId === d.id}
+                            onChange={() => setSelectedDriverId(d.id)}
+                            className="accent-dash-secondary"
+                          />
+                          <div className="flex-1 text-sm">
+                            <p className="font-bold text-dash-primary">{d.fullName}</p>
+                            <p className="text-xs text-gray-500">{d.phoneNumber || '-'} · SIM {d.licenseType || '-'}</p>
+                          </div>
+                          {isOnDuty && <span className="text-[0.65rem] font-bold text-blue-600">Bertugas</span>}
+                        </label>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
+            </div>
+          )}
         </AdminModal>
       )}
 
