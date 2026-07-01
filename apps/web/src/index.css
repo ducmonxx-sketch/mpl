@@ -204,4 +204,17 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 input[type="date"]::-webkit-calendar-picker-indicator:hover,
 input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   opacity: 1;
+}
+
+/* ═══════════════════════════════════════════
+   Custom Scrollbar — hidden but still scrollable.
+   Applied on scroll containers across the admin + client
+   dashboards (sidebar, panels, modals, tables, main content).
+   ═══════════════════════════════════════════ */
+.custom-scrollbar {
+  scrollbar-width: none;        /* Firefox */
+  -ms-overflow-style: none;     /* IE / legacy Edge */
+}
+.custom-scrollbar::-webkit-scrollbar {
+  display: none;                /* Chrome / Safari / Chromium Edge */
 }
