@@ -1,7 +1,11 @@
 # CLAUDE.md
 
 ## Start here — every session
-**Resuming / continuing work?** Read **[DEV-PLAN.md](DEV-PLAN.md)** first — current state, locked decisions, and the prioritized next steps.
+
+> **READ THIS FIRST, BEFORE ANYTHING ELSE:**
+> **[context.md](context.md)** — the single most complete snapshot of the project: full schema, all routes, all uncommitted changes, status flow spec, driver-vehicle pairing model, every gotcha, and the resume checklist. If you read nothing else, read this.
+
+**Resuming / continuing work?** After context.md, read **[DEV-PLAN.md](DEV-PLAN.md)** — current state, locked decisions, and prioritized next steps.
 
 Before doing any work, read **[RUNBOOK.md](RUNBOOK.md)** in full and follow it:
 sync (§2) → integration audit (§3) → **report findings before editing** → append a

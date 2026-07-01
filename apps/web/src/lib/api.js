@@ -295,6 +295,14 @@ export const fleetAPI = {
   /** Delete a vehicle */
   deleteVehicle: (id) =>
     api.delete(`/api/fleet/vehicles/${id}`),
+
+  /** Pair a primary driver to a vehicle */
+  pairDriver: (vehicleId, driverId) =>
+    api.patch(`/api/fleet/vehicles/${vehicleId}/pair-driver`, { driverId }),
+
+  /** Remove the primary driver from a vehicle */
+  unpairDriver: (vehicleId) =>
+    api.patch(`/api/fleet/vehicles/${vehicleId}/unpair-driver`),
 }
 
 // ─── Notifications API ──────────────────────────────────────

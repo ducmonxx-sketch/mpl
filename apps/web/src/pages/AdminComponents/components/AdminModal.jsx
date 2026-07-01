@@ -2,7 +2,7 @@ import Icon from '../../../components/Icon'
 
 export default function AdminModal({ title, subtitle, onClose, onSubmit, submitLabel = 'Simpan', children }) {
   return (
-    <div className="fixed inset-0 bg-[#002442]/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4 sm:p-6" onClick={onClose}>
+    <div className="fixed inset-0 bg-[#002442]/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 sm:p-6" onClick={onClose}>
       <form
         className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}

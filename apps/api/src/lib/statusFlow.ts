@@ -12,11 +12,12 @@ export type StatusKind = "shipment" | "invoice"
 // Forward transitions a regular admin may perform. Keys also define the valid statuses.
 const FORWARD: Record<StatusKind, Record<string, string[]>> = {
   shipment: {
-    PENDING:   ["TRANSIT", "CANCELLED"],
-    TRANSIT:   ["DELIVERED", "FAILED"],
-    DELIVERED: [],
-    FAILED:    [],
-    CANCELLED: [],
+    PENDING:    ["DITUGASKAN"],
+    DITUGASKAN: ["TRANSIT"],
+    TRANSIT:    ["DELIVERED", "CANCELLED"],
+    DELIVERED:  [],
+    FAILED:     [],  // legacy; no longer offered as a forward option
+    CANCELLED:  [],
   },
   invoice: {
     DRAFT:     ["SENT", "CANCELLED"],

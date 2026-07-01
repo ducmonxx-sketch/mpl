@@ -26,50 +26,100 @@
 
 **Confirm tomorrow before building:** (a) SUPERADMIN = all-statuses-except-current (plan's assumption) vs literally all 5? (b) modal choice as radio list vs buttons (cosmetic).
 
-## 🛠️ Planned — Driver↔Vehicle pairing (provisional) + substitute-driver swap + On-Duty + "Ditugaskan" status
-**Source:** end-user flowchart (2026-07-01) + design Q&A (signed off). **No code yet.** Build admin-side now; client-dashboard display of the new statuses is deferred to the user's later client-side pass.
+## ✅ DONE (2026-07-01) — Phase ②③: ON_DUTY lifecycle + full status rework + ShipmentsSection redesign
+**Implemented** phases ② and ③ of the driver-vehicle-shipment design (see locked spec below). All backend and frontend changes are uncommitted on `tier1-infra`.
+
+**Backend changes:**
+- `prisma/schema.prisma`: added `DITUGASKAN` to `ShipmentStatus` enum
+- `prisma/migrations/20260701130000_add_ditugaskan_status/migration.sql`: ADD VALUE migration (non-transactional)
+- `apps/api/src/lib/statusFlow.ts`: updated FORWARD map (PENDING→DITUGASKAN→TRANSIT→DELIVERED/CANCELLED; FAILED legacy/no-op)
+- `apps/api/src/routes/shipments.ts`: (1) GET includes `vehicle.primaryDriverId` for Pengganti badge; (2) assign route sets DITUGASKAN only from PENDING (SUPERADMIN re-assign on TRANSIT keeps status); (3) high-workload check includes DITUGASKAN; (4) status route: departure guard (block TRANSIT if driver ON_DUTY elsewhere → 409), Phase ② ON_DUTY auto-lifecycle (ACTIVE→ON_DUTY on TRANSIT; ON_DUTY→ACTIVE on DELIVERED/CANCELLED; UNAVAILABLE not auto-reactivated), client notify on CANCELLED added
+
+**Frontend changes:**
+- `apps/web/src/pages/AdminComponents/components/AdminModal.jsx`: z-index `z-[100]` → `z-[200]` (above detail panel)
+- `apps/web/src/pages/AdminComponents/components/AdminStatusBadge.jsx`: added `assigned` key (Ditugaskan, blue)
+- `apps/web/src/pages/AdminComponents/ShipmentsSection.jsx`: **full rewrite** — new mapStatus/FORWARD_STATUS/RAW_STATUS_OPTIONS, DriverVehicleCard + ExpiryLabel helper components, per-role/per-status modal content (PENDING=assign UI with 2-col cards + Link Shipment checkbox; DITUGASKAN=reconfirm + Ganti Driver checkbox + Tandai Tidak Tersedia; TRANSIT=Terkirim/Dibatalkan buttons; SUPERADMIN=generic status picker), Pengganti badge, filter tabs updated (added Ditugaskan, renamed Gagal→Dibatalkan), SUPERADMIN row assign button kept, regular admin uses status modal for all transitions. Build: `vite build ✓`.
+
+---
+
+## 🛠️ Planned (LOCKED SPEC, now fully implemented) — Driver↔Vehicle pairing (provisional) + substitute-driver swap + On-Duty + "Ditugaskan" status
+**Source:** end-user flowchart (2026-07-01) + design Q&A (signed off, updated 2026-07-01). **No code yet.** Build admin-side now; client-dashboard display of the new statuses is deferred to the user's later client-side pass.
 
 > ⚠️ **The driver↔vehicle pairing model is PROVISIONAL** — the user's current thinking, explicitly subject to change. Don't treat cardinality/derivation as locked; re-confirm before building phase ①.
 
 ### Model
 - **Driver ↔ Vehicle = 1:1** (provisional): each vehicle has one **primary driver** (the "Assign Driver ke Armada" step). e.g. `Vehicle.primaryDriverId String? @unique` (+ relation), nullable.
-- **Shipment ↔ Vehicle = 1:1**: one vehicle per shipment, it **stays** for the shipment's life; assigning a vehicle brings its primary driver by default.
-- **Substitute driver:** if the primary is unavailable, an admin assigns a substitute *for that shipment only* — the vehicle's pairing is untouched. "Substitute" is **derived** (shipment.driverId ≠ the vehicle's primary driver) and shown as a **"Pengganti" badge**; no stored flag.
+- **Shipment ↔ Vehicle = 1:1**: one vehicle per shipment, it **stays** for the shipment's life; assigning a vehicle (via the Update Status modal from Menunggu) brings its primary driver by default.
+- **Substitute driver:** if the primary is unavailable, an admin swaps via Ganti Driver *for that shipment only* — the vehicle's pairing is untouched. "Substitute" is **derived** (shipment.driverId ≠ vehicle's primaryDriverId) and shown as a **"Pengganti" badge**; no stored flag.
+- **Linked shipments (special case):** a single vehicle may carry **two shipments** (generating two separate invoices). When assigning from Menunggu, a **"Link Shipment" checkbox** appears; if checked, a radio list of other Menunggu shipments is shown — selecting one gives shipment B the same driver+vehicle as shipment A. No separate schema field; it's handled as two independent assign calls on confirm.
 
 ### Driver status (enum change) — add **On Duty**
 `DriverStatus`: **ACTIVE** (free, green) · **ON_DUTY** (driving an in-transit shipment, blue) · **UNAVAILABLE** (sick/leave, red/gray).
-- **ON_DUTY is auto-managed by the shipment lifecycle:** ACTIVE → ON_DUTY when the driver's shipment goes **Dalam Perjalanan**; ON_DUTY → ACTIVE when it **completes** (Terkirim/Gagal).
-- **UNAVAILABLE ↔ ACTIVE is manual** (admin, via driver form). On a successful shipment the vehicle's rightful primary driver is the default again automatically (pairing was never changed); the primary is **not** auto-reactivated (sick ≠ recovered).
+- **ON_DUTY is auto-managed by the shipment lifecycle:** ACTIVE → ON_DUTY when the driver's shipment goes **Dalam Perjalanan**; ON_DUTY → ACTIVE when it **completes** (Terkirim or Dibatalkan).
+- **UNAVAILABLE ↔ ACTIVE is manual** (admin, via driver form). The primary driver is not auto-reactivated on shipment completion (sick ≠ recovered).
 
-### Shipment status (enum change) — add **Ditugaskan**
-Flow: **Menunggu → Ditugaskan → Dalam Perjalanan → Terkirim/Gagal**.
-- Assigning a driver/vehicle sets status → **Ditugaskan** (today it auto-jumps to TRANSIT — remove that).
-- **Ditugaskan → Dalam Perjalanan is a manual admin action** (the status modal's forward move).
+### Shipment status (enum change) — add **Ditugaskan** / remove **Gagal**
+Flow: **Menunggu → Ditugaskan → Dalam Perjalanan → Terkirim / Dibatalkan**.
+- **Gagal is removed globally** (enum value deleted, migration needed). SUPERADMIN is not exempt.
+- Assigning a driver from the Update Status modal (Menunggu) sets status → **Ditugaskan**.
+- **Ditugaskan** is the staging/review step — admin reconfirms driver+vehicle and optionally swaps before departure.
+- **Ditugaskan → Dalam Perjalanan** is confirmed from the Update Status modal (see below).
+- **Dibatalkan only ever comes from Dalam Perjalanan** — delivery failed, vehicle returned with payload. No pre-departure cancellation.
 - Client-visible → coordinate when the client dashboard is built (deferred).
-- *(Open: exact Menunggu→Ditugaskan mechanic — manual "finalize" vs auto-on-assign — settle at build.)*
 
-### Ganti Driver (the swap)
-- **Button on the shipment detail panel**, available for shipments in **Menunggu** status (driver changeable while waiting; locks once it moves on).
-- Opens a **confirmation modal** with a **radio list of selectable drivers** — **excludes ON_DUTY + UNAVAILABLE** (so a driver merely assigned to other *waiting* shipments stays ACTIVE and selectable — matches "set as substitute but not yet Dalam Perjalanan = still available") — plus a checkbox **"Tandai driver lama tidak tersedia"** (default checked).
-- Confirm → shipment.driverId = substitute (**vehicle unchanged**); if checked, old driver → UNAVAILABLE. A mis-click is fixed by re-editing.
+### Update Status modal — per-role behaviour (replaces "Ubah Status")
+Label is **"Update Status"** everywhere.
+
+**Regular admin (OPERATIONS / SUPPORT):**
+| Current status | Modal content |
+|---|---|
+| Menunggu | Driver assignment UI (see below) → confirm → Ditugaskan |
+| Ditugaskan | Reconfirm UI (see below) → confirm → Dalam Perjalanan |
+| Dalam Perjalanan | Status buttons: **Terkirim** · **Dibatalkan** |
+| Terkirim / Dibatalkan | Button hidden ("Status sudah final") |
+
+**SUPERADMIN:** full status picker — all statuses except current (no Gagal), as before. No driver-assignment UI in the modal; uses existing assign mechanism.
+
+**Driver assignment UI (from Menunggu, regular admin only):**
+- Radio list of drivers that are **paired 1:1 with a vehicle** and are **ACTIVE** (excludes ON_DUTY + UNAVAILABLE).
+- Each radio option shows a **2-column card**:
+  - **Col 1 — Driver:** name · license expiry date · phone number
+  - **Col 2 — Vehicle:** jenis kendaraan · STNK expiry · KIR expiry · service due date — with a near-due warning badge on any expiring field
+- **"Link Shipment" checkbox** below the driver list: if checked, shows a radio list of other Menunggu shipments; the selected shipment gets the same driver+vehicle on confirm.
+- Confirm → both shipments (if linked) assigned → status → **Ditugaskan**.
+
+**Reconfirm UI (from Ditugaskan, regular admin only):**
+- Displays the currently assigned driver+vehicle in the same **2-column card** format (read-only by default).
+- **"Ganti Driver" checkbox**: if checked, reveals the radio list of ACTIVE drivers (same 2-col card format) to pick a replacement.
+  - If a new driver is selected: on confirm → shipment.driverId = new driver (**vehicle unchanged**); old driver status handling via "Tandai driver lama tidak tersedia" checkbox (default checked) → old driver → UNAVAILABLE.
+- Confirm (with or without a swap) → status → **Dalam Perjalanan**.
+- **Departure guard:** if the confirmed driver is already ON_DUTY on another shipment, block and surface an error identifying the conflicting shipment.
+
+### Ganti Driver
+Ganti Driver is **embedded inside the Ditugaskan reconfirm modal** (checkbox-triggered radio list) — there is no separate standalone button.
 
 ### Departure guard
-A driver can be pre-assigned to **several waiting** shipments, but only **one** may be in transit. At the **Dalam Perjalanan** transition, block if that driver is already ON_DUTY elsewhere; the other waiting shipments holding them must swap drivers before they can depart. Surface this in the UI.
+A driver can be assigned to **several Ditugaskan** shipments, but only **one** may be in transit at a time. At the **Dalam Perjalanan** transition, block if that driver is already ON_DUTY elsewhere; surface an error in the UI pointing to the conflicting shipment.
+
+### UI / UX fixes (ship with phase ③)
+- Rename "Ubah Status" → **"Update Status"** throughout.
+- **Confirmation box z-index:** the modal must render above the shipment detail panel layer (currently appears behind it). Fix with explicit `z-index` stacking.
+- **Fade pop-in animation:** 0.3s fade + scale-up on modal open (CSS keyframe or Tailwind transition).
 
 ### Phasing (smallest → biggest blast radius)
 1. **Driver↔Vehicle pairing** (provisional — re-confirm first): schema + fleet pair/unpair endpoint + Armada/Drivers UI.
-2. **Substitute swap + On-Duty + badge:** Ganti-Driver confirmation modal (radio list + checkbox) on the detail panel; auto-UNAVAILABLE on swap-out; ON_DUTY auto-lifecycle; "Pengganti" badge.
-3. **"Ditugaskan" status** (last; client-coordination deferred): enum + migration, `statusFlow.ts`, assign route (stop auto-TRANSIT), status modal/badges/filters/`mapStatus`. **Supersedes parts of the 2026-06-30 status work** (assign → Ditugaskan instead of TRANSIT; modal gains the new status).
+2. **On-Duty lifecycle + "Pengganti" badge:** ON_DUTY auto-managed on Dalam Perjalanan / completion; "Pengganti" badge when shipment.driverId ≠ vehicle.primaryDriverId.
+3. **Status rework** (last; client-coordination deferred): remove Gagal enum + migration; add Ditugaskan enum + migration; `statusFlow.ts` update; assign route (stop auto-TRANSIT → set Ditugaskan); Update Status modal rework (Menunggu → driver assignment UI + Link Shipment checkbox; Ditugaskan → reconfirm UI + Ganti Driver checkbox + departure guard; Dalam Perjalanan → Terkirim/Dibatalkan buttons); z-index + fade animation fix; rename "Ubah Status" → "Update Status"; update badges/filters/`mapStatus`.
 
 ### Blast radius / shared-contract notes
-Schema (`Vehicle`/`Driver` + `DriverStatus` & `ShipmentStatus` enums — shared contract), `fleet.ts` (+pairing route), shipment `assign` + `status` routes, `ShipmentsSection` (assign + new Ganti-Driver modal + "Pengganti" badge), Armada/Drivers sections, and the **seed** (driver+vehicle combos become consistent pairings; statuses gain Ditugaskan; driver statuses gain On Duty). Both new enum values are **client-visible** → coordinate during the client-dashboard pass. All build is admin-scope.
+Schema (`Vehicle`/`Driver` + `DriverStatus` & `ShipmentStatus` enums — shared contract), `fleet.ts` (+pairing route), shipment `assign` + `status` routes, `ShipmentsSection` (assign UI inside modal, Ganti-Driver modal, "Pengganti" badge, link-shipment), Armada/Drivers sections, seed (pairings + new enum values). Both new/changed enum values are **client-visible** → coordinate during the client-dashboard pass. Gagal removal is client-visible too — flag for friend. All build is admin-scope.
 
 ## Where we are right now (2026-07-01)
 > Authoritative session history = RUNBOOK Session Log. This is the quick snapshot.
-- **Branch:** `tier1-infra`, **ahead of `origin/tier1-infra` by 4 commits, NOT pushed** (per lock). `main` has nothing new (friend's frontend frozen ~until next week → we have ownership of `apps/web`).
-- **⚠️ Big UNCOMMITTED batch on disk — 9 modified files + 1 new migration** (not yet committed):
-  - **Backend:** `prisma/schema.prisma` (vehicle `serviceDate`/`chassisNumber`/`engineNumber`), `prisma/seed.ts` (full reseed dataset), new migration `20260629175841_add_vehicle_service_chassis_engine`, `src/routes/fleet.ts` (persist new vehicle fields + service expiry flag), `src/routes/shipments.ts` (WA driver msg: cargo line + real origin/destination), `src/index.ts` (rate limit 300→1500).
-  - **Frontend:** `apps/web/src/pages/AdminComponents/ShipmentsSection.jsx` — status-change "Ubah Status" modal (RBAC dynamic options), WA-notify button freeze, assign-button gated (normal admins: Menunggu only; super: anytime).
+- **Branch:** `tier1-infra`, NOT pushed (per lock). `main` has nothing new (friend's frontend frozen → we have ownership of `apps/web`).
+- **⚠️ Big UNCOMMITTED batch on disk** (not yet committed):
+  - **Backend:** `prisma/schema.prisma` (vehicle `serviceDate`/`chassisNumber`/`engineNumber` + `DITUGASKAN` enum), `prisma/seed.ts`, 2 new migrations (`add_vehicle_service_chassis_engine`, `add_ditugaskan_status`), `src/routes/fleet.ts`, `src/routes/shipments.ts` (all Phase ②③ changes + WA msg), `src/index.ts` (rate limit), `src/lib/statusFlow.ts`.
+  - **Frontend:** `AdminModal.jsx` (z-index), `AdminStatusBadge.jsx` (assigned), `ShipmentsSection.jsx` (full rewrite — driver-vehicle assign UI, per-status modal, Pengganti badge, Ditugaskan filter tab).
   - **Docs:** `DEV-PLAN.md`, `RUNBOOK.md`, `DEPLOYMENT.md`.
 - **DB:** dev DB **freshly reseeded** — 2 admins (`admin@mpl.com`/`admin1234` SUPER, `ops@mpl.com`/`ops1234` OPS), 10 clients, 8 drivers, 9 vehicles, 13 shipments. ⚠️ **After any reseed: re-login** (stale localStorage JWT stays "logged in" but writes 500 — FK to wiped admin id), and re-seed after any `npm run smoke` (it pollutes; `migrate reset` does NOT auto-seed → run `npx prisma db seed`).
 - **Recently DONE:** quick wins (#9/#7) · file-upload primitive · profile-pics backend (#3) · **RBAC #10** · WA driver-notify (cargo + real addresses) · status-change UX (frontend #8) · assign-button RBAC gate · scrollbar fix · **self-service admin password reset (#2)**.

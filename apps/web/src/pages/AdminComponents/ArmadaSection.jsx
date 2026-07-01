@@ -79,6 +79,14 @@ export default function ArmadaSection() {
   const [serviceVehicleId, setServiceVehicleId] = useState(null)
   const [serviceNotes, setServiceNotes] = useState('')
 
+  // Pair Driver Modal state
+  const [showPairModal, setShowPairModal] = useState(false)
+  const [pairingVehicle, setPairingVehicle] = useState(null)
+  const [availableDrivers, setAvailableDrivers] = useState([])
+  const [selectedDriverId, setSelectedDriverId] = useState('')
+  const [loadingDrivers, setLoadingDrivers] = useState(false)
+  const [pairing, setPairing] = useState(false)
+
   const fetchVehicles = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true)
     try {
@@ -98,6 +106,7 @@ export default function ArmadaSection() {
         serviceDate: formatDate(v.serviceDate),
         rawServiceDate: v.serviceDate,
         assignments: v._count?.shipments ?? 0,
+        primaryDriver: v.primaryDriver || null,
       }))
       setVehicles(mapped)
     } catch (err) {
@@ -292,6 +301,55 @@ export default function ArmadaSection() {
     }
   }
 
+  const handleOpenPairModal = async (row) => {
+    setPairingVehicle(row)
+    setSelectedDriverId('')
+    setShowPairModal(true)
+    setLoadingDrivers(true)
+    try {
+      const data = await import('../../lib/api').then(m => m.fleetAPI.getDrivers())
+      // Show all non-UNAVAILABLE drivers; ON_DUTY ones are shown but disabled
+      setAvailableDrivers((data.drivers || []).filter(d => d.status !== 'UNAVAILABLE'))
+    } catch (err) {
+      showToast('Gagal memuat daftar driver.', 'error')
+      setShowPairModal(false)
+    } finally {
+      setLoadingDrivers(false)
+    }
+  }
+
+  const handlePairDriver = async () => {
+    if (!selectedDriverId) {
+      showToast('Pilih driver terlebih dahulu.', 'error')
+      return
+    }
+    setPairing(true)
+    try {
+      await fleetAPI.pairDriver(pairingVehicle.id, selectedDriverId)
+      showToast('Driver berhasil dipasangkan ke kendaraan.', 'success')
+      setShowPairModal(false)
+      setPairingVehicle(null)
+      setSelectedDriverId('')
+      await fetchVehicles()
+    } catch (err) {
+      showToast(err.message || 'Gagal memasangkan driver.', 'error')
+    } finally {
+      setPairing(false)
+    }
+  }
+
+  const handleUnpairDriver = async (vehicleId) => {
+    if (!window.confirm('Lepaskan driver utama dari kendaraan ini?')) return
+    try {
+      await fleetAPI.unpairDriver(vehicleId)
+      showToast('Driver berhasil dilepaskan.', 'success')
+      if (selectedVehicle?.id === vehicleId) setSelectedVehicle(null)
+      await fetchVehicles()
+    } catch (err) {
+      showToast(err.message || 'Gagal melepaskan driver.', 'error')
+    }
+  }
+
   const handleDeleteVehicle = async (id, plate) => {
     if (!window.confirm(`Apakah Anda yakin ingin menghapus kendaraan dengan no plat "${plate}"? Penugasan pengirimannya akan dikosongkan.`)) {
       return
@@ -419,6 +477,24 @@ export default function ArmadaSection() {
       },
     },
     {
+      key: 'primaryDriver',
+      label: 'Driver Utama',
+      render: (v) => {
+        if (!v) return <span className="text-gray-400 text-xs italic">Belum dipasangkan</span>
+        const isOnDuty = v.status === 'ON_DUTY'
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span className="adm-table__cell-main">{v.fullName}</span>
+            {isOnDuty && (
+              <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '1px 6px', borderRadius: '99px', background: 'rgba(59,130,246,0.12)', color: '#2563eb' }}>
+                On Duty
+              </span>
+            )}
+          </div>
+        )
+      },
+    },
+    {
       key: 'actions',
       label: '',
       render: (_, row) => (
@@ -432,6 +508,17 @@ export default function ArmadaSection() {
             }}
           >
             <Icon name="visibility" size={16} />
+          </button>
+          <button
+            className="adm-action-btn"
+            title={row.primaryDriver ? 'Ganti Driver Utama' : 'Pasangkan Driver'}
+            style={{ color: '#6366f1', backgroundColor: 'rgba(99, 102, 241, 0.1)' }}
+            onClick={(e) => {
+              e.stopPropagation()
+              handleOpenPairModal(row)
+            }}
+          >
+            <Icon name="person_add" size={16} />
           </button>
           <button
             className="adm-action-btn"
@@ -634,6 +721,36 @@ export default function ArmadaSection() {
                 </div>
               </div>
 
+              {/* Primary Driver */}
+              <div className="flex flex-col gap-4">
+                <h4 className="flex items-center gap-2 text-sm font-bold text-gray-900 border-b border-gray-100 pb-2">
+                  <Icon name="person" size={18} className="text-gray-400" /> Driver Utama
+                </h4>
+                {selectedVehicle.primaryDriver ? (
+                  <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100 flex justify-between items-start">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-sm font-bold text-dash-primary">{selectedVehicle.primaryDriver.fullName}</span>
+                      <span className="text-xs text-gray-500">{selectedVehicle.primaryDriver.phoneNumber || '-'}</span>
+                      {selectedVehicle.primaryDriver.status === 'ON_DUTY' && (
+                        <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: '99px', background: 'rgba(59,130,246,0.12)', color: '#2563eb', display: 'inline-block', marginTop: '2px' }}>
+                          Sedang Bertugas
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      className="text-xs font-bold text-red-500 hover:text-red-700 px-2 py-1 rounded-lg hover:bg-red-50 transition-colors"
+                      onClick={() => handleUnpairDriver(selectedVehicle.id)}
+                    >
+                      Lepas
+                    </button>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-gray-50 rounded-xl border border-dashed border-gray-200 text-center">
+                    <span className="text-sm text-gray-400 italic">Belum ada driver utama</span>
+                  </div>
+                )}
+              </div>
+
               <div className="flex flex-col gap-4">
                 <h4 className="flex items-center gap-2 text-sm font-bold text-gray-900 border-b border-gray-100 pb-2">
                   <Icon name="description" size={18} className="text-gray-400" /> Dokumen Kendaraan
@@ -666,6 +783,16 @@ export default function ArmadaSection() {
             
             {/* Footer actions */}
             <div className="p-6 border-t border-gray-100 bg-gray-50/50 flex flex-col gap-3">
+              <button
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-all shadow-sm"
+                onClick={() => {
+                  handleOpenPairModal(selectedVehicle)
+                  setSelectedVehicle(null)
+                }}
+              >
+                <Icon name="person_add" size={18} />
+                {selectedVehicle.primaryDriver ? 'Ganti Driver Utama' : 'Pasangkan Driver'}
+              </button>
               <button
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-[#fec330] hover:bg-[#eab308] text-[#002442] font-bold rounded-xl transition-all shadow-sm"
                 onClick={() => {
@@ -784,6 +911,77 @@ export default function ArmadaSection() {
               </AdminFormField>
             )}
           </div>
+        </AdminModal>
+      )}
+
+      {/* Pair Driver Modal */}
+      {showPairModal && (
+        <AdminModal
+          title={pairingVehicle?.primaryDriver ? 'Ganti Driver Utama' : 'Pasangkan Driver Utama'}
+          subtitle={`Kendaraan: ${pairingVehicle?.licensePlate} — ${pairingVehicle?.type}`}
+          onClose={() => { setShowPairModal(false); setPairingVehicle(null); setSelectedDriverId('') }}
+          onSubmit={handlePairDriver}
+          submitLabel={pairing ? 'Menyimpan...' : 'Pasangkan Driver'}
+        >
+          {loadingDrivers ? (
+            <div className="text-center py-6 text-gray-400">
+              <Icon name="sync" size={24} />
+              <p className="mt-2 text-sm">Memuat daftar driver...</p>
+            </div>
+          ) : availableDrivers.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-4">Tidak ada driver tersedia.</p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <p className="text-xs text-gray-500">Pilih driver untuk dipasangkan sebagai driver utama kendaraan ini. Driver On Duty tidak dapat dipilih.</p>
+              <div className="flex flex-col gap-2 max-h-72 overflow-y-auto custom-scrollbar pr-1">
+                {availableDrivers.map((d) => {
+                  const isOnDuty = d.status === 'ON_DUTY'
+                  const licExpiry = d.licenseExpiry ? getExpiryStatus(d.licenseExpiry) : null
+                  return (
+                    <label
+                      key={d.id}
+                      className={`flex items-start gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${
+                        isOnDuty
+                          ? 'opacity-50 cursor-not-allowed border-gray-100 bg-gray-50'
+                          : selectedDriverId === d.id
+                          ? 'border-indigo-500 bg-indigo-50'
+                          : 'border-gray-200 hover:border-indigo-300 bg-white'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="pairDriver"
+                        value={d.id}
+                        disabled={isOnDuty}
+                        checked={selectedDriverId === d.id}
+                        onChange={() => setSelectedDriverId(d.id)}
+                        className="mt-1 accent-indigo-600"
+                      />
+                      <div className="flex-1 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                        <div>
+                          <p className="font-bold text-dash-primary">{d.fullName}</p>
+                          <p className="text-xs text-gray-500">{d.phoneNumber || '-'}</p>
+                          {isOnDuty && <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#2563eb' }}>Sedang Bertugas</span>}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          <p>SIM: {d.licenseType || '-'}</p>
+                          <p className="flex items-center gap-1">
+                            Exp: {d.licenseExpiry ? new Date(d.licenseExpiry).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}
+                            {licExpiry && (
+                              <span className={`adm-expiry-badge adm-expiry-badge--${licExpiry.status}`}>
+                                <Icon name={licExpiry.status === 'expired' ? 'error' : 'warning'} size={10} />
+                                {licExpiry.label}
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </AdminModal>
       )}
 

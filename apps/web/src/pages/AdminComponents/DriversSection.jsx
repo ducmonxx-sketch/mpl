@@ -35,7 +35,8 @@ const getExpiryStatus = (dateStr) => {
 const mapDriverStatus = (apiStatus) => {
   if (!apiStatus) return 'inactive'
   const s = apiStatus.toUpperCase()
-  if (s === 'ACTIVE') return 'available'
+  if (s === 'ACTIVE')      return 'available'
+  if (s === 'ON_DUTY')     return 'on_duty'
   if (s === 'UNAVAILABLE') return 'inactive'
   return apiStatus.toLowerCase()
 }
@@ -78,6 +79,7 @@ export default function DriversSection() {
         status: mapDriverStatus(d.status),
         rawStatus: d.status,
         assignments: d._count?.shipments ?? 0,
+        primaryVehicle: d.primaryVehicle || null,
       }))
       setDrivers(mapped)
     } catch (err) {
@@ -196,6 +198,7 @@ export default function DriversSection() {
   const filters = [
     { id: 'all', label: 'Semua' },
     { id: 'available', label: 'Tersedia' },
+    { id: 'on_duty', label: 'On Duty' },
     { id: 'inactive', label: 'Tidak Aktif' },
   ]
 
@@ -210,7 +213,8 @@ export default function DriversSection() {
   })
 
   const availableCount = drivers.filter((d) => d.status === 'available').length
-  const inactiveCount = drivers.filter((d) => d.status === 'inactive').length
+  const onDutyCount    = drivers.filter((d) => d.status === 'on_duty').length
+  const inactiveCount  = drivers.filter((d) => d.status === 'inactive').length
 
   const columns = [
     {
@@ -296,7 +300,7 @@ export default function DriversSection() {
       </section>
 
       {/* Premium KPI Cards */}
-      <div className="adm-kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginTop: '1.25rem' }}>
+      <div className="adm-kpi-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginTop: '1.25rem' }}>
         <div className="adm-kpi-card" style={{ background: '#fff', borderRadius: '1rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
           <div className="adm-kpi-card__header">
             <div className="adm-kpi-card__icon" style={{ background: 'rgba(0,36,66,0.05)', color: 'var(--dash-primary)' }}>
@@ -312,7 +316,7 @@ export default function DriversSection() {
 
         <div className="adm-kpi-card" style={{ background: '#fff', borderRadius: '1rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
           <div className="adm-kpi-card__header">
-            <div className="adm-kpi-card__icon" style={{ background: 'rgba(59,130,246,0.08)', color: '#1d4ed8' }}>
+            <div className="adm-kpi-card__icon" style={{ background: 'rgba(34,197,94,0.08)', color: '#16a34a' }}>
               <Icon name="check_circle" size={24} />
             </div>
           </div>
@@ -320,6 +324,19 @@ export default function DriversSection() {
             <h3 className="adm-kpi-card__value">{availableCount}</h3>
             <p className="adm-kpi-card__label">Tersedia</p>
             <p className="adm-kpi-card__sublabel">Siap untuk penugasan</p>
+          </div>
+        </div>
+
+        <div className="adm-kpi-card" style={{ background: '#fff', borderRadius: '1rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
+          <div className="adm-kpi-card__header">
+            <div className="adm-kpi-card__icon" style={{ background: 'rgba(59,130,246,0.08)', color: '#2563eb' }}>
+              <Icon name="local_shipping" size={24} />
+            </div>
+          </div>
+          <div>
+            <h3 className="adm-kpi-card__value">{onDutyCount}</h3>
+            <p className="adm-kpi-card__label">On Duty</p>
+            <p className="adm-kpi-card__sublabel">Sedang dalam perjalanan</p>
           </div>
         </div>
 
@@ -487,6 +504,28 @@ export default function DriversSection() {
                 <span className="adm-detail-label">Masa Berlaku SIM</span>
                 <span className="adm-detail-value">{selectedDriver.licenseExpiry}</span>
               </div>
+            </div>
+
+            <div className="adm-detail-section">
+              <h4 className="adm-detail-section__title">
+                <Icon name="directions_car" size={16} /> Kendaraan Utama
+              </h4>
+              {selectedDriver.primaryVehicle ? (
+                <>
+                  <div className="adm-detail-row">
+                    <span className="adm-detail-label">No. Plat</span>
+                    <span className="adm-detail-value">{selectedDriver.primaryVehicle.licensePlate}</span>
+                  </div>
+                  <div className="adm-detail-row">
+                    <span className="adm-detail-label">Jenis</span>
+                    <span className="adm-detail-value">{selectedDriver.primaryVehicle.type}</span>
+                  </div>
+                </>
+              ) : (
+                <div className="adm-detail-row">
+                  <span className="adm-detail-label" style={{ fontStyle: 'italic', color: '#9ca3af' }}>Belum dipasangkan ke kendaraan</span>
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -45,7 +45,7 @@ router.get("/", authenticate, async (req: AuthRequest, res: Response) => {
       include: {
         client:  { select: { fullName: true, companyName: true } },
         driver:  { select: { fullName: true, phoneNumber: true } },
-        vehicle: { select: { type: true, licensePlate: true } },
+        vehicle: { select: { type: true, licensePlate: true, primaryDriverId: true } },
         invoice: { select: { id: true } },
       },
       orderBy: { createdAt: "desc" },
@@ -180,17 +180,23 @@ router.post("/", authenticate, async (req: AuthRequest, res: Response) => {
 })
 
 // ── PATCH /api/shipments/:id/assign ──────────────────────────
-// Admin assigns driver and vehicle
+// Admin assigns driver and vehicle.
+// Only advances status when coming from PENDING (→ DITUGASKAN); other statuses are untouched.
 router.patch("/:id/assign", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
   try {
     const { driverId, vehicleId } = req.body
+
+    const current = await prisma.shipment.findUnique({
+      where:  { id: req.params.id },
+      select: { status: true },
+    })
 
     const shipment = await prisma.shipment.update({
       where: { id: req.params.id },
       data: {
         driverId,
         vehicleId,
-        status:               "TRANSIT",
+        ...(current?.status === "PENDING" && { status: "DITUGASKAN" }),
         lastUpdatedByAdminId: req.user!.id,
       },
       include: {
@@ -221,7 +227,7 @@ router.patch("/:id/assign", authenticate, adminOnly, async (req: AuthRequest, re
       const activeCount = await prisma.shipment.count({
         where: {
           driverId: shipment.driver.id,
-          status: { in: ['PENDING', 'TRANSIT'] }
+          status: { in: ["PENDING", "DITUGASKAN", "TRANSIT"] }
         }
       })
 
@@ -230,8 +236,8 @@ router.patch("/:id/assign", authenticate, adminOnly, async (req: AuthRequest, re
            data: {
              title: `High Workload: ${shipment.driver.fullName}`,
              message: `Driver ${shipment.driver.fullName} now has ${activeCount} active shipments.`,
-             category: 'assignment',
-             linkTo: 'driver',
+             category: "assignment",
+             linkTo: "driver",
              linkId: shipment.driver.id,
            }
          })
@@ -317,7 +323,7 @@ router.patch("/:id/status", authenticate, adminOnly, async (req: AuthRequest, re
 
     const existing = await prisma.shipment.findUnique({
       where:  { id },
-      select: { status: true },
+      select: { status: true, driverId: true },
     })
     if (!existing) {
       return res.status(404).json({ message: "Pengiriman tidak ditemukan." })
@@ -329,6 +335,24 @@ router.patch("/:id/status", authenticate, adminOnly, async (req: AuthRequest, re
         message: `Hanya Super Admin yang dapat mengubah status dari ${existing.status} ke ${status}.`,
       })
     }
+
+    // Departure guard: block TRANSIT move if the assigned driver is already ON_DUTY elsewhere.
+    if (status === "TRANSIT" && existing.driverId) {
+      const driver = await prisma.driver.findUnique({
+        where:  { id: existing.driverId },
+        select: { status: true, fullName: true },
+      })
+      if (driver?.status === "ON_DUTY") {
+        const conflict = await prisma.shipment.findFirst({
+          where:  { driverId: existing.driverId, status: "TRANSIT" },
+          select: { id: true },
+        })
+        return res.status(409).json({
+          message: `${driver.fullName} sedang bertugas di pengiriman ${conflict?.id ?? "lain"}. Selesaikan pengiriman tersebut terlebih dahulu.`,
+        })
+      }
+    }
+
     const reversal = isReversal("shipment", existing.status, status)
 
     const shipment = await prisma.shipment.update({
@@ -341,6 +365,23 @@ router.patch("/:id/status", authenticate, adminOnly, async (req: AuthRequest, re
       },
     })
 
+    // Phase ②: Auto-manage driver ON_DUTY status based on shipment lifecycle.
+    if (existing.driverId) {
+      if (status === "TRANSIT") {
+        // ACTIVE → ON_DUTY when shipment departs (guard with status filter for idempotency)
+        await prisma.driver.updateMany({
+          where: { id: existing.driverId, status: "ACTIVE" },
+          data:  { status: "ON_DUTY" },
+        })
+      } else if (status === "DELIVERED" || status === "CANCELLED") {
+        // ON_DUTY → ACTIVE when shipment completes (UNAVAILABLE drivers are NOT auto-reactivated)
+        await prisma.driver.updateMany({
+          where: { id: existing.driverId, status: "ON_DUTY" },
+          data:  { status: "ACTIVE" },
+        })
+      }
+    }
+
     await prisma.adminAuditLog.create({
       data: {
         adminId:        req.user!.id,
@@ -352,7 +393,7 @@ router.patch("/:id/status", authenticate, adminOnly, async (req: AuthRequest, re
     })
 
     // Notify client on key status changes
-    if (["TRANSIT", "DELIVERED", "FAILED"].includes(status)) {
+    if (["TRANSIT", "DELIVERED", "CANCELLED"].includes(status)) {
       await prisma.notification.create({
         data: {
           userId:        shipment.clientId,

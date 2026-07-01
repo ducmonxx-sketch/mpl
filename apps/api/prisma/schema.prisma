@@ -41,6 +41,7 @@ enum VerificationStatus {
 
 enum DriverStatus {
   ACTIVE
+  ON_DUTY
   UNAVAILABLE
 }
 
@@ -52,10 +53,11 @@ enum VehicleStatus {
 
 enum ShipmentStatus {
   PENDING      // created, not yet processed
+  DITUGASKAN   // driver & vehicle assigned; staging before departure
   TRANSIT      // currently being delivered
   DELIVERED    // successfully delivered
-  FAILED       // delivery failed
-  CANCELLED    // cancelled before pickup
+  FAILED       // delivery failed (legacy; no longer offered as a forward option)
+  CANCELLED    // delivery cancelled after departure (vehicle returned with payload)
 }
 
 enum EventStatus {
@@ -207,7 +209,8 @@ model Driver {
   lastUpdatedByAdminId String?
   lastUpdatedByAdmin   Admin?  @relation("DriverManagedBy", fields: [lastUpdatedByAdminId], references: [id])
 
-  shipments Shipment[]
+  shipments      Shipment[]
+  primaryVehicle Vehicle?   @relation("VehiclePrimaryDriver")
 
   @@map("drivers")
 }
@@ -226,6 +229,9 @@ model Vehicle {
   serviceDate  DateTime?     // jadwal service berikutnya (di-flag sebagai compliance bila terlewat)
   chassisNumber String?      // nomor rangka
   engineNumber  String?      // nomor mesin
+
+  primaryDriverId String? @unique  // 1:1 pairing — driver can only be primary on one vehicle
+  primaryDriver   Driver? @relation("VehiclePrimaryDriver", fields: [primaryDriverId], references: [id])
 
   lastUpdatedByAdminId String?
   lastUpdatedByAdmin   Admin?  @relation("VehicleManagedBy", fields: [lastUpdatedByAdminId], references: [id])

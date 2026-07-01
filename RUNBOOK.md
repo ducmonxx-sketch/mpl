@@ -241,6 +241,23 @@ For each: file + line (`path:line`), what's wrong, blast radius (admin-only vs s
 
 ## 6. Session Log
 
+### 2026-07-01 (cont.³) — Phase ②③: ON_DUTY lifecycle + Ditugaskan status + ShipmentsSection full rewrite
+- **Synced:** resumed from context summary; no pull/sync needed (same session, local tree unchanged from prior cont.² entry).
+- **Found:** ShipmentsSection.jsx had never been updated to use the driver-vehicle pairing logic; AdminModal rendered behind the detail panel (z-[100] < z-[101]).
+- **Fixed — backend (all `apps/api`):**
+  - `prisma/schema.prisma`: added `DITUGASKAN` to `ShipmentStatus` enum.
+  - `prisma/migrations/20260701130000_add_ditugaskan_status/migration.sql`: `ALTER TYPE "ShipmentStatus" ADD VALUE 'DITUGASKAN' AFTER 'PENDING'` (non-transactional ADD VALUE).
+  - `src/lib/statusFlow.ts`: FORWARD map updated — PENDING→DITUGASKAN, DITUGASKAN→TRANSIT, TRANSIT→DELIVERED/CANCELLED; FAILED kept as legacy terminal.
+  - `src/routes/shipments.ts`: GET includes `vehicle.primaryDriverId`; assign route conditionally sets DITUGASKAN only when from PENDING (SUPERADMIN re-assign on TRANSIT preserves status); high-workload check counts DITUGASKAN; status route adds departure guard (409 if driver ON_DUTY on another TRANSIT shipment) + Phase ② ON_DUTY auto-lifecycle (`updateMany` with status filter for idempotency) + client notify on CANCELLED.
+- **Fixed — frontend (all `apps/web/src/pages/AdminComponents`):**
+  - `components/AdminModal.jsx`: z-index `z-[100]` → `z-[200]` (above detail panel at z-[101]).
+  - `components/AdminStatusBadge.jsx`: added `assigned` config (label "Ditugaskan", blue).
+  - `ShipmentsSection.jsx`: **full rewrite** (was 983 lines, now ~760 lines). Key changes: `mapStatus` adds DITUGASKAN→assigned; `FORWARD_STATUS` updated to match backend flow; `RAW_STATUS_OPTIONS` drops FAILED, adds DITUGASKAN; filter tabs add Ditugaskan, rename Gagal→Dibatalkan; `vehiclePrimaryDriverId` added to mapped shipment; `ExpiryLabel` + `DriverVehicleCard` helper components (2-col driver+vehicle card with near-due/overdue coloring); `openStatusModal` fetches fleet vehicles for PENDING/DITUGASKAN states; `handleConfirmStatus` branches per role+rawStatus (regular admin PENDING→assign+optional link shipment, DITUGASKAN→optional ganti driver+TRANSIT, TRANSIT→DELIVERED/CANCELLED; SUPERADMIN→generic picker); Pengganti badge (shown when driverId ≠ vehiclePrimaryDriverId); SUPERADMIN row assign button kept; regular admin no longer has a row assign button (uses modal).
+- **Verified:** `npx vite build` ✓ (6.09s, no errors — only pre-existing chunk-size warnings).
+- **Client-side follow-ups:** DITUGASKAN and the new status flow are client-visible. Coordinate with friend during the client-dashboard pass. FAILED → CANCELLED label change also client-visible.
+- **New env vars:** none. **New migrations:** `20260701130000_add_ditugaskan_status` (ADD VALUE, non-transactional — apply with `npx prisma migrate deploy` on the other machine; safe to apply to a live DB).
+- **Server/branch state left:** servers not running. On `tier1-infra`, **all changes uncommitted**, not pushed (per lock).
+
 ### 2026-07-01 (cont.²) — Pushed `tier1-infra` to origin (laptop handoff)
 - **Pushed** through `3a7d7b5` — remote `tier1-infra` is now current; local in sync, clean tree. (Branch-push lock lifted by explicit user OK.)
 - **▶ Resume on another machine:**

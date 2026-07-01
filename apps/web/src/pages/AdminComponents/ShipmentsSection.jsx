@@ -20,37 +20,42 @@ export const SERVICE_LABELS = {
   warehousing: 'Gudang',
 }
 
-export const STATUS_OPTIONS = ['pending', 'in_transit', 'delivered', 'cancelled']
+export const STATUS_OPTIONS = ['pending', 'assigned', 'in_transit', 'delivered', 'cancelled']
 
+// Statuses offered as targets in the SUPERADMIN picker (FAILED omitted — legacy only).
 const RAW_STATUS_OPTIONS = [
-  { value: 'PENDING',   label: 'Menunggu' },
-  { value: 'TRANSIT',   label: 'Dalam Perjalanan' },
-  { value: 'DELIVERED', label: 'Terkirim' },
-  { value: 'FAILED',    label: 'Gagal' },
-  { value: 'CANCELLED', label: 'Dibatalkan' },
+  { value: 'PENDING',     label: 'Menunggu' },
+  { value: 'DITUGASKAN',  label: 'Ditugaskan' },
+  { value: 'TRANSIT',     label: 'Dalam Perjalanan' },
+  { value: 'DELIVERED',   label: 'Terkirim' },
+  { value: 'CANCELLED',   label: 'Dibatalkan' },
 ]
 
-// Forward transitions a regular admin may perform — mirrors apps/api/src/lib/statusFlow.ts.
-// SUPERADMIN may move freely (status:override); OPERATIONS/SUPPORT are forward-only.
-// The backend enforces this with a 403; this is the matching UX gate in the status-change modal.
+// Forward transitions for regular admins — mirrors statusFlow.ts.
 const FORWARD_STATUS = {
-  PENDING:   ['TRANSIT', 'CANCELLED'],
-  TRANSIT:   ['DELIVERED', 'FAILED'],
-  DELIVERED: [],
-  FAILED:    [],
-  CANCELLED: [],
+  PENDING:    ['DITUGASKAN'],
+  DITUGASKAN: ['TRANSIT'],
+  TRANSIT:    ['DELIVERED', 'CANCELLED'],
+  DELIVERED:  [],
+  FAILED:     [],
+  CANCELLED:  [],
 }
 
-// Statuses a role may switch TO from the current state.
-// SUPERADMIN: any status except the current one (can reverse/override).
-// OPERATIONS/SUPPORT: forward-only per FORWARD_STATUS.
+// SUPERADMIN: all statuses except current; regular admin: forward-only.
 const availableStatusOptions = (role, from) =>
   role === 'SUPERADMIN'
     ? RAW_STATUS_OPTIONS.filter(opt => opt.value !== from)
     : RAW_STATUS_OPTIONS.filter(opt => (FORWARD_STATUS[from] ?? []).includes(opt.value))
 
 const mapStatus = (s) => {
-  const map = { PENDING: 'pending', TRANSIT: 'in_transit', DELIVERED: 'delivered', FAILED: 'cancelled', CANCELLED: 'cancelled' }
+  const map = {
+    PENDING:    'pending',
+    DITUGASKAN: 'assigned',
+    TRANSIT:    'in_transit',
+    DELIVERED:  'delivered',
+    FAILED:     'cancelled',
+    CANCELLED:  'cancelled',
+  }
   return map[s] || s.toLowerCase()
 }
 
@@ -72,6 +77,62 @@ const parseRupiahInput = (formatted) => {
   return formatted.replace(/\D/g, '')
 }
 
+// ── Expiry helpers ────────────────────────────────────────────
+const expiryStatus = (dateStr) => {
+  if (!dateStr) return 'none'
+  const diff = new Date(dateStr) - new Date()
+  if (diff < 0) return 'overdue'
+  if (diff < 30 * 24 * 60 * 60 * 1000) return 'near'
+  return 'ok'
+}
+
+const ExpiryLabel = ({ date, label }) => {
+  const st = expiryStatus(date)
+  const cls = st === 'overdue' ? 'text-red-600 font-bold' : st === 'near' ? 'text-amber-600 font-bold' : 'text-gray-500'
+  return (
+    <span className={`text-xs ${cls}`}>
+      {label}: {formatDate(date)}
+      {st === 'overdue' && ' ⚠'}
+      {st === 'near' && ' ⚡'}
+    </span>
+  )
+}
+
+// ── 2-column Driver + Vehicle card ────────────────────────────
+const DriverVehicleCard = ({ vehicle, selected, onClick }) => {
+  const driver = vehicle.primaryDriver
+  if (!driver) return null
+  return (
+    <div
+      onClick={onClick}
+      className={`p-4 border-2 rounded-xl cursor-pointer transition-all select-none ${
+        selected
+          ? 'border-dash-secondary bg-dash-secondary/5 shadow-sm'
+          : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
+      }`}
+    >
+      <div className="grid grid-cols-2 gap-3 min-w-0">
+        {/* Col 1: Driver */}
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <span className="text-[0.6rem] font-bold text-gray-400 uppercase tracking-wide">Driver</span>
+          <span className="text-sm font-bold text-gray-900 truncate">{driver.fullName}</span>
+          {driver.phoneNumber && <span className="text-xs text-gray-500">{driver.phoneNumber}</span>}
+          <ExpiryLabel date={driver.licenseExpiry} label="SIM" />
+        </div>
+        {/* Col 2: Vehicle */}
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <span className="text-[0.6rem] font-bold text-gray-400 uppercase tracking-wide">Kendaraan</span>
+          <span className="text-sm font-bold text-gray-900 truncate">{vehicle.type}</span>
+          <span className="text-xs text-gray-500">{vehicle.licensePlate}</span>
+          <ExpiryLabel date={vehicle.stnkExpiry} label="STNK" />
+          <ExpiryLabel date={vehicle.kirExpiry} label="KIR" />
+          {vehicle.serviceDate && <ExpiryLabel date={vehicle.serviceDate} label="Service" />}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
   const { showToast } = useToast()
   const { user } = useAuth()
@@ -87,13 +148,32 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
 
   // ── Detail panel ─────────────────────────────────────────────
   const [selectedShipment, setSelectedShipment] = useState(null)
-  // Notify-driver button: id with an in-flight request + ids already notified
-  // this session — keeps the button frozen while sending and disabled after success.
   const [notifyingId, setNotifyingId] = useState(null)
   const [notifiedIds, setNotifiedIds] = useState(() => new Set())
-  // Status-change confirmation modal
-  const [showStatusModal, setShowStatusModal] = useState(false)
-  const [pendingStatus, setPendingStatus]     = useState(null)
+
+  // ── Update Status modal (all roles) ─────────────────────────
+  const [showStatusModal, setShowStatusModal]       = useState(false)
+  const [pendingStatus, setPendingStatus]           = useState(null)
+  const [modalLoading, setModalLoading]             = useState(false)
+  // Fleet data for the modal
+  const [fleetVehicles, setFleetVehicles]           = useState([])
+  // PENDING assign UI
+  const [selectedVehicleId, setSelectedVehicleId]   = useState('')
+  const [linkShipmentChecked, setLinkShipmentChecked] = useState(false)
+  const [linkedShipmentId, setLinkedShipmentId]     = useState('')
+  // DITUGASKAN reconfirm UI
+  const [gantiDriverChecked, setGantiDriverChecked] = useState(false)
+  const [newDriverVehicleId, setNewDriverVehicleId] = useState('')
+  const [tandaiTidakTersedia, setTandaiTidakTersedia] = useState(true)
+
+  // ── SUPERADMIN separate assign modal ────────────────────────
+  const [showAssignModal, setShowAssignModal]     = useState(false)
+  const [assigningShipment, setAssigningShipment] = useState(null)
+  const [assignDriverId, setAssignDriverId]       = useState('')
+  const [assignVehicleId, setAssignVehicleId]     = useState('')
+  const [availableDrivers, setAvailableDrivers]   = useState([])
+  const [availableVehicles, setAvailableVehicles] = useState([])
+
   // ── Create modal ─────────────────────────────────────────────
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [clientOptions, setClientOptions]     = useState([])
@@ -110,13 +190,31 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
   const [formPrice, setFormPrice]                     = useState('')
   const [formNotes, setFormNotes]                     = useState('')
 
-  // ── Assign modal ─────────────────────────────────────────────
-  const [showAssignModal, setShowAssignModal]     = useState(false)
-  const [assigningShipment, setAssigningShipment] = useState(null)
-  const [assignDriverId, setAssignDriverId]       = useState('')
-  const [assignVehicleId, setAssignVehicleId]     = useState('')
-  const [availableDrivers, setAvailableDrivers]   = useState([])
-  const [availableVehicles, setAvailableVehicles] = useState([])
+  // ── Derived ───────────────────────────────────────────────────
+  const isRegularAdmin = user?.role !== 'SUPERADMIN'
+
+  // Vehicles that have an ACTIVE primary driver (available for assignment)
+  const assignableVehicles = fleetVehicles.filter(v => v.primaryDriver && v.primaryDriver.status === 'ACTIVE')
+
+  // Current vehicle of the open shipment (for DITUGASKAN read-only card)
+  const currentShipmentVehicle = selectedShipment
+    ? fleetVehicles.find(v => v.id === selectedShipment.vehicleId)
+    : null
+
+  // Other PENDING shipments for the Link Shipment option
+  const menungguShipments = selectedShipment
+    ? SHIPMENTS.filter(s => s.rawStatus === 'PENDING' && s.id !== selectedShipment.id)
+    : []
+
+  // Status options for SUPERADMIN status picker
+  const statusOptions = selectedShipment ? availableStatusOptions(user?.role, selectedShipment.rawStatus) : []
+
+  // Whether the Update Status button should be shown
+  const canUpdateStatus = selectedShipment && (
+    isRegularAdmin
+      ? ['PENDING', 'DITUGASKAN', 'TRANSIT'].includes(selectedShipment.rawStatus)
+      : statusOptions.length > 0
+  )
 
   // ── Data fetching ─────────────────────────────────────────────
   const fetchShipments = useCallback(async ({ silent = false } = {}) => {
@@ -124,26 +222,27 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
     try {
       const data = await shipmentsAPI.list()
       const mapped = (data.shipments || data || []).map(s => ({
-        id:               s.id,
-        clientId:         s.clientId,
-        client:           s.client?.companyName || s.client?.fullName || '-',
-        serviceType:      s.serviceLevel || 'Darat',
-        originCity:       s.originLocation,
-        destinationCity:  s.destinationLocation,
-        pickupDate:       formatDate(s.pickupDate || s.createdAt),
-        estimatedArrival: s.estimatedArrival ? formatDate(s.estimatedArrival) : '-',
-        cargoDescription: s.packageType,
-        weightKg:         s.weightKg,
-        units:            s.units || '-',
-        price:            s.price ? Number(s.price) : null,
-        driverId:         s.driverId,
-        driverName:       s.driver?.fullName || null,
-        vehicleId:        s.vehicleId,
-        vehicleName:      s.vehicle ? `${s.vehicle.type} • ${s.vehicle.licensePlate}` : null,
-        status:           mapStatus(s.status),
-        rawStatus:        s.status,
-        notes:            s.specialNotes || '',
-        createdBy:        'Admin',
+        id:                    s.id,
+        clientId:              s.clientId,
+        client:                s.client?.companyName || s.client?.fullName || '-',
+        serviceType:           s.serviceLevel || 'Darat',
+        originCity:            s.originLocation,
+        destinationCity:       s.destinationLocation,
+        pickupDate:            formatDate(s.pickupDate || s.createdAt),
+        estimatedArrival:      s.estimatedArrival ? formatDate(s.estimatedArrival) : '-',
+        cargoDescription:      s.packageType,
+        weightKg:              s.weightKg,
+        units:                 s.units || '-',
+        price:                 s.price ? Number(s.price) : null,
+        driverId:              s.driverId,
+        driverName:            s.driver?.fullName || null,
+        vehicleId:             s.vehicleId,
+        vehicleName:           s.vehicle ? `${s.vehicle.type} • ${s.vehicle.licensePlate}` : null,
+        vehiclePrimaryDriverId: s.vehicle?.primaryDriverId || null,
+        status:                mapStatus(s.status),
+        rawStatus:             s.status,
+        notes:                 s.specialNotes || '',
+        createdBy:             'Admin',
       }))
       setSHIPMENTS(mapped)
     } catch (err) {
@@ -198,18 +297,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
     }
   }, [selectedShipment])
 
-  // Fetch clients for create form
-  const fetchClients = async () => {
-    try {
-      const data = await usersAPI.listAll()
-      const users = data.users || data || []
-      setClientOptions(users.map(u => ({ id: u.id, label: u.companyName || u.fullName || u.email })))
-    } catch (err) {
-      console.error('Failed to fetch clients:', err)
-    }
-  }
-
-  // Fetch fleet for assign modal
+  // ── Fleet fetch helpers ───────────────────────────────────────
   const fetchFleet = async () => {
     try {
       const [driversData, vehiclesData] = await Promise.all([
@@ -224,7 +312,30 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
     }
   }
 
-  // ── Handlers ──────────────────────────────────────────────────
+  const fetchFleetVehicles = async () => {
+    setModalLoading(true)
+    try {
+      const data = await fleetAPI.getVehicles()
+      setFleetVehicles(data.vehicles || data || [])
+    } catch (err) {
+      showToast('Gagal memuat data armada.', 'error')
+    } finally {
+      setModalLoading(false)
+    }
+  }
+
+  // ── Clients fetch ─────────────────────────────────────────────
+  const fetchClients = async () => {
+    try {
+      const data = await usersAPI.listAll()
+      const users = data.users || data || []
+      setClientOptions(users.map(u => ({ id: u.id, label: u.companyName || u.fullName || u.email })))
+    } catch (err) {
+      console.error('Failed to fetch clients:', err)
+    }
+  }
+
+  // ── Create form helpers ───────────────────────────────────────
   const resetCreateForm = () => {
     setFormClientId('')
     setFormService('Darat')
@@ -276,7 +387,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
       return
     }
 
-    const finalOrigin = formOriginPoint.trim() ? `${formOriginPoint.trim()} - ${formOrigin.trim()}` : formOrigin.trim()
+    const finalOrigin      = formOriginPoint.trim()      ? `${formOriginPoint.trim()} - ${formOrigin.trim()}`      : formOrigin.trim()
     const finalDestination = formDestinationPoint.trim() ? `${formDestinationPoint.trim()} - ${formDestination.trim()}` : formDestination.trim()
 
     try {
@@ -301,11 +412,8 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
     }
   }
 
+  // ── SUPERADMIN assign modal ───────────────────────────────────
   const openAssignModal = (row) => {
-    if (user?.role !== 'SUPERADMIN' && row.status !== 'pending') {
-      showToast('Hanya pengiriman berstatus "Menunggu" yang dapat ditugaskan driver.', 'error')
-      return
-    }
     setAssigningShipment(row)
     setAssignDriverId(row.driverId || '')
     setAssignVehicleId(row.vehicleId || '')
@@ -321,24 +429,23 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
       })
       showToast('Driver dan armada berhasil ditugaskan!', 'success')
       setShowAssignModal(false)
-      fetchShipments()
+      fetchShipments({ silent: true })
     } catch (err) {
       showToast(err.message, 'error')
     }
   }
 
+  // ── Status update ─────────────────────────────────────────────
   const handleStatusUpdate = async (newRawStatus) => {
     try {
       await shipmentsAPI.updateStatus(selectedShipment.id, { status: newRawStatus })
       showToast('Status diperbarui!', 'success')
-      fetchShipments()
+      fetchShipments({ silent: true })
       setSelectedShipment(prev => ({
         ...prev,
         rawStatus: newRawStatus,
         status:    mapStatus(newRawStatus),
       }))
-
-      // Hardcoded tracking animation when status updates
       import('animejs').then(animeModule => {
         const anime = animeModule.default
         anime({
@@ -356,25 +463,376 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
     }
   }
 
+  // ── Update Status modal ───────────────────────────────────────
+  const resetModalState = () => {
+    setPendingStatus(null)
+    setSelectedVehicleId('')
+    setLinkShipmentChecked(false)
+    setLinkedShipmentId('')
+    setGantiDriverChecked(false)
+    setNewDriverVehicleId('')
+    setTandaiTidakTersedia(true)
+  }
+
+  const openStatusModal = async () => {
+    resetModalState()
+    setShowStatusModal(true)
+    const rawStatus = selectedShipment?.rawStatus
+    if (rawStatus === 'PENDING' || rawStatus === 'DITUGASKAN') {
+      await fetchFleetVehicles()
+    }
+  }
+
   const handleConfirmStatus = async () => {
+    if (!selectedShipment) return
+    const { rawStatus, id, driverId, vehicleId } = selectedShipment
+
+    if (isRegularAdmin) {
+      // ── PENDING → assign driver+vehicle → DITUGASKAN ────────
+      if (rawStatus === 'PENDING') {
+        if (!selectedVehicleId) {
+          showToast('Pilih driver & kendaraan terlebih dahulu.', 'error')
+          return
+        }
+        const vehicle = fleetVehicles.find(v => v.id === selectedVehicleId)
+        if (!vehicle) return
+        try {
+          await shipmentsAPI.assign(id, {
+            driverId:  vehicle.primaryDriver.id,
+            vehicleId: vehicle.id,
+          })
+          if (linkShipmentChecked && linkedShipmentId) {
+            await shipmentsAPI.assign(linkedShipmentId, {
+              driverId:  vehicle.primaryDriver.id,
+              vehicleId: vehicle.id,
+            })
+          }
+          showToast('Driver ditugaskan! Status → Ditugaskan.', 'success')
+          setShowStatusModal(false)
+          resetModalState()
+          fetchShipments({ silent: true })
+          setSelectedShipment(prev => prev ? ({
+            ...prev,
+            rawStatus:  'DITUGASKAN',
+            status:     'assigned',
+            driverId:   vehicle.primaryDriver.id,
+            driverName: vehicle.primaryDriver.fullName,
+            vehicleId:  vehicle.id,
+            vehicleName: `${vehicle.type} • ${vehicle.licensePlate}`,
+            vehiclePrimaryDriverId: vehicle.primaryDriverId,
+          }) : null)
+        } catch (err) {
+          showToast(err.message || 'Gagal menugaskan driver.', 'error')
+        }
+        return
+      }
+
+      // ── DITUGASKAN → (optionally swap driver) → TRANSIT ─────
+      if (rawStatus === 'DITUGASKAN') {
+        try {
+          if (gantiDriverChecked && newDriverVehicleId) {
+            const newVehicle = fleetVehicles.find(v => v.id === newDriverVehicleId)
+            if (!newVehicle?.primaryDriver) {
+              showToast('Driver yang dipilih tidak valid.', 'error')
+              return
+            }
+            if (newVehicle.primaryDriver.status === 'ON_DUTY') {
+              showToast(`${newVehicle.primaryDriver.fullName} sedang bertugas di pengiriman lain.`, 'error')
+              return
+            }
+            if (tandaiTidakTersedia && driverId) {
+              await fleetAPI.updateDriver(driverId, { status: 'UNAVAILABLE' })
+            }
+            await shipmentsAPI.assign(id, {
+              driverId:  newVehicle.primaryDriver.id,
+              vehicleId: vehicleId,
+            })
+          }
+          const ok = await handleStatusUpdate('TRANSIT')
+          if (ok) {
+            setShowStatusModal(false)
+            resetModalState()
+          }
+        } catch (err) {
+          showToast(err.message || 'Gagal mengonfirmasi keberangkatan.', 'error')
+        }
+        return
+      }
+
+      // ── TRANSIT → DELIVERED or CANCELLED ────────────────────
+      if (rawStatus === 'TRANSIT') {
+        if (!pendingStatus) {
+          showToast('Pilih status baru terlebih dahulu.', 'error')
+          return
+        }
+        const ok = await handleStatusUpdate(pendingStatus)
+        if (ok) { setShowStatusModal(false); resetModalState() }
+        return
+      }
+    }
+
+    // ── SUPERADMIN: generic status picker ────────────────────
     if (!pendingStatus) {
       showToast('Pilih status baru terlebih dahulu.', 'error')
       return
     }
     const ok = await handleStatusUpdate(pendingStatus)
-    if (ok) {
-      setShowStatusModal(false)
-      setPendingStatus(null)
-    }
+    if (ok) { setShowStatusModal(false); resetModalState() }
   }
 
+  // Modal title / subtitle / submit label
+  const getModalTitle = () => {
+    if (!selectedShipment || !isRegularAdmin) return 'Update Status Pengiriman'
+    if (selectedShipment.rawStatus === 'PENDING')    return 'Tugaskan Driver & Kendaraan'
+    if (selectedShipment.rawStatus === 'DITUGASKAN') return 'Konfirmasi Keberangkatan'
+    return 'Update Status Pengiriman'
+  }
+
+  const getModalSubtitle = () => {
+    if (!selectedShipment) return ''
+    const sid = selectedShipment.id.startsWith('#') ? selectedShipment.id : `#${selectedShipment.id}`
+    if (!isRegularAdmin) return `${sid} — pilih status baru`
+    if (selectedShipment.rawStatus === 'PENDING')    return `${sid} — pilih driver & armada`
+    if (selectedShipment.rawStatus === 'DITUGASKAN') return `${sid} — konfirmasi sebelum berangkat`
+    if (selectedShipment.rawStatus === 'TRANSIT')    return `${sid} — selesaikan atau batalkan`
+    return sid
+  }
+
+  const getSubmitLabel = () => {
+    if (!selectedShipment || !isRegularAdmin) return 'Konfirmasi'
+    if (selectedShipment.rawStatus === 'PENDING')    return 'Tugaskan'
+    if (selectedShipment.rawStatus === 'DITUGASKAN') return 'Konfirmasi Berangkat'
+    return 'Konfirmasi'
+  }
+
+  // Modal body content
+  const renderModalContent = () => {
+    if (!selectedShipment) return null
+    const { rawStatus } = selectedShipment
+
+    if (isRegularAdmin) {
+      // ── PENDING: driver assignment UI ──────────────────────
+      if (rawStatus === 'PENDING') {
+        return (
+          <div className="flex flex-col gap-5">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-gray-500">Status saat ini:</span>
+              <AdminStatusBadge status="pending" type="shipment" />
+            </div>
+
+            {modalLoading ? (
+              <div className="flex items-center justify-center p-8 text-gray-400 gap-2">
+                <Icon name="sync" size={20} className="animate-spin" />
+                <span className="text-sm">Memuat data armada...</span>
+              </div>
+            ) : assignableVehicles.length === 0 ? (
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+                Tidak ada driver aktif yang sudah dipasangkan dengan kendaraan. Pasangkan driver di menu Armada terlebih dahulu.
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-col gap-2">
+                  <span className="text-sm font-bold text-gray-900">Pilih Driver &amp; Kendaraan</span>
+                  <div className="flex flex-col gap-2 max-h-64 overflow-y-auto custom-scrollbar pr-1">
+                    {assignableVehicles.map(v => (
+                      <DriverVehicleCard
+                        key={v.id}
+                        vehicle={v}
+                        selected={selectedVehicleId === v.id}
+                        onClick={() => setSelectedVehicleId(v.id)}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {menungguShipments.length > 0 && (
+                  <div className="flex flex-col gap-3 pt-3 border-t border-gray-100">
+                    <label className="flex items-center gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={linkShipmentChecked}
+                        onChange={e => { setLinkShipmentChecked(e.target.checked); setLinkedShipmentId('') }}
+                        className="w-4 h-4 rounded accent-[#fec330]"
+                      />
+                      <span className="text-sm font-bold text-gray-700">Hubungkan dengan Pengiriman Lain</span>
+                    </label>
+                    {linkShipmentChecked && (
+                      <div className="flex flex-col gap-2 ml-6">
+                        {menungguShipments.map(s => (
+                          <label
+                            key={s.id}
+                            className={`flex items-start gap-2.5 p-3 border rounded-xl cursor-pointer transition-colors ${
+                              linkedShipmentId === s.id
+                                ? 'border-dash-secondary bg-dash-secondary/5'
+                                : 'border-gray-200 bg-white hover:bg-gray-50'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="linkedShipment"
+                              value={s.id}
+                              checked={linkedShipmentId === s.id}
+                              onChange={() => setLinkedShipmentId(s.id)}
+                              className="mt-0.5 accent-[#fec330]"
+                            />
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-sm font-bold text-gray-900">{s.id}</span>
+                              <span className="text-xs text-gray-500 truncate">{s.client} — {s.destinationCity}</span>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )
+      }
+
+      // ── DITUGASKAN: reconfirm UI ────────────────────────────
+      if (rawStatus === 'DITUGASKAN') {
+        const gantiDriverOptions = assignableVehicles.filter(v => v.primaryDriver?.id !== selectedShipment.driverId)
+        return (
+          <div className="flex flex-col gap-5">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-gray-500">Status saat ini:</span>
+              <AdminStatusBadge status="assigned" type="shipment" />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <span className="text-sm font-bold text-gray-900">Driver &amp; Kendaraan Saat Ini</span>
+              {modalLoading ? (
+                <div className="flex items-center gap-2 p-4 text-gray-400">
+                  <Icon name="sync" size={18} className="animate-spin" />
+                  <span className="text-xs">Memuat...</span>
+                </div>
+              ) : currentShipmentVehicle ? (
+                <DriverVehicleCard vehicle={currentShipmentVehicle} selected={false} onClick={undefined} />
+              ) : (
+                <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-600">
+                  {selectedShipment.driverName || 'Driver'} — {selectedShipment.vehicleName || 'Kendaraan'}
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-3 pt-3 border-t border-gray-100">
+              <label className="flex items-center gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={gantiDriverChecked}
+                  onChange={e => { setGantiDriverChecked(e.target.checked); setNewDriverVehicleId('') }}
+                  className="w-4 h-4 rounded accent-[#fec330]"
+                />
+                <span className="text-sm font-bold text-gray-700">Ganti Driver</span>
+              </label>
+
+              {gantiDriverChecked && (
+                <div className="flex flex-col gap-3 ml-2">
+                  {gantiDriverOptions.length === 0 ? (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+                      Tidak ada driver aktif lain yang tersedia.
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                      {gantiDriverOptions.map(v => (
+                        <DriverVehicleCard
+                          key={v.id}
+                          vehicle={v}
+                          selected={newDriverVehicleId === v.id}
+                          onClick={() => setNewDriverVehicleId(v.id)}
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  <label className="flex items-center gap-2.5 cursor-pointer mt-1">
+                    <input
+                      type="checkbox"
+                      checked={tandaiTidakTersedia}
+                      onChange={e => setTandaiTidakTersedia(e.target.checked)}
+                      className="w-4 h-4 rounded accent-[#fec330]"
+                    />
+                    <span className="text-sm text-gray-700">Tandai driver lama tidak tersedia</span>
+                  </label>
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      }
+
+      // ── TRANSIT: status buttons ─────────────────────────────
+      if (rawStatus === 'TRANSIT') {
+        return (
+          <div className="flex flex-col gap-5">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-gray-500">Status saat ini:</span>
+              <AdminStatusBadge status="in_transit" type="shipment" />
+            </div>
+            <div className="flex flex-col gap-2">
+              <span className="text-sm font-bold text-gray-900">Pilih status baru</span>
+              <div className="grid grid-cols-2 gap-3">
+                {[{ value: 'DELIVERED', label: 'Terkirim' }, { value: 'CANCELLED', label: 'Dibatalkan' }].map(opt => (
+                  <button
+                    type="button"
+                    key={opt.value}
+                    onClick={() => setPendingStatus(opt.value)}
+                    className={`px-4 py-3 rounded-xl border text-sm font-bold transition-colors ${
+                      pendingStatus === opt.value
+                        ? 'border-dash-secondary bg-dash-secondary/15 text-dash-primary'
+                        : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )
+      }
+    }
+
+    // ── SUPERADMIN: generic status picker ──────────────────────
+    return (
+      <div className="flex flex-col gap-5">
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-medium text-gray-500">Status saat ini:</span>
+          <AdminStatusBadge status={selectedShipment.status} type="shipment" />
+        </div>
+        <div className="flex flex-col gap-2">
+          <span className="text-sm font-bold text-gray-900">Pilih status baru</span>
+          <div className="grid grid-cols-2 gap-3">
+            {statusOptions.map(opt => (
+              <button
+                type="button"
+                key={opt.value}
+                onClick={() => setPendingStatus(opt.value)}
+                className={`px-4 py-3 rounded-xl border text-sm font-bold transition-colors ${
+                  pendingStatus === opt.value
+                    ? 'border-dash-secondary bg-dash-secondary/15 text-dash-primary'
+                    : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── WhatsApp notify ───────────────────────────────────────────
   const handleNotifyDriver = async () => {
     const id = selectedShipment.id
-    setNotifyingId(id)               // freeze the button while OpenWA responds
+    setNotifyingId(id)
     try {
       await shipmentsAPI.notifyDriver(id)
       showToast('Notifikasi WhatsApp berhasil dikirim ke driver!', 'success')
-      setNotifiedIds(prev => {       // keep it disabled after a successful send
+      setNotifiedIds(prev => {
         const next = new Set(prev)
         next.add(id)
         return next
@@ -386,11 +844,8 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
     }
   }
 
-  // Notify-button state for the currently-open shipment.
   const notifyInFlight = !!selectedShipment && notifyingId === selectedShipment.id
   const notifySent     = !!selectedShipment && notifiedIds.has(selectedShipment.id)
-  // Status options the current admin role may switch the open shipment TO.
-  const statusOptions  = selectedShipment ? availableStatusOptions(user?.role, selectedShipment.rawStatus) : []
 
   // ── Filtering & pagination ────────────────────────────────────
   const ITEMS_PER_PAGE = 20
@@ -409,11 +864,12 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
   const paginated  = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
 
   const filters = [
-    { id: 'all',       label: 'Semua' },
-    { id: 'delivered', label: 'Terkirim' },
-    { id: 'in_transit',label: 'Dalam Perjalanan' },
-    { id: 'pending',   label: 'Menunggu' },
-    { id: 'cancelled', label: 'Gagal' },
+    { id: 'all',        label: 'Semua' },
+    { id: 'pending',    label: 'Menunggu' },
+    { id: 'assigned',   label: 'Ditugaskan' },
+    { id: 'in_transit', label: 'Dalam Perjalanan' },
+    { id: 'delivered',  label: 'Terkirim' },
+    { id: 'cancelled',  label: 'Dibatalkan' },
   ]
 
   // ── Table columns ─────────────────────────────────────────────
@@ -435,11 +891,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
     {
       key: 'actions',
       label: '',
-      render: (_, row) => {
-        // Normal admins may only assign while the shipment is still "Menunggu" (PENDING);
-        // SUPERADMIN can (re)assign at any status.
-        const assignBlocked = user?.role !== 'SUPERADMIN' && row.status !== 'pending'
-        return (
+      render: (_, row) => (
         <div className="flex items-center justify-end gap-2">
           <button
             className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 bg-gray-100 hover:bg-dash-primary hover:text-white transition-colors"
@@ -448,17 +900,18 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
           >
             <Icon name="visibility" size={16} />
           </button>
-          <button
-            className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${assignBlocked ? 'text-gray-300 bg-gray-50 cursor-not-allowed' : 'text-gray-500 bg-gray-100 hover:bg-dash-secondary hover:text-dash-primary'}`}
-            title={assignBlocked ? 'Hanya bisa ditugaskan saat status Menunggu' : 'Tugaskan Driver'}
-            onClick={(e) => { e.stopPropagation(); openAssignModal(row) }}
-            disabled={assignBlocked}
-          >
-            <Icon name="person_add" size={16} />
-          </button>
+          {/* SUPERADMIN retains the direct-assign row button; regular admins use the status modal */}
+          {user?.role === 'SUPERADMIN' && (
+            <button
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 bg-gray-100 hover:bg-dash-secondary hover:text-dash-primary transition-colors"
+              title="Tugaskan Driver (SUPERADMIN)"
+              onClick={(e) => { e.stopPropagation(); openAssignModal(row) }}
+            >
+              <Icon name="person_add" size={16} />
+            </button>
+          )}
         </div>
-        )
-      },
+      ),
     },
   ]
 
@@ -471,15 +924,15 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
           <h2 className="text-2xl md:text-3xl font-black text-dash-primary tracking-tight">Manajemen Pengiriman</h2>
           <p className="text-sm text-gray-500 font-medium">Kelola semua pengiriman dari pickup hingga delivery.</p>
         </div>
-        <button 
-          className="flex items-center justify-center gap-2 px-5 py-2.5 bg-dash-secondary hover:brightness-110 text-dash-primary font-bold rounded-xl shadow-sm transition-all hover:shadow-md" 
+        <button
+          className="flex items-center justify-center gap-2 px-5 py-2.5 bg-dash-secondary hover:brightness-110 text-dash-primary font-bold rounded-xl shadow-sm transition-all hover:shadow-md"
           onClick={openCreateModal}
         >
           <Icon name="add" size={20} /> Buat Pengiriman Baru
         </button>
       </section>
 
-      {/* Toolbar: Search & Filters */}
+      {/* Toolbar */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mt-2 relative z-20">
         <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
           <div className="relative w-full sm:w-72">
@@ -503,11 +956,11 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
           />
           <SearchableSelect
             options={[
-              { value: 'Darat', label: 'Darat' },
-              { value: 'Laut', label: 'Laut' },
-              { value: 'Udara', label: 'Udara' },
+              { value: 'Darat',       label: 'Darat' },
+              { value: 'Laut',        label: 'Laut' },
+              { value: 'Udara',       label: 'Udara' },
               { value: 'inter_island', label: 'Antar Pulau' },
-              { value: 'last_mile', label: 'Lokal' },
+              { value: 'last_mile',   label: 'Lokal' },
               { value: 'warehousing', label: 'Gudang' },
             ]}
             value={filterService}
@@ -531,14 +984,13 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
             ? baseSet.length
             : baseSet.filter(s => s.status === f.id).length
           const isActive = filter === f.id
-          
           return (
             <button
               key={f.id}
               className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${isActive ? 'border-dash-primary text-dash-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
               onClick={() => { setFilter(f.id); setCurrentPage(1) }}
             >
-              {f.label} 
+              {f.label}
               <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${isActive ? 'bg-dash-primary/10 text-dash-primary' : 'bg-gray-100 text-gray-500'}`}>
                 {count}
               </span>
@@ -551,8 +1003,8 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
       <div>
         {loading ? (
           <div className="flex flex-col items-center justify-center p-12 text-gray-400 gap-3 border border-dashed border-gray-300 rounded-2xl bg-gray-50/50">
-             <Icon name="sync" size={32} className="animate-spin" />
-             <p className="text-sm font-medium">Memuat data pengiriman...</p>
+            <Icon name="sync" size={32} className="animate-spin" />
+            <p className="text-sm font-medium">Memuat data pengiriman...</p>
           </div>
         ) : (
           <div className="flex flex-col gap-4">
@@ -568,18 +1020,16 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
         )}
       </div>
 
-      {/* ── Slide-over Detail Panel ── */}
+      {/* ── Detail Panel ── */}
       {selectedShipment && (
         <>
-          {/* Backdrop */}
           <div className="fixed inset-0 bg-dash-primary/20 backdrop-blur-sm z-[100]" onClick={() => setSelectedShipment(null)} />
-          {/* Panel */}
           <div className="adm-detail-panel opacity-0 fixed right-0 top-0 h-screen w-full sm:w-[500px] bg-white shadow-2xl z-[101] flex flex-col border-l border-gray-200">
             {/* Panel Header */}
             <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex flex-col gap-4">
               <div className="flex justify-between items-start">
                 <AdminStatusBadge status={selectedShipment.status} type="shipment" />
-                <button 
+                <button
                   className="w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-700 hover:bg-white transition-colors"
                   onClick={() => setSelectedShipment(null)}
                 >
@@ -590,14 +1040,15 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
                 Detail {selectedShipment.id.startsWith('#') ? selectedShipment.id : `#${selectedShipment.id}`}
               </h3>
               <div className="flex gap-2">
-                <button
-                  className="px-3 py-1.5 bg-dash-secondary hover:opacity-90 text-dash-primary rounded-lg text-xs font-bold transition-opacity disabled:bg-gray-100 disabled:text-gray-400 disabled:opacity-100 disabled:cursor-not-allowed"
-                  onClick={() => { setPendingStatus(null); setShowStatusModal(true) }}
-                  disabled={statusOptions.length === 0}
-                  title={statusOptions.length === 0 ? 'Status sudah final' : 'Ubah status pengiriman'}
-                >
-                  Ubah Status
-                </button>
+                {canUpdateStatus && (
+                  <button
+                    className="px-3 py-1.5 bg-dash-secondary hover:opacity-90 text-dash-primary rounded-lg text-xs font-bold transition-opacity"
+                    onClick={openStatusModal}
+                    title="Update status pengiriman"
+                  >
+                    Update Status
+                  </button>
+                )}
                 {onTrackFull && (
                   <button
                     className="px-3 py-1.5 bg-dash-secondary/15 hover:bg-dash-secondary/25 text-[#795900] rounded-lg text-xs font-bold transition-colors"
@@ -675,13 +1126,23 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
                 </h4>
                 <div className="grid grid-cols-3 gap-2">
                   <span className="text-sm text-gray-500 font-medium">Driver</span>
-                  <span className="text-sm font-bold text-gray-900 col-span-2">{selectedShipment.driverName || 'Belum ditugaskan'}</span>
+                  <span className="text-sm font-bold text-gray-900 col-span-2 flex items-center gap-2">
+                    {selectedShipment.driverName || 'Belum ditugaskan'}
+                    {/* Pengganti badge: shown when assigned driver differs from the vehicle's primary driver */}
+                    {selectedShipment.driverId &&
+                     selectedShipment.vehiclePrimaryDriverId &&
+                     selectedShipment.driverId !== selectedShipment.vehiclePrimaryDriverId && (
+                      <span className="px-2 py-0.5 bg-amber-100 text-amber-700 border border-amber-300 rounded-full text-[0.6rem] font-bold uppercase tracking-wide">
+                        Pengganti
+                      </span>
+                    )}
+                  </span>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <span className="text-sm text-gray-500 font-medium">Kendaraan</span>
                   <span className="text-sm font-bold text-gray-900 col-span-2">{selectedShipment.vehicleName || 'Belum ditugaskan'}</span>
                 </div>
-                
+
                 <div className="mt-2">
                   {selectedShipment.driverName ? (
                     <button
@@ -735,7 +1196,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
         </>
       )}
 
-      {/* ── Assign Driver Modal ── */}
+      {/* ── SUPERADMIN Assign Driver Modal ── */}
       {showAssignModal && assigningShipment && (
         <AdminModal
           title="Tugaskan Driver & Armada"
@@ -783,15 +1244,14 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
           submitLabel="Simpan Pengiriman"
         >
           <div className="flex flex-col gap-6">
-            {/* Grup 1: Informasi Dasar */}
             <div className="bg-gray-50/50 p-5 border border-gray-200 rounded-2xl flex flex-col gap-4">
               <h4 className="text-sm font-bold text-gray-900 border-b border-gray-200 pb-2 flex items-center gap-2">
                 <Icon name="info" size={18} className="text-gray-400" /> Informasi Dasar
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <AdminFormField label="Klien" required fullWidth>
-                  <select 
-                    value={formClientId} 
+                  <select
+                    value={formClientId}
                     onChange={e => setFormClientId(e.target.value)}
                     className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
                   >
@@ -802,8 +1262,8 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
                   </select>
                 </AdminFormField>
                 <AdminFormField label="Jenis Layanan" required>
-                  <select 
-                    value={formService} 
+                  <select
+                    value={formService}
                     onChange={e => setFormService(e.target.value)}
                     className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
                   >
@@ -815,169 +1275,80 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
               </div>
             </div>
 
-            {/* Grup 2: Rute & Lokasi */}
             <div className="bg-gray-50/50 p-5 border border-gray-200 rounded-2xl flex flex-col gap-4">
               <h4 className="text-sm font-bold text-gray-900 border-b border-gray-200 pb-2 flex items-center gap-2">
-                <Icon name="route" size={18} className="text-gray-400" /> Rute & Lokasi
+                <Icon name="route" size={18} className="text-gray-400" /> Rute &amp; Lokasi
               </h4>
-              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Penjemputan */}
                 <AdminFormField label="Alamat Penjemputan" required>
-                  <input
-                    type="text"
-                    placeholder="Cth: Jl. Sudirman No 12"
-                    value={formOrigin}
-                    onChange={e => setFormOrigin(e.target.value)}
-                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
-                  />
+                  <input type="text" placeholder="Cth: Jl. Sudirman No 12" value={formOrigin} onChange={e => setFormOrigin(e.target.value)}
+                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white" />
                 </AdminFormField>
                 <AdminFormField label="Peta Titik Penjemputan">
-                  <input
-                    type="text"
-                    placeholder="Cth: https://maps.app.goo.gl/..."
-                    value={formOriginPoint}
-                    onChange={e => setFormOriginPoint(e.target.value)}
-                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
-                  />
+                  <input type="text" placeholder="Cth: https://maps.app.goo.gl/..." value={formOriginPoint} onChange={e => setFormOriginPoint(e.target.value)}
+                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white" />
                 </AdminFormField>
-
-                {/* Pengiriman */}
                 <AdminFormField label="Alamat Pengiriman" required>
-                  <input
-                    type="text"
-                    placeholder="Cth: Jl. Pahlawan No 8"
-                    value={formDestination}
-                    onChange={e => setFormDestination(e.target.value)}
-                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
-                  />
+                  <input type="text" placeholder="Cth: Jl. Pahlawan No 8" value={formDestination} onChange={e => setFormDestination(e.target.value)}
+                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white" />
                 </AdminFormField>
                 <AdminFormField label="Peta Titik Pengiriman">
-                  <input
-                    type="text"
-                    placeholder="Cth: https://maps.app.goo.gl/..."
-                    value={formDestinationPoint}
-                    onChange={e => setFormDestinationPoint(e.target.value)}
-                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
-                  />
+                  <input type="text" placeholder="Cth: https://maps.app.goo.gl/..." value={formDestinationPoint} onChange={e => setFormDestinationPoint(e.target.value)}
+                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white" />
                 </AdminFormField>
-
                 <AdminFormField label="Tanggal Pickup" required>
-                  <AdminDatePicker
-                    value={formPickupDate}
-                    onChange={setFormPickupDate}
-                    placeholder="Pilih Tanggal Pickup"
-                  />
+                  <AdminDatePicker value={formPickupDate} onChange={setFormPickupDate} placeholder="Pilih Tanggal Pickup" />
                 </AdminFormField>
               </div>
             </div>
 
-            {/* Grup 3: Detail Muatan & Harga */}
             <div className="bg-gray-50/50 p-5 border border-gray-200 rounded-2xl flex flex-col gap-4">
               <h4 className="text-sm font-bold text-gray-900 border-b border-gray-200 pb-2 flex items-center gap-2">
-                <Icon name="inventory_2" size={18} className="text-gray-400" /> Detail Muatan & Harga
+                <Icon name="inventory_2" size={18} className="text-gray-400" /> Detail Muatan &amp; Harga
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <AdminFormField label="Deskripsi Barang" required fullWidth>
-                  <input
-                    type="text"
-                    placeholder="Cth: Elektronik, Suku Cadang"
-                    value={formPackageType}
-                    onChange={e => setFormPackageType(e.target.value)}
-                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
-                  />
+                  <input type="text" placeholder="Cth: Elektronik, Suku Cadang" value={formPackageType} onChange={e => setFormPackageType(e.target.value)}
+                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white" />
                 </AdminFormField>
-
                 <AdminFormField label="Units / Pcs" required>
-                  <input
-                    type="number"
-                    min="1"
-                    placeholder="0"
-                    value={formUnits}
-                    onChange={e => setFormUnits(e.target.value)}
-                    required
-                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
-                  />
+                  <input type="number" min="1" placeholder="0" value={formUnits} onChange={e => setFormUnits(e.target.value)} required
+                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white" />
                 </AdminFormField>
-
                 <AdminFormField label="Berat (kg)">
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="0"
-                    value={formWeight}
-                    onChange={e => setFormWeight(e.target.value)}
-                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
-                  />
+                  <input type="number" min="0" placeholder="0" value={formWeight} onChange={e => setFormWeight(e.target.value)}
+                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white" />
                 </AdminFormField>
               </div>
-
-              {/* Invoice Box */}
               <div className="p-5 bg-amber-50/50 border-2 border-amber-200 rounded-2xl my-2">
                 <AdminFormField label="Total Invoice Price (Jumlah Harga Invoice)" required>
-                  <input
-                    type="text"
-                    placeholder="Masukkan total harga invoice (Cth: 5,000,000)"
+                  <input type="text" placeholder="Masukkan total harga invoice (Cth: 5,000,000)"
                     value={formPrice ? 'Rp. ' + formatRupiahInput(formPrice) : ''}
-                    onChange={e => setFormPrice(parseRupiahInput(e.target.value))}
-                    required
-                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-[#002442] focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-white"
-                  />
+                    onChange={e => setFormPrice(parseRupiahInput(e.target.value))} required
+                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-[#002442] focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-white" />
                 </AdminFormField>
               </div>
-
-              {/* Catatan Tambahan */}
               <AdminFormField label="Catatan Tambahan" fullWidth>
-                <textarea
-                  placeholder="Catatan khusus untuk pengiriman ini..."
-                  value={formNotes}
-                  onChange={e => setFormNotes(e.target.value)}
-                  rows={3}
-                  className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white custom-scrollbar"
-                />
+                <textarea placeholder="Catatan khusus untuk pengiriman ini..." value={formNotes} onChange={e => setFormNotes(e.target.value)} rows={3}
+                  className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white custom-scrollbar" />
               </AdminFormField>
             </div>
           </div>
         </AdminModal>
       )}
 
-      {/* Status-change confirmation modal */}
+      {/* ── Update Status Modal ── */}
       {showStatusModal && selectedShipment && (
         <AdminModal
-          title="Ubah Status Pengiriman"
-          subtitle={`${selectedShipment.id.startsWith('#') ? selectedShipment.id : `#${selectedShipment.id}`} — pilih status baru`}
-          onClose={() => { setShowStatusModal(false); setPendingStatus(null) }}
+          title={getModalTitle()}
+          subtitle={getModalSubtitle()}
+          onClose={() => { setShowStatusModal(false); resetModalState() }}
           onSubmit={handleConfirmStatus}
-          submitLabel="Konfirmasi"
+          submitLabel={getSubmitLabel()}
         >
-          <div className="flex flex-col gap-5">
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-medium text-gray-500">Status saat ini:</span>
-              <AdminStatusBadge status={selectedShipment.status} type="shipment" />
-            </div>
-            <div className="flex flex-col gap-2">
-              <span className="text-sm font-bold text-gray-900">Pilih status baru</span>
-              <div className="grid grid-cols-2 gap-3">
-                {statusOptions.map(opt => (
-                  <button
-                    type="button"
-                    key={opt.value}
-                    onClick={() => setPendingStatus(opt.value)}
-                    className={`px-4 py-3 rounded-xl border text-sm font-bold transition-colors ${
-                      pendingStatus === opt.value
-                        ? 'border-dash-secondary bg-dash-secondary/15 text-dash-primary'
-                        : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
+          {renderModalContent()}
         </AdminModal>
       )}
     </div>
   )
 }
-
