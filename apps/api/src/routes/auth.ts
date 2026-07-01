@@ -182,4 +182,54 @@ router.post("/admin/me/avatar", authenticate, adminOnly, uploadImageField(), asy
   }
 })
 
+// ── PATCH /api/auth/admin/me/password ────────────────────────
+// Admin changes their OWN password (any role — self-service). Verifies the
+// current password before setting the new one.
+router.patch("/admin/me/password", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+  try {
+    const { currentPassword, newPassword } = req.body
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: "Password saat ini dan password baru wajib diisi." })
+    }
+    if (String(newPassword).length < 6) {
+      return res.status(400).json({ message: "Password baru minimal 6 karakter." })
+    }
+    if (newPassword === currentPassword) {
+      return res.status(400).json({ message: "Password baru harus berbeda dari password saat ini." })
+    }
+
+    const admin = await prisma.admin.findUnique({
+      where:  { id: req.user!.id },
+      select: { id: true, passwordHash: true },
+    })
+    if (!admin) return res.status(404).json({ message: "Admin tidak ditemukan." })
+
+    const match = await bcrypt.compare(currentPassword, admin.passwordHash)
+    if (!match) {
+      return res.status(400).json({ message: "Password saat ini salah." })
+    }
+
+    await prisma.admin.update({
+      where: { id: admin.id },
+      data:  { passwordHash: await bcrypt.hash(newPassword, 10) },
+    })
+
+    await prisma.adminAuditLog.create({
+      data: {
+        adminId:        admin.id,
+        actionType:     "RESET_PASSWORD",
+        targetTable:    "admins",
+        targetRecordId: admin.id,
+        changesSummary: "Changed own password",
+      },
+    })
+
+    res.json({ message: "Password berhasil diperbarui." })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Gagal memperbarui password." })
+  }
+})
+
 export default router

@@ -144,6 +144,10 @@ export const authAPI = {
   /** Admin login → { token, admin } */
   adminLogin: (email, password) =>
     api.post('/api/auth/admin/login', { email, password }),
+
+  /** Admin: change own password (self-service; verifies current password) */
+  changeAdminPassword: (data) =>
+    api.patch('/api/auth/admin/me/password', data),
 }
 
 // ─── Users API ──────────────────────────────────────────────

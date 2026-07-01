@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import Icon from '../../components/Icon'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
+import { authAPI } from '../../lib/api'
 
 export default function AdminProfileSection() {
   const { user } = useAuth()
@@ -19,6 +20,7 @@ export default function AdminProfileSection() {
   
   const [showCurrentPass, setShowCurrentPass] = useState(false)
   const [showNewPass, setShowNewPass] = useState(false)
+  const [isSavingPassword, setIsSavingPassword] = useState(false)
   
   const [activityLogs, setActivityLogs] = useState([])
   const [isLoading, setIsLoading] = useState(true)
@@ -41,15 +43,26 @@ export default function AdminProfileSection() {
     showToast('Profil berhasil diperbarui (Simulasi)', 'success')
   }
 
-  const handlePasswordSubmit = (e) => {
+  const handlePasswordSubmit = async (e) => {
     e.preventDefault()
+    if (!passwords.currentPassword) {
+      showToast('Masukkan password saat ini', 'error')
+      return
+    }
     if (passwords.newPassword.length < 6) {
       showToast('Password baru minimal 6 karakter', 'error')
       return
     }
-    // TODO: Call API when backend is ready
-    showToast('Password berhasil diubah (Simulasi)', 'success')
-    setPasswords({ currentPassword: '', newPassword: '' })
+    setIsSavingPassword(true)
+    try {
+      await authAPI.changeAdminPassword(passwords)
+      showToast('Password berhasil diubah', 'success')
+      setPasswords({ currentPassword: '', newPassword: '' })
+    } catch (err) {
+      showToast(err.message || 'Gagal mengubah password', 'error')
+    } finally {
+      setIsSavingPassword(false)
+    }
   }
 
   return (
@@ -189,8 +202,8 @@ export default function AdminProfileSection() {
                 </div>
 
                 <div className="flex justify-end pt-2">
-                  <button type="submit" className="bg-[#fec330] text-[#002442] px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-[#e0ab20] transition-colors shadow-lg shadow-[#fec330]/20">
-                    Perbarui Password
+                  <button type="submit" disabled={isSavingPassword} className="bg-[#fec330] text-[#002442] px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-[#e0ab20] transition-colors shadow-lg shadow-[#fec330]/20 disabled:opacity-60 disabled:cursor-not-allowed">
+                    {isSavingPassword ? 'Menyimpan...' : 'Perbarui Password'}
                   </button>
                 </div>
               </form>
