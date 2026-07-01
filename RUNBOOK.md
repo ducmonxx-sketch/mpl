@@ -241,6 +241,14 @@ For each: file + line (`path:line`), what's wrong, blast radius (admin-only vs s
 
 ## 6. Session Log
 
+### 2026-07-01 (cont.) — #2 admin self-service password reset (profile)
+- **Frontend was ahead:** `AdminProfileSection` already had a current/new-password form, but `handlePasswordSubmit` was a simulation and no endpoint/API wrapper existed.
+- **Backend:** new **`PATCH /api/auth/admin/me/password`** (`auth.ts`) — self-service for **any** admin (`authenticate` + `adminOnly`, no role gate → works for OPERATIONS/SUPPORT **and** SUPERADMIN). Verifies current password (bcrypt), enforces new ≥6 chars + must differ, updates hash, audits (`RESET_PASSWORD`, self).
+- **Frontend:** `authAPI.changeAdminPassword(data)` in `api.js`; wired the profile form to it (async + `isSavingPassword` state + button "Menyimpan…"/disabled; validates current-password present).
+- **Verified:** api typecheck **54** (no new); web `vite build` ✓; eslint clean on `AdminProfileSection`; end-to-end test as `ops` — wrong-current→400, too-short→400, change→200, new-pw login→200, old-pw→401, revert→200 (dev data left clean, `ops1234` restored).
+- **Left simulated (separate follow-ups):** the profile-info form (fullName/email — no admin self-update endpoint yet); the profile avatar still uses a `ui-avatars` placeholder (part of the #3 avatar-UI handoff).
+- **Server/branch:** on `tier1-infra`; uncommitted (`auth.ts`, `api.js`, `AdminProfileSection.jsx`).
+
 ### 2026-07-01 — Shipment page: assign-button RBAC gate + status-change failure triage
 - **Assign-driver button gated by role** (`ShipmentsSection.jsx`): the row "Tugaskan Driver" action + `openAssignModal` guard now disable assignment for **normal admins (OPERATIONS/SUPPORT) unless the shipment is PENDING ("Menunggu")**; **SUPERADMIN can (re)assign at any status**. (Was: disabled only when `delivered`, for everyone.) Verified: `vite build` ✓, eslint = 3 pre-existing only.
 - **Status-change "fails" — triaged, backend RULED OUT.** Reproduced the exact call against the live server: ops forward PENDING→TRANSIT = **200**, ops reversal TRANSIT→PENDING = **403 (by design)**, super reversal = **200** (data reverted clean). The frontend modal payload (`{ status }`) matches the repro that returns 200, and the file builds. ⇒ failure is **environmental or scenario-specific** (likely a stale dev process, or a normal admin attempting a backward move on a stale all-options dropdown). **→ RESOLVED:** it was a **stale localStorage session** after the reseed — the old JWT was still valid (so no logout), but its admin id was wiped by `migrate reset`, so writes hit FK violations while reads stayed fine. Re-login fixes it; **not a code bug.** Saved as memory `mpl-stale-session-after-reseed`.

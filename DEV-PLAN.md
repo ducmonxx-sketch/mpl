@@ -72,8 +72,8 @@ Schema (`Vehicle`/`Driver` + `DriverStatus` & `ShipmentStatus` enums — shared 
   - **Frontend:** `apps/web/src/pages/AdminComponents/ShipmentsSection.jsx` — status-change "Ubah Status" modal (RBAC dynamic options), WA-notify button freeze, assign-button gated (normal admins: Menunggu only; super: anytime).
   - **Docs:** `DEV-PLAN.md`, `RUNBOOK.md`, `DEPLOYMENT.md`.
 - **DB:** dev DB **freshly reseeded** — 2 admins (`admin@mpl.com`/`admin1234` SUPER, `ops@mpl.com`/`ops1234` OPS), 10 clients, 8 drivers, 9 vehicles, 13 shipments. ⚠️ **After any reseed: re-login** (stale localStorage JWT stays "logged in" but writes 500 — FK to wiped admin id), and re-seed after any `npm run smoke` (it pollutes; `migrate reset` does NOT auto-seed → run `npx prisma db seed`).
-- **Recently DONE:** quick wins (#9/#7) · file-upload primitive · profile-pics backend (#3) · **RBAC #10** · WA driver-notify (cargo + real addresses) · status-change UX (frontend #8) · assign-button RBAC gate.
-- **Next:** either **commit this batch** to `tier1-infra`, or start **phase ① of the driver↔vehicle plan** (the 🛠️ Planned section above — pairing is *provisional*, re-confirm before building).
+- **Recently DONE:** quick wins (#9/#7) · file-upload primitive · profile-pics backend (#3) · **RBAC #10** · WA driver-notify (cargo + real addresses) · status-change UX (frontend #8) · assign-button RBAC gate · scrollbar fix · **self-service admin password reset (#2)**.
+- **Next candidates:** driver↔vehicle **phase ①** (⏸ pending a schema discussion with the friend — the 🛠️ Planned section above; pairing *provisional*) · profile-info form (name/email — needs an admin self-update endpoint) · **#4** one-time WhatsApp driver notify · **#1** cleaner notifications · **#6** client↔backend.
 - Local reminder hook in `.claude/settings.local.json` (gitignored).
 
 ## Decisions locked (don't redo these)
@@ -98,7 +98,7 @@ Build reusable primitives first; most items depend on the same few.
 
 **3. Features built on the primitives**
 - [~] **#3 profile picture** — backend ✅ (admin + client); **FRONTEND PENDING** (see Parked / handoffs).
-- [ ] **#2** Reset password in profile · **#1** cleaner notification integration · **#4** one-time-use WhatsApp driver notify · **#6** integrate client side to backend.
+- [x] **#2** Reset password in profile ✅ (admin self-service, both roles — `PATCH /api/auth/admin/me/password`). · **#1** cleaner notification integration · **#4** one-time-use WhatsApp driver notify · **#6** integrate client side to backend.
 
 **Recommended very-next action:** RBAC helper (#10), then features #2/#1/#4.
 
