@@ -241,6 +241,21 @@ For each: file + line (`path:line`), what's wrong, blast radius (admin-only vs s
 
 ## 6. Session Log
 
+### 2026-07-01 (cont.²) — Pushed `tier1-infra` to origin (laptop handoff)
+- **Pushed** through `3a7d7b5` — remote `tier1-infra` is now current; local in sync, clean tree. (Branch-push lock lifted by explicit user OK.)
+- **▶ Resume on another machine:**
+  ```bash
+  git checkout tier1-infra && git pull
+  npm install                                 # root (workspaces)
+  cd apps/api && npx prisma generate          # generated client is gitignored
+  npx prisma migrate deploy                   # applies add_vehicle_service_chassis_engine
+  # recreate apps/api/.env (GITIGNORED) from apps/api/.env.example — needs DATABASE_URL, JWT_SECRET
+  npx prisma db seed                          # if the local dev DB is empty
+  ```
+  Logins: `admin@mpl.com`/`admin1234` (SUPER), `ops@mpl.com`/`ops1234` (OPS). **Re-login after any reseed** (stale-JWT → writes 500).
+- **State + next steps:** see DEV-PLAN **"Where we are (2026-07-01)"**. Next = driver↔vehicle **phase ①** is ⏸ parked pending a schema discussion with the friend; otherwise profile-info form / #4 / #1 / #6.
+- **Note:** persistent `~/.claude` memory is machine-local (won't be on the laptop) — but all gotchas are also captured here + in DEV-PLAN.
+
 ### 2026-07-01 (cont.) — #2 admin self-service password reset (profile)
 - **Frontend was ahead:** `AdminProfileSection` already had a current/new-password form, but `handlePasswordSubmit` was a simulation and no endpoint/API wrapper existed.
 - **Backend:** new **`PATCH /api/auth/admin/me/password`** (`auth.ts`) — self-service for **any** admin (`authenticate` + `adminOnly`, no role gate → works for OPERATIONS/SUPPORT **and** SUPERADMIN). Verifies current password (bcrypt), enforces new ≥6 chars + must differ, updates hash, audits (`RESET_PASSWORD`, self).
