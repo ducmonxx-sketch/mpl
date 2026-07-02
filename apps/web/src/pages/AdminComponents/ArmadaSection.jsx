@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Icon from '../../components/Icon'
 import { useToast } from '../../contexts/ToastContext'
+import { useAuth } from '../../contexts/AuthContext'
 import AdminDataTable from './components/AdminDataTable'
 import AdminStatusBadge from './components/AdminStatusBadge'
 import AdminPagination from './components/AdminPagination'
@@ -51,6 +52,7 @@ const VEHICLE_STATUS_BADGE_MAP = {
 
 export default function ArmadaSection() {
   const { showToast } = useToast()
+  const { user } = useAuth()
 
   // List state
   const [vehicles, setVehicles] = useState([])
@@ -64,6 +66,9 @@ export default function ArmadaSection() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [type, setType] = useState('')
+  const [brand, setBrand] = useState('')
+  const [modelName, setModelName] = useState('')
+  const [color, setColor] = useState('')
   const [licensePlate, setLicensePlate] = useState('')
   const [chassisNumber, setChassisNumber] = useState('')
   const [engineNumber, setEngineNumber] = useState('')
@@ -73,6 +78,16 @@ export default function ArmadaSection() {
   const [isEditMode, setIsEditMode] = useState(false)
   const [editingVehicleId, setEditingVehicleId] = useState(null)
   const [status, setStatus] = useState('AVAILABLE')
+
+  // Brands mock state & Nested Modal
+  const [availableBrands, setAvailableBrands] = useState(['Toyota', 'Mitsubishi', 'Hino', 'Isuzu', 'Fuso'])
+  const [showAddBrandModal, setShowAddBrandModal] = useState(false)
+  const [newBrandName, setNewBrandName] = useState('')
+
+  // Colors mock state & Nested Modal
+  const [availableColors, setAvailableColors] = useState(['Hitam', 'Putih', 'Kuning', 'Merah', 'Silver'])
+  const [showAddColorModal, setShowAddColorModal] = useState(false)
+  const [newColorName, setNewColorName] = useState('')
 
   // Service Modal state
   const [showServiceModal, setShowServiceModal] = useState(false)
@@ -158,6 +173,9 @@ export default function ArmadaSection() {
     setIsEditMode(false)
     setEditingVehicleId(null)
     setType('')
+    setBrand('')
+    setModelName('')
+    setColor('')
     setLicensePlate('')
     setChassisNumber('')
     setEngineNumber('')
@@ -192,6 +210,9 @@ export default function ArmadaSection() {
     setIsEditMode(true)
     setEditingVehicleId(row.id)
     setType(row.type || '')
+    setBrand('')
+    setModelName('')
+    setColor('')
     setLicensePlate(row.licensePlate || '')
     setChassisNumber(row.chassisNumber !== '-' ? row.chassisNumber : '')
     setEngineNumber(row.engineNumber !== '-' ? row.engineNumber : '')
@@ -845,92 +866,173 @@ export default function ArmadaSection() {
           onClose={handleCloseCreateModal}
           onSubmit={isEditMode ? handleUpdateVehicle : handleCreateVehicle}
           submitLabel={submitting ? 'Menyimpan...' : (isEditMode ? 'Simpan Perubahan' : 'Simpan Kendaraan')}
-        >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <AdminFormField label="Jenis Kendaraan" required>
-              <select 
-                value={type} 
-                onChange={(e) => setType(e.target.value)}
-                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-dash-secondary/20 focus:border-dash-secondary outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
-              >
-                <option value="" disabled>
-                  Pilih Jenis...
-                </option>
-                <option value="Truk Box">Truk Box</option>
-                <option value="Pickup">Pickup</option>
-                <option value="Truk Kontainer">Truk Kontainer</option>
-                <option value="Van">Van</option>
-                <option value="Motor">Motor</option>
-              </select>
-            </AdminFormField>
+        >          <div className="flex flex-col gap-8">
+            {/* Group 1 */}
+            <section>
+              <h4 className="font-bold text-dash-primary border-b border-gray-100 pb-2 mb-4 text-sm flex items-center gap-2">
+                <Icon name="directions_car" size={16} /> Spesifikasi Kendaraan
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <AdminFormField label="Jenis Kendaraan" required>
+                  <select 
+                    value={type} 
+                    onChange={(e) => setType(e.target.value)}
+                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-dash-secondary/20 focus:border-dash-secondary outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
+                  >
+                    <option value="" disabled>Pilih Jenis...</option>
+                    <option value="Truk Box">Truk Box</option>
+                    <option value="Pickup">Pickup</option>
+                    <option value="Truk Kontainer">Truk Kontainer</option>
+                    <option value="Van">Van</option>
+                    <option value="Motor">Motor</option>
+                  </select>
+                </AdminFormField>
 
-            <AdminFormField label="No. Plat Kendaraan" required>
-              <input
-                type="text"
-                placeholder="B 1234 XY"
-                value={licensePlate}
-                onChange={(e) => setLicensePlate(e.target.value)}
-                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-dash-secondary/20 focus:border-dash-secondary outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
-              />
-            </AdminFormField>
+                <div className="flex flex-col gap-1">
+                  <div className="flex justify-between items-end mb-1">
+                    <label className="text-sm font-bold text-dash-primary">Merk Kendaraan <span className="text-red-500">*</span></label>
+                    {user?.role === 'SUPERADMIN' && (
+                      <button 
+                        type="button"
+                        onClick={() => setShowAddBrandModal(true)}
+                        className="text-xs font-bold text-dash-secondary hover:text-yellow-600 transition-colors flex items-center gap-1"
+                      >
+                        <Icon name="add" size={14} /> Tambah Merk
+                      </button>
+                    )}
+                  </div>
+                  <select 
+                    value={brand} 
+                    onChange={(e) => setBrand(e.target.value)}
+                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-dash-secondary/20 focus:border-dash-secondary outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
+                  >
+                    <option value="" disabled>Pilih Merk...</option>
+                    {availableBrands.map((b) => (
+                      <option key={b} value={b}>{b}</option>
+                    ))}
+                  </select>
+                </div>
 
-            <AdminFormField label="Nomor Rangka">
-              <input
-                type="text"
-                placeholder="MH123..."
-                value={chassisNumber}
-                onChange={(e) => setChassisNumber(e.target.value)}
-                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-dash-secondary/20 focus:border-dash-secondary outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
-              />
-            </AdminFormField>
+                <AdminFormField label="Nama Kendaraan (Model)" required>
+                  <input
+                    type="text"
+                    placeholder="Cth: Avanza, Canter..."
+                    value={modelName}
+                    onChange={(e) => setModelName(e.target.value)}
+                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-dash-secondary/20 focus:border-dash-secondary outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
+                  />
+                </AdminFormField>
 
-            <AdminFormField label="Nomor Mesin">
-              <input
-                type="text"
-                placeholder="4D56..."
-                value={engineNumber}
-                onChange={(e) => setEngineNumber(e.target.value)}
-                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-dash-secondary/20 focus:border-dash-secondary outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
-              />
-            </AdminFormField>
+                <div className="flex flex-col gap-1">
+                  <div className="flex justify-between items-end mb-1">
+                    <label className="text-sm font-bold text-dash-primary">Warna Kendaraan <span className="text-red-500">*</span></label>
+                    {user?.role === 'SUPERADMIN' && (
+                      <button 
+                        type="button"
+                        onClick={() => setShowAddColorModal(true)}
+                        className="text-xs font-bold text-dash-secondary hover:text-yellow-600 transition-colors flex items-center gap-1"
+                      >
+                        <Icon name="add" size={14} /> Tambah Warna
+                      </button>
+                    )}
+                  </div>
+                  <select 
+                    value={color} 
+                    onChange={(e) => setColor(e.target.value)}
+                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-dash-secondary/20 focus:border-dash-secondary outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
+                  >
+                    <option value="" disabled>Pilih Warna...</option>
+                    {availableColors.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </section>
 
-            <AdminFormField label="Masa Berlaku STNK" required>
-              <AdminDatePicker
-                value={stnkExpiry}
-                onChange={setStnkExpiry}
-                placeholder="Pilih Tanggal STNK"
-              />
-            </AdminFormField>
+            {/* Group 2 */}
+            <section>
+              <h4 className="font-bold text-dash-primary border-b border-gray-100 pb-2 mb-4 text-sm flex items-center gap-2">
+                <Icon name="fingerprint" size={16} /> Identitas Resmi
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <AdminFormField label="No. Plat Kendaraan" required>
+                  <input
+                    type="text"
+                    placeholder="B 1234 XY"
+                    value={licensePlate}
+                    onChange={(e) => setLicensePlate(e.target.value)}
+                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-dash-secondary/20 focus:border-dash-secondary outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
+                  />
+                </AdminFormField>
 
-            <AdminFormField label="Masa Berlaku KIR" required>
-              <AdminDatePicker
-                value={kirExpiry}
-                onChange={setKirExpiry}
-                placeholder="Pilih Tanggal KIR"
-              />
-            </AdminFormField>
+                <AdminFormField label="Nomor Rangka">
+                  <input
+                    type="text"
+                    placeholder="MH123..."
+                    value={chassisNumber}
+                    onChange={(e) => setChassisNumber(e.target.value)}
+                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-dash-secondary/20 focus:border-dash-secondary outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
+                  />
+                </AdminFormField>
 
-            <AdminFormField label="Tanggal Service">
-              <AdminDatePicker
-                value={serviceDate}
-                onChange={setServiceDate}
-                placeholder="Pilih Tanggal Service"
-              />
-            </AdminFormField>
+                <AdminFormField label="Nomor Mesin">
+                  <input
+                    type="text"
+                    placeholder="4D56..."
+                    value={engineNumber}
+                    onChange={(e) => setEngineNumber(e.target.value)}
+                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-dash-secondary/20 focus:border-dash-secondary outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
+                  />
+                </AdminFormField>
+              </div>
+            </section>
 
-            {isEditMode && (
-              <AdminFormField label="Status Kendaraan" required>
-                <select
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value)}
-                  className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-dash-secondary/20 focus:border-dash-secondary outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
-                >
-                  <option value="AVAILABLE">Tersedia</option>
-                  <option value="IN_USE">Digunakan</option>
-                  <option value="MAINTENANCE">Perawatan</option>
-                </select>
-              </AdminFormField>
-            )}
+            {/* Group 3 */}
+            <section>
+              <h4 className="font-bold text-dash-primary border-b border-gray-100 pb-2 mb-4 text-sm flex items-center gap-2">
+                <Icon name="verified" size={16} /> Dokumen & Kepatuhan
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <AdminFormField label="Masa Berlaku STNK" required>
+                  <AdminDatePicker
+                    value={stnkExpiry}
+                    onChange={setStnkExpiry}
+                    placeholder="Pilih Tanggal STNK"
+                  />
+                </AdminFormField>
+
+                <AdminFormField label="Masa Berlaku KIR" required>
+                  <AdminDatePicker
+                    value={kirExpiry}
+                    onChange={setKirExpiry}
+                    placeholder="Pilih Tanggal KIR"
+                  />
+                </AdminFormField>
+
+                <AdminFormField label="Tanggal Service">
+                  <AdminDatePicker
+                    value={serviceDate}
+                    onChange={setServiceDate}
+                    placeholder="Pilih Tanggal Service"
+                  />
+                </AdminFormField>
+
+                {isEditMode && (
+                  <AdminFormField label="Status Kendaraan" required>
+                    <select
+                      value={status}
+                      onChange={(e) => setStatus(e.target.value)}
+                      className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-dash-secondary/20 focus:border-dash-secondary outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
+                    >
+                      <option value="AVAILABLE">Tersedia</option>
+                      <option value="IN_USE">Digunakan</option>
+                      <option value="MAINTENANCE">Perawatan</option>
+                    </select>
+                  </AdminFormField>
+                )}
+              </div>
+            </section>
           </div>
 
           {/* Pair a primary driver at creation time (required for new vehicles) */}
@@ -1089,6 +1191,87 @@ export default function ArmadaSection() {
                 onChange={(e) => setServiceNotes(e.target.value)}
                 rows={3}
                 className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-dash-secondary/20 focus:border-dash-secondary outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white resize-none"
+              />
+            </AdminFormField>
+          </div>
+        </AdminModal>
+      )}
+
+      {/* Add Brand Nested Modal */}
+      {showAddBrandModal && (
+        <AdminModal
+          title="Tambah Merk Kendaraan"
+          subtitle="Tambahkan merk kendaraan baru ke dalam daftar sistem."
+          onClose={() => {
+            setShowAddBrandModal(false)
+            setNewBrandName('')
+          }}
+          onSubmit={() => {
+            if (!newBrandName.trim()) {
+              showToast('Nama merk tidak boleh kosong', 'error')
+              return
+            }
+            if (availableBrands.includes(newBrandName.trim())) {
+              showToast('Merk ini sudah ada', 'error')
+              return
+            }
+            setAvailableBrands(prev => [...prev, newBrandName.trim()])
+            setBrand(newBrandName.trim()) // auto-select the newly added brand
+            showToast(`Merk ${newBrandName.trim()} berhasil ditambahkan!`, 'success')
+            setShowAddBrandModal(false)
+            setNewBrandName('')
+          }}
+          submitLabel="Tambah Merk"
+        >
+          <div className="flex flex-col gap-4">
+            <AdminFormField label="Nama Merk Baru" required>
+              <input
+                type="text"
+                placeholder="Cth: Scania, Volvo..."
+                value={newBrandName}
+                onChange={(e) => setNewBrandName(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-dash-secondary/20 focus:border-dash-secondary outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
+                autoFocus
+              />
+            </AdminFormField>
+          </div>
+        </AdminModal>
+      )}
+      {/* Add Color Nested Modal */}
+      {showAddColorModal && (
+        <AdminModal
+          title="Tambah Warna Kendaraan"
+          subtitle="Tambahkan warna kendaraan baru ke dalam daftar sistem."
+          onClose={() => {
+            setShowAddColorModal(false)
+            setNewColorName('')
+          }}
+          onSubmit={() => {
+            if (!newColorName.trim()) {
+              showToast('Nama warna tidak boleh kosong', 'error')
+              return
+            }
+            if (availableColors.includes(newColorName.trim())) {
+              showToast('Warna ini sudah ada', 'error')
+              return
+            }
+            setAvailableColors(prev => [...prev, newColorName.trim()])
+            setColor(newColorName.trim()) // auto-select
+            showToast(`Warna ${newColorName.trim()} berhasil ditambahkan!`, 'success')
+            setShowAddColorModal(false)
+            setNewColorName('')
+          }}
+          submitLabel="Tambah Warna"
+        >
+          <div className="flex flex-col gap-4">
+            <AdminFormField label="Nama Warna Baru" required>
+              <input
+                type="text"
+                placeholder="Cth: Silver, Biru Navy..."
+                value={newColorName}
+                onChange={(e) => setNewColorName(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-dash-secondary/20 focus:border-dash-secondary outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
+                autoFocus
               />
             </AdminFormField>
           </div>

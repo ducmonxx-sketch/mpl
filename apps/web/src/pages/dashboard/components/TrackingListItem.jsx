@@ -1,4 +1,5 @@
 import Icon from '../../../components/Icon'
+import AdminStatusBadge from '../../AdminComponents/components/AdminStatusBadge'
 
 export default function TrackingListItem({ shipment, isSelected, onClick, index = 0 }) {
   return (
@@ -22,14 +23,7 @@ export default function TrackingListItem({ shipment, isSelected, onClick, index 
           <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">ID Pengiriman</span>
           <span className="text-base font-black text-[#002442]">{shipment.id}</span>
         </div>
-        <div className={`px-3 py-1 rounded-full text-xs font-bold border ${
-          shipment.rawStatus === 'DELIVERED' ? 'bg-green-50 text-green-700 border-green-200' :
-          shipment.rawStatus === 'IN_TRANSIT' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-          shipment.rawStatus === 'PICKED_UP' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-          'bg-gray-50 text-gray-700 border-gray-200'
-        }`}>
-          {shipment.status}
-        </div>
+        <AdminStatusBadge status={shipment.rawStatus} type="shipment" />
       </div>
 
       <div className="w-full h-px bg-gray-100 my-1 relative z-10" />

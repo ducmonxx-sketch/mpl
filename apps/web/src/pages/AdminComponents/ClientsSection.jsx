@@ -457,49 +457,100 @@ export default function ClientsSection() {
 
       {/* Detail Panel */}
       {selectedClient && (
-        <div className="adm-detail-panel glass-card opacity-0">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
-            <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center' }}>
-              <div 
-                style={{
-                  width: '64px', height: '64px', borderRadius: '50%',
-                  background: 'var(--dash-secondary)',
-                  color: 'var(--dash-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '1.5rem', fontWeight: 900, boxShadow: '0 4px 15px color-mix(in srgb, var(--dash-secondary) 30%, transparent)',
-                  flexShrink: 0
-                }}
+        <div className="fixed inset-0 z-[100] flex justify-end">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-dash-primary/20 backdrop-blur-sm transition-opacity"
+            onClick={() => setSelectedClient(null)}
+          />
+          
+          {/* Panel */}
+          <div className="adm-detail-panel opacity-0 relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col border-l border-gray-100">
+            {/* Header */}
+            <div className="flex justify-between items-start p-6 border-b border-gray-100 bg-gray-50/50">
+              <div className="flex gap-4 items-center">
+                <div 
+                  className="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-black shrink-0"
+                  style={{
+                    background: 'var(--dash-secondary)',
+                    color: 'var(--dash-primary)',
+                    boxShadow: '0 4px 15px color-mix(in srgb, var(--dash-secondary) 30%, transparent)',
+                  }}
+                >
+                  {(selectedClient.companyName || 'C').split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
+                </div>
+                <div>
+                  <h3 className="text-2xl font-black text-dash-primary m-0 leading-tight">
+                    {selectedClient.companyName}
+                  </h3>
+                  <p className="text-sm text-gray-500 mt-1 font-medium">
+                    PIC Utama: {selectedClient.pics[0].name}
+                  </p>
+                </div>
+              </div>
+              <button 
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-white border border-gray-200 text-gray-500 hover:text-dash-primary hover:bg-gray-50 transition-colors shadow-sm"
+                onClick={() => setSelectedClient(null)}
               >
-                {(selectedClient.companyName || 'C').split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
-              </div>
-              <div>
-                <h3 style={{ fontSize: '1.35rem', fontWeight: 900, color: 'var(--dash-primary)', margin: 0 }}>
-                  {selectedClient.companyName}
-                </h3>
-                <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '4px 0 0' }}>
-                  PIC Utama: {selectedClient.pics[0].name}
-                </p>
-              </div>
+                <Icon name="close" size={18} />
+              </button>
             </div>
-            <button className="adm-action-btn" onClick={() => setSelectedClient(null)}>
-              <Icon name="close" size={18} />
-            </button>
-          </div>
-          <div className="adm-detail-grid">
-            <div className="adm-detail-section">
-              <h4 className="adm-detail-section__title"><Icon name="business" size={16} /> Informasi Perusahaan</h4>
-              <div className="adm-detail-row"><span className="adm-detail-label">Telepon</span><span className="adm-detail-value">{selectedClient.pics[0].phone}</span></div>
-              <div className="adm-detail-row"><span className="adm-detail-label">Email</span><span className="adm-detail-value">{selectedClient.pics[0].email}</span></div>
-              <div className="adm-detail-row"><span className="adm-detail-label">Alamat</span><span className="adm-detail-value">{selectedClient.address}</span></div>
-              <div className="adm-detail-row"><span className="adm-detail-label">Kota</span><span className="adm-detail-value">{selectedClient.city}</span></div>
-              <div className="adm-detail-row"><span className="adm-detail-label">NPWP</span><span className="adm-detail-value">{selectedClient.npwp || '-'}</span></div>
-            </div>
-            <div className="adm-detail-section">
-              <h4 className="adm-detail-section__title"><Icon name="local_shipping" size={16} /> Riwayat Pengiriman</h4>
-              <div className="adm-detail-row"><span className="adm-detail-label">Total Pengiriman</span><span className="adm-detail-value">{selectedClient.shipmentCount}</span></div>
-              <div className="adm-detail-row"><span className="adm-detail-label">Status Akun</span><span className="adm-detail-value">{selectedClient.isActive ? 'Terverifikasi' : 'Belum Terverifikasi'}</span></div>
-              {selectedClient.notes && (
-                <div className="adm-detail-row"><span className="adm-detail-label">Catatan</span><span className="adm-detail-value">{selectedClient.notes}</span></div>
-              )}
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-8 custom-scrollbar">
+              
+              <div className="flex flex-col gap-4">
+                <h4 className="flex items-center gap-2 text-sm font-bold text-gray-900 border-b border-gray-100 pb-2">
+                  <Icon name="business" size={18} className="text-gray-400" /> Informasi Perusahaan
+                </h4>
+                <div className="grid grid-cols-2 gap-y-4">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Telepon</span>
+                    <span className="text-sm font-bold text-dash-primary">{selectedClient.pics[0].phone}</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Email</span>
+                    <span className="text-sm font-bold text-dash-primary break-all">{selectedClient.pics[0].email}</span>
+                  </div>
+                  <div className="flex flex-col gap-1 col-span-2">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Alamat</span>
+                    <span className="text-sm font-bold text-dash-primary">{selectedClient.address}</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Kota</span>
+                    <span className="text-sm font-bold text-dash-primary">{selectedClient.city}</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">NPWP</span>
+                    <span className="text-sm font-bold text-dash-primary">{selectedClient.npwp || '-'}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-4">
+                <h4 className="flex items-center gap-2 text-sm font-bold text-gray-900 border-b border-gray-100 pb-2">
+                  <Icon name="local_shipping" size={18} className="text-gray-400" /> Riwayat Pengiriman
+                </h4>
+                <div className="grid grid-cols-2 gap-y-4">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Total Pengiriman</span>
+                    <span className="text-sm font-bold text-dash-primary">{selectedClient.shipmentCount}</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Status Akun</span>
+                    <span className="text-sm font-bold text-dash-primary">
+                      {selectedClient.isActive ? 'Terverifikasi' : 'Belum Terverifikasi'}
+                    </span>
+                  </div>
+                  {selectedClient.notes && (
+                    <div className="flex flex-col gap-1 col-span-2">
+                      <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Catatan</span>
+                      <span className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg border border-gray-100">{selectedClient.notes}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
             </div>
           </div>
         </div>

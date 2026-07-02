@@ -3,16 +3,34 @@ import { createPortal } from 'react-dom';
 import Icon from '../../../components/Icon';
 import anime from 'animejs';
 
-export default function AdminDatePicker({ value, onChange, placeholder = 'Pilih Tanggal', className = '' }) {
+export default function AdminDateTimePicker({ value, onChange, placeholder = 'Pilih Tanggal & Waktu', className = '', disabled = false }) {
   const [isOpen, setIsOpen] = useState(false);
   
-  // Use today's date if value is empty/invalid
-  const initialDate = value && !isNaN(new Date(value).getTime()) ? new Date(value) : new Date();
+  // Parse initial value or use current date/time
+  const parseDate = (val) => {
+    if (!val) return new Date();
+    const parsed = new Date(val);
+    return isNaN(parsed.getTime()) ? new Date() : parsed;
+  };
+
+  const initialDate = parseDate(value);
   const [currentMonth, setCurrentMonth] = useState(initialDate);
+  const [selectedHour, setSelectedHour] = useState(String(initialDate.getHours()).padStart(2, '0'));
+  const [selectedMinute, setSelectedMinute] = useState(String(initialDate.getMinutes()).padStart(2, '0'));
   
   const popoverRef = useRef(null);
   const containerRef = useRef(null);
   const [coords, setCoords] = useState({ top: 0, left: 0 });
+
+  // Sync internal state if value changes from outside
+  useEffect(() => {
+    if (value) {
+      const parsed = parseDate(value);
+      setCurrentMonth(parsed);
+      setSelectedHour(String(parsed.getHours()).padStart(2, '0'));
+      setSelectedMinute(String(parsed.getMinutes()).padStart(2, '0'));
+    }
+  }, [value]);
 
   // Close when clicking outside
   useEffect(() => {
@@ -34,9 +52,9 @@ export default function AdminDatePicker({ value, onChange, placeholder = 'Pilih 
     const updatePosition = () => {
       if (containerRef.current) {
         const rect = containerRef.current.getBoundingClientRect();
-        // Check if there is enough space below, if not, open upwards
+        // Popover height is now slightly larger to accommodate time dropdowns
         const spaceBelow = window.innerHeight - rect.bottom;
-        const popoverHeight = 320; // approximate height of the calendar
+        const popoverHeight = 380; 
         let top = rect.bottom + 8;
         
         if (spaceBelow < popoverHeight && rect.top > popoverHeight) {
@@ -46,7 +64,7 @@ export default function AdminDatePicker({ value, onChange, placeholder = 'Pilih 
         let left = rect.left;
         const popoverWidth = 280;
         if (left + popoverWidth > window.innerWidth - 16) {
-          left = Math.max(16, rect.right - popoverWidth);
+          left = rect.right - popoverWidth;
         }
 
         setCoords({
@@ -56,7 +74,7 @@ export default function AdminDatePicker({ value, onChange, placeholder = 'Pilih 
       }
     };
     
-    updatePosition(); // Initial position
+    updatePosition();
     window.addEventListener('scroll', updatePosition, true);
     window.addEventListener('resize', updatePosition);
     return () => {
@@ -64,13 +82,6 @@ export default function AdminDatePicker({ value, onChange, placeholder = 'Pilih 
       window.removeEventListener('resize', updatePosition);
     };
   }, [isOpen]);
-
-  // Update currentMonth if value changes from outside
-  useEffect(() => {
-    if (value && !isNaN(new Date(value).getTime())) {
-      setCurrentMonth(new Date(value));
-    }
-  }, [value]);
 
   // Animation
   useEffect(() => {
@@ -98,13 +109,34 @@ export default function AdminDatePicker({ value, onChange, placeholder = 'Pilih 
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
   };
 
+  const updateValue = (day, hour, minute) => {
+    const yyyy = currentMonth.getFullYear();
+    const mm = String(currentMonth.getMonth() + 1).padStart(2, '0');
+    const dd = String(day).padStart(2, '0');
+    // Format: YYYY-MM-DDTHH:mm
+    onChange(`${yyyy}-${mm}-${dd}T${hour}:${minute}`);
+  };
+
   const handleDateSelect = (day) => {
-    const selected = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-    const yyyy = selected.getFullYear();
-    const mm = String(selected.getMonth() + 1).padStart(2, '0');
-    const dd = String(selected.getDate()).padStart(2, '0');
-    onChange(`${yyyy}-${mm}-${dd}`);
-    setIsOpen(false);
+    updateValue(day, selectedHour, selectedMinute);
+  };
+
+  const handleHourChange = (e) => {
+    const h = e.target.value;
+    setSelectedHour(h);
+    if (value) {
+      const parsed = parseDate(value);
+      updateValue(parsed.getDate(), h, selectedMinute);
+    }
+  };
+
+  const handleMinuteChange = (e) => {
+    const m = e.target.value;
+    setSelectedMinute(m);
+    if (value) {
+      const parsed = parseDate(value);
+      updateValue(parsed.getDate(), selectedHour, m);
+    }
   };
 
   const year = currentMonth.getFullYear();
@@ -129,26 +161,32 @@ export default function AdminDatePicker({ value, onChange, placeholder = 'Pilih 
     if (!val) return '';
     const d = new Date(val);
     if (isNaN(d.getTime())) return val;
-    return `${d.getDate()} ${monthNames[d.getMonth()]} ${d.getFullYear()}`;
+    const hh = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `${d.getDate()} ${monthNames[d.getMonth()]} ${d.getFullYear()}, ${hh}:${min}`;
   };
+
+  const hoursOptions = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+  const minutesOptions = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'));
 
   return (
     <div className={`relative ${className}`} ref={containerRef}>
       <div 
-        className="flex items-center justify-between w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus-within:ring-2 focus-within:ring-dash-secondary/20 focus-within:border-dash-secondary bg-gray-50 hover:bg-white transition-all cursor-pointer"
-        onClick={() => setIsOpen(!isOpen)}
+        className={`flex items-center justify-between w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm transition-all ${disabled ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-gray-50 hover:bg-white focus-within:ring-2 focus-within:ring-[#fec330]/20 focus-within:border-[#fec330] cursor-pointer'}`}
+        onClick={() => { if (!disabled) setIsOpen(!isOpen) }}
       >
         <input
           type="text"
           readOnly
+          disabled={disabled}
           placeholder={placeholder}
           value={formatDisplay(value)}
-          className="w-full bg-transparent outline-none cursor-pointer text-gray-700"
+          className={`w-full bg-transparent outline-none ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'} text-gray-700`}
         />
-        <Icon name="calendar_today" size={18} className="text-gray-400" />
+        <Icon name="schedule" size={18} className={disabled ? "text-gray-300" : "text-gray-400"} />
       </div>
 
-      {isOpen && createPortal(
+      {isOpen && !disabled && createPortal(
         <div 
           ref={popoverRef}
           className="fixed z-[9999] p-4 bg-white/95 backdrop-blur-md border border-gray-100 rounded-2xl shadow-2xl w-[280px]"
@@ -178,7 +216,7 @@ export default function AdminDatePicker({ value, onChange, placeholder = 'Pilih 
             ))}
           </div>
           
-          <div className="grid grid-cols-7 gap-1">
+          <div className="grid grid-cols-7 gap-1 mb-4">
             {days.map((day, idx) => {
               if (!day) return <div key={idx} className="aspect-square"></div>;
               
@@ -209,6 +247,36 @@ export default function AdminDatePicker({ value, onChange, placeholder = 'Pilih 
               );
             })}
           </div>
+
+          <div className="pt-3 border-t border-gray-100 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 flex-1">
+              <Icon name="schedule" size={16} className="text-gray-400" />
+              <div className="flex items-center gap-1 flex-1">
+                <select 
+                  value={selectedHour}
+                  onChange={handleHourChange}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-bold text-dash-primary focus:outline-none focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330]"
+                >
+                  {hoursOptions.map(h => <option key={h} value={h}>{h}</option>)}
+                </select>
+                <span className="text-gray-400 font-bold">:</span>
+                <select 
+                  value={selectedMinute}
+                  onChange={handleMinuteChange}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-bold text-dash-primary focus:outline-none focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330]"
+                >
+                  {minutesOptions.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+            </div>
+            <button 
+              onClick={() => setIsOpen(false)}
+              className="px-3 py-1.5 bg-[#fec330] hover:bg-[#eab308] text-[#002442] text-xs font-bold rounded-lg transition-colors shadow-sm"
+            >
+              Tutup
+            </button>
+          </div>
+
         </div>,
         document.body
       )}

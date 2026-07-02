@@ -5,8 +5,10 @@ export default function AdminStatusBadge({ status, type = 'shipment' }) {
       assigned:   { label: 'Ditugaskan',        cls: 'bg-blue-50 text-blue-700 border border-blue-200' },
       processing: { label: 'Diproses',          cls: 'bg-blue-50 text-blue-700 border border-blue-200' },
       in_transit: { label: 'Dalam Perjalanan',  cls: 'bg-amber-50 text-amber-700 border border-amber-200' },
+      transit:    { label: 'Dalam Perjalanan',  cls: 'bg-amber-50 text-amber-700 border border-amber-200' },
       delivered:  { label: 'Terkirim',          cls: 'bg-green-50 text-green-700 border border-green-200' },
       cancelled:  { label: 'Dibatalkan',        cls: 'bg-red-50 text-red-700 border border-red-200' },
+      failed:     { label: 'Dibatalkan',        cls: 'bg-red-50 text-red-700 border border-red-200' },
     },
     invoice: {
       draft: { label: 'Konsep', cls: 'bg-gray-100 text-gray-600 border border-gray-200' },

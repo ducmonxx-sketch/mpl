@@ -5,6 +5,8 @@ import { shipmentsAPI, trackingAPI } from '../../lib/api'
 import TrackingSearchBar from './components/TrackingSearchBar'
 import TrackingListItem from './components/TrackingListItem'
 import { compressImage } from '../../lib/imageCompressor'
+import AdminStatusBadge from '../AdminComponents/components/AdminStatusBadge'
+import AdminDateTimePicker from '../AdminComponents/components/AdminDateTimePicker'
 
 const statusDisplayMap = {
   PENDING: 'Menunggu',
@@ -14,19 +16,13 @@ const statusDisplayMap = {
   CANCELLED: 'Dibatalkan',
 }
 
-const statusColorClasses = {
-  PENDING: 'bg-amber-50 text-amber-600 border-amber-200',
-  TRANSIT: 'bg-blue-50 text-blue-600 border-blue-200',
-  DELIVERED: 'bg-green-50 text-green-600 border-green-200',
-  FAILED: 'bg-red-50 text-red-600 border-red-200',
-  CANCELLED: 'bg-gray-50 text-gray-500 border-gray-200',
-}
+
 
 const STATUS_OPTIONS = [
   { value: 'PENDING', label: 'Menunggu' },
   { value: 'TRANSIT', label: 'Dalam Perjalanan' },
   { value: 'DELIVERED', label: 'Terkirim' },
-  { value: 'FAILED', label: 'Gagal' },
+  { value: 'FAILED', label: 'Dibatalkan' },
   { value: 'CANCELLED', label: 'Dibatalkan' },
 ]
 
@@ -35,7 +31,7 @@ const FILTER_TABS = [
   { value: 'PENDING', label: 'Menunggu' },
   { value: 'TRANSIT', label: 'Dalam Perjalanan' },
   { value: 'DELIVERED', label: 'Terkirim' },
-  { value: 'FAILED', label: 'Gagal' },
+  { value: 'FAILED', label: 'Dibatalkan' },
 ]
 
 const EVENT_STATUS_OPTIONS = [
@@ -350,9 +346,7 @@ export default function TrackingSection({ initialSearchQuery = '', isAdmin = fal
     setAddEventForm(EMPTY_ADD_EVENT_FORM)
   }
 
-  const badgeClasses = selectedShipment
-    ? (statusColorClasses[selectedShipment.rawStatus] || 'bg-gray-100 text-gray-700 border-gray-200')
-    : ''
+
 
   return (
     <div className="flex flex-col gap-6 w-full">
@@ -434,9 +428,7 @@ export default function TrackingSection({ initialSearchQuery = '', isAdmin = fal
                       <h3 className="text-xl font-black text-[#002442]">
                         {selectedShipment.id.startsWith('#') ? selectedShipment.id : `#${selectedShipment.id}`}
                       </h3>
-                      <span className={`px-3 py-1 rounded-full text-xs font-bold border ${badgeClasses}`}>
-                        {selectedShipment.status}
-                      </span>
+                      <AdminStatusBadge status={selectedShipment.rawStatus} type="shipment" />
                     </div>
                   </div>
                   <button
@@ -584,13 +576,13 @@ export default function TrackingSection({ initialSearchQuery = '', isAdmin = fal
                         <div className="flex flex-col gap-2">
                           <label className="text-xs font-bold text-gray-700">Estimasi Tiba (ETA)</label>
                           <div className="flex gap-2">
-                            <input
-                              type="datetime-local"
-                              value={tempEta}
-                              onChange={(e) => setTempEta(e.target.value)}
-                              disabled={updatingStatus}
-                              className="flex-1 border border-gray-300 rounded-lg px-2 py-2 text-xs focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none"
-                            />
+                              <AdminDateTimePicker
+                                value={tempEta}
+                                onChange={setTempEta}
+                                disabled={updatingStatus}
+                                placeholder="ETA"
+                                className="flex-1"
+                              />
                             <button
                               className="px-2 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 transition-colors"
                               onClick={handleUpdateEta}
@@ -687,12 +679,10 @@ export default function TrackingSection({ initialSearchQuery = '', isAdmin = fal
                   </div>
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Waktu Event <span className="text-red-500">*</span></label>
-                    <input
-                      type="datetime-local"
-                      required
+                    <AdminDateTimePicker
                       value={addEventForm.eventTimestamp}
-                      onChange={(e) => handleEventFormChange('eventTimestamp', e.target.value)}
-                      className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
+                      onChange={(val) => handleEventFormChange('eventTimestamp', val)}
+                      placeholder="Pilih Tanggal & Waktu Event"
                     />
                   </div>
                   <div className="flex flex-col gap-1">

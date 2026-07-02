@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Icon from '../../components/Icon'
 import { useToast } from '../../contexts/ToastContext'
 import AdminDataTable from './components/AdminDataTable'
@@ -52,6 +52,8 @@ export default function DriversSection() {
   const [currentPage, setCurrentPage] = useState(1)
   const [selectedDriver, setSelectedDriver] = useState(null)
 
+  const detailPanelRef = useRef(null)
+
   // Create modal state
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -95,6 +97,23 @@ export default function DriversSection() {
     const interval = setInterval(() => fetchDrivers({ silent: true }), 8000)
     return () => clearInterval(interval)
   }, [fetchDrivers])
+
+  // Animation for detail panel entrance and smooth scroll
+  // Animation for detail panel entrance (Slide-over)
+  useEffect(() => {
+    if (selectedDriver) {
+      import('animejs').then((animeModule) => {
+        const anime = animeModule.default
+        anime({
+          targets: '.adm-detail-panel',
+          translateX: [50, 0],
+          opacity: [0, 1],
+          easing: 'easeOutExpo',
+          duration: 400
+        })
+      })
+    }
+  }, [selectedDriver])
 
   const resetForm = () => {
     setIsEditMode(false)
@@ -423,109 +442,112 @@ export default function DriversSection() {
 
       {/* Detail Panel */}
       {selectedDriver && (
-        <div className="adm-detail-panel glass-card">
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'flex-start',
-              marginBottom: '1.5rem',
-            }}
-          >
-            <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center' }}>
-              <div 
-                style={{
-                  width: '64px', height: '64px', borderRadius: '50%',
-                  background: 'linear-gradient(135deg, var(--dash-secondary) 0%, #d49811 100%)',
-                  color: 'var(--dash-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '1.5rem', fontWeight: 900, boxShadow: '0 4px 15px rgba(254,195,48,0.3)',
-                  flexShrink: 0
-                }}
-              >
-                {(selectedDriver.name || 'D').split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
-              </div>
-              <div>
-                <AdminStatusBadge status={selectedDriver.status} type="driver" />
-                <h3
+        <div className="fixed inset-0 z-[100] flex justify-end">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-dash-primary/20 backdrop-blur-sm transition-opacity"
+            onClick={() => setSelectedDriver(null)}
+          />
+          
+          {/* Panel */}
+          <div className="adm-detail-panel opacity-0 relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col border-l border-gray-100">
+            {/* Header */}
+            <div className="flex justify-between items-start p-6 border-b border-gray-100 bg-gray-50/50">
+              <div className="flex gap-4 items-center">
+                <div 
+                  className="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-black shrink-0"
                   style={{
-                    fontSize: '1.35rem',
-                    fontWeight: 900,
+                    background: 'linear-gradient(135deg, var(--dash-secondary) 0%, #d49811 100%)',
                     color: 'var(--dash-primary)',
-                    margin: '0.5rem 0 0',
+                    boxShadow: '0 4px 15px rgba(254,195,48,0.3)',
                   }}
                 >
-                  {selectedDriver.name}
-                </h3>
-              </div>
-            </div>
-            <button className="adm-action-btn" onClick={() => setSelectedDriver(null)}>
-              <Icon name="close" size={18} />
-            </button>
-          </div>
-
-          <div className="adm-detail-grid">
-            <div className="adm-detail-section">
-              <h4 className="adm-detail-section__title">
-                <Icon name="person" size={16} /> Informasi Driver
-              </h4>
-              <div className="adm-detail-row">
-                <span className="adm-detail-label">Nama</span>
-                <span className="adm-detail-value">{selectedDriver.name}</span>
-              </div>
-              <div className="adm-detail-row">
-                <span className="adm-detail-label">Telepon</span>
-                <span className="adm-detail-value">{selectedDriver.phone}</span>
-              </div>
-              <div className="adm-detail-row">
-                <span className="adm-detail-label">Status</span>
-                <span className="adm-detail-value">
-                  <AdminStatusBadge status={selectedDriver.status} type="driver" />
-                </span>
-              </div>
-              <div className="adm-detail-row">
-                <span className="adm-detail-label">Total Penugasan</span>
-                <span className="adm-detail-value">{selectedDriver.assignments}</span>
-              </div>
-            </div>
-
-            <div className="adm-detail-section">
-              <h4 className="adm-detail-section__title">
-                <Icon name="badge" size={16} /> Informasi SIM
-              </h4>
-              <div className="adm-detail-row">
-                <span className="adm-detail-label">No. SIM</span>
-                <span className="adm-detail-value">{selectedDriver.licenseNumber}</span>
-              </div>
-              <div className="adm-detail-row">
-                <span className="adm-detail-label">Jenis SIM</span>
-                <span className="adm-detail-value">{selectedDriver.licenseType}</span>
-              </div>
-              <div className="adm-detail-row">
-                <span className="adm-detail-label">Masa Berlaku SIM</span>
-                <span className="adm-detail-value">{selectedDriver.licenseExpiry}</span>
-              </div>
-            </div>
-
-            <div className="adm-detail-section">
-              <h4 className="adm-detail-section__title">
-                <Icon name="directions_car" size={16} /> Kendaraan Utama
-              </h4>
-              {selectedDriver.primaryVehicle ? (
-                <>
-                  <div className="adm-detail-row">
-                    <span className="adm-detail-label">No. Plat</span>
-                    <span className="adm-detail-value">{selectedDriver.primaryVehicle.licensePlate}</span>
-                  </div>
-                  <div className="adm-detail-row">
-                    <span className="adm-detail-label">Jenis</span>
-                    <span className="adm-detail-value">{selectedDriver.primaryVehicle.type}</span>
-                  </div>
-                </>
-              ) : (
-                <div className="adm-detail-row">
-                  <span className="adm-detail-label" style={{ fontStyle: 'italic', color: '#9ca3af' }}>Belum dipasangkan ke kendaraan</span>
+                  {(selectedDriver.name || 'D').split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
                 </div>
-              )}
+                <div>
+                  <AdminStatusBadge status={selectedDriver.status} type="driver" />
+                  <h3 className="text-2xl font-black text-dash-primary mt-2">
+                    {selectedDriver.name}
+                  </h3>
+                </div>
+              </div>
+              <button 
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-white border border-gray-200 text-gray-500 hover:text-dash-primary hover:bg-gray-50 transition-colors shadow-sm"
+                onClick={() => setSelectedDriver(null)}
+              >
+                <Icon name="close" size={18} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-8 custom-scrollbar">
+              
+              <div className="flex flex-col gap-4">
+                <h4 className="flex items-center gap-2 text-sm font-bold text-gray-900 border-b border-gray-100 pb-2">
+                  <Icon name="person" size={18} className="text-gray-400" /> Informasi Driver
+                </h4>
+                <div className="grid grid-cols-2 gap-y-4">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Nama</span>
+                    <span className="text-sm font-bold text-dash-primary">{selectedDriver.name}</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Telepon</span>
+                    <span className="text-sm font-bold text-dash-primary">{selectedDriver.phone}</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Status</span>
+                    <div><AdminStatusBadge status={selectedDriver.status} type="driver" /></div>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Total Penugasan</span>
+                    <span className="text-sm font-bold text-dash-primary">{selectedDriver.assignments}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-4">
+                <h4 className="flex items-center gap-2 text-sm font-bold text-gray-900 border-b border-gray-100 pb-2">
+                  <Icon name="badge" size={18} className="text-gray-400" /> Informasi SIM
+                </h4>
+                <div className="grid grid-cols-2 gap-y-4">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">No. SIM</span>
+                    <span className="text-sm font-bold text-dash-primary">{selectedDriver.licenseNumber}</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Jenis SIM</span>
+                    <span className="text-sm font-bold text-dash-primary">{selectedDriver.licenseType}</span>
+                  </div>
+                  <div className="flex flex-col gap-1 col-span-2">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Masa Berlaku SIM</span>
+                    <span className="text-sm font-bold text-dash-primary">{selectedDriver.licenseExpiry}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-4">
+                <h4 className="flex items-center gap-2 text-sm font-bold text-gray-900 border-b border-gray-100 pb-2">
+                  <Icon name="directions_car" size={18} className="text-gray-400" /> Kendaraan Utama
+                </h4>
+                {selectedDriver.primaryVehicle ? (
+                  <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 flex flex-col gap-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">No. Plat</span>
+                      <span className="text-sm font-bold text-dash-primary">{selectedDriver.primaryVehicle.licensePlate}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Jenis</span>
+                      <span className="text-sm font-bold text-dash-primary">{selectedDriver.primaryVehicle.type}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-gray-50 rounded-xl border border-dashed border-gray-200 text-center">
+                    <span className="text-sm text-gray-400 italic">Belum dipasangkan ke kendaraan</span>
+                  </div>
+                )}
+              </div>
+
             </div>
           </div>
         </div>

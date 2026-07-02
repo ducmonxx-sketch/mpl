@@ -1,6 +1,6 @@
 import Icon from '../../../components/Icon'
 
-export default function AdminKPICard({ icon, label, sublabel, value, trend, color = 'primary', delay = 0 }) {
+export default function AdminKPICard({ icon, label, sublabel, value, trend, color = 'primary', delay = 0, onClick }) {
   const colorMap = {
     primary: { iconBg: 'bg-[#002442]/5', iconFg: 'text-[#002442]' },
     gold: { iconBg: 'bg-[#fec330]/15', iconFg: 'text-[#795900]' },
@@ -11,8 +11,9 @@ export default function AdminKPICard({ icon, label, sublabel, value, trend, colo
 
   return (
     <div 
-      className="bg-white border border-gray-200 shadow-[0_2px_10px_rgba(0,0,0,0.02)] rounded-2xl p-6 hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)] transition-all duration-300 flex flex-col justify-between group"
+      className={`bg-white border border-gray-200 shadow-[0_2px_10px_rgba(0,0,0,0.02)] rounded-2xl p-6 hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)] transition-all duration-300 flex flex-col justify-between group ${onClick ? 'cursor-pointer hover:border-[#fec330]' : ''}`}
       style={{ animation: `dashFadeUp 0.5s ${delay}s both` }}
+      onClick={onClick}
     >
       <div className="flex justify-between items-start mb-6">
         <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-transform duration-300 group-hover:scale-110 ${c.iconBg} ${c.iconFg}`}>
