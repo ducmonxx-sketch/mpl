@@ -136,8 +136,10 @@ Adding a vehicle now **requires** selecting a primary driver — a radio list of
 **Interplay:** ties to the create-time pairing above — archiving a primary driver must surface the widowed vehicle for re-pairing.
 **Blast radius:** schema (`Driver.archivedAt` + migration — shared contract) · `fleet.ts` (archive/reactivate + exclude-archived) · `DriversSection` (Resign button, hide archived, re-pair prompt). Admin-scope; client shipment reads unaffected.
 
-## 🚧 Next planned — Wire Vehicle brand/model/color + Brands/Colors lists to backend (2026-07-02, DESIGN ONLY)
-**Context:** the pulled `main` UI refresh (`220c4a1`) added — in `ArmadaSection` — brand/model/color form fields + "Add Brand"/"Add Color" nested modals, all currently **mock & not persisted**: `availableBrands`/`availableColors` are literal arrays, and `brand`/`modelName`/`color` form state is **not sent to `addVehicle`** and has **no DB column**. User wants them wired to the backend. **No code yet — build in the next session.**
+## ✅ DONE (2026-07-04) — Wired Vehicle brand/model/color + Brands/Colors lists to backend
+**Implemented** the design below (lookup tables + free-text columns). Uncommitted on `tier1-infra`. See RUNBOOK Session Log `2026-07-04`. **Decisions used:** brand/model/color **required on create** (DB cols nullable for backward compat); **any admin** may add brands/colors (`adminOnly`; UI still shows the "Tambah" buttons to SUPERADMIN only). **Migration:** `20260703171800_add_vehicle_brand_color` (additive). **Verified:** typecheck 45 (fleet.ts clean, no new), web build ✓, live smoke 7/7, seed backfilled the 9 vehicles. Design spec kept below as a record.
+
+**Context (original):** the pulled `main` UI refresh (`220c4a1`) added — in `ArmadaSection` — brand/model/color form fields + "Add Brand"/"Add Color" nested modals, all **mock & not persisted**: `availableBrands`/`availableColors` were literal arrays, and `brand`/`modelName`/`color` form state was **not sent to `addVehicle`** and had **no DB column**.
 
 **Chosen approach:** lightweight lookup tables for the selectable lists + free-text name columns on Vehicle (matches the friend's "add + select from list" UI).
 
@@ -156,6 +158,18 @@ Adding a vehicle now **requires** selecting a primary driver — a radio list of
 
 **Open decision (chosen = lookup tables):** dedicated `VehicleBrand`/`VehicleColor` tables (supports pre-adding a brand before any vehicle uses it — matches the Add-modals) vs. distinct-strings-from-vehicles (like `/api/users/companies`). Chose lookup tables; revisit if simpler preferred.
 **Blast radius:** schema (shared contract) + migration · `fleet.ts` · `api.js` · `ArmadaSection.jsx`. Admin-scope; client reads unaffected.
+
+## ✅ DONE (2026-07-04) — Beranda "Log Aktivitas" panel wired (SUPERADMIN-only, normal-admin actions)
+**Implemented.** The Overview (Beranda) "Log Aktivitas" panel was mock (`MOCK_ACTIVITIES`); now it reads real `AdminAuditLog` entries. **SUPERADMIN-only** (panel hidden for OPERATIONS/SUPPORT; left pane goes full-width for them). Shows **normal-admin (OPERATIONS/SUPPORT) actions** — the oversight view.
+- **Backend:** new `routes/auditLogs.ts` → `GET /api/audit-logs` (SUPERADMIN-gated via `requirePermission("admin:manage")`), params `scope=normal|all` (default all), `adminId`, `limit`(≤100)/`offset`. Returns `{ logs, total }` with `admin { id, fullName, role }`. Mounted at `/api/audit-logs` in `index.ts`. **Tracks ALL admins' activity** (the endpoint can return superadmin actions too via `scope=all` / `adminId`), ready for the deferred Profil log below.
+- **Frontend:** `auditLogsAPI.list` in `api.js`; `OverviewSection.jsx` fetches `scope=normal`, maps actionType→icon/color + relative-time (id-ID), loading/empty states, working "Muat Lebih Banyak" (offset pagination).
+- **Indonesian localization (display layer):** `formatAuditSummary()` in `OverviewSection` translates all 27 `changesSummary` templates + status tokens to Indonesian using the **exact UI labels** (TRANSIT→DALAM PERJALANAN, CANCELLED/FAILED→DIBATALKAN, invoice DRAFT→KONSEP/PAID→LUNAS, etc.; uppercased). Frontend-only (stored summaries stay English/canonical → existing rows localize on render). If the Profil log is built, **extract `formatAuditSummary`/`activityVisual`/`relativeTime` to a shared `lib/auditLog.js`** to avoid duplication.
+
+## 🚧 Next planned — Profil-page "Log Aktivitas" (superadmin's OWN actions) — DEFERRED (2026-07-04)
+**Source:** user (2026-07-04). The `AdminProfileSection` also has a "Log Aktivitas" (still mock). Superadmin's own actions should surface **there**, NOT in the Beranda panel (which is normal-admin-only). **Backend is already built** — call `GET /api/audit-logs?adminId=<self>` (or `?scope=all`) — so this is a frontend-only wiring task.
+- Wire the Profil-page activity list to `auditLogsAPI.list({ adminId: <current admin id> })` (self-log) — mirror the OverviewSection render (actionType→icon, relative time, load-more).
+- **Gate note:** the endpoint is currently `requirePermission("admin:manage")` (SUPERADMIN-only). If a normal admin should see their OWN activity on their profile, loosen the gate to allow `adminId === self` for any admin (add an `audit:read-own` path) — decide when building.
+- **Blast radius:** frontend `AdminProfileSection.jsx` + maybe a small gate tweak in `auditLogs.ts`. Admin-scope.
 
 ## Where we are right now (2026-07-01)
 > Authoritative session history = RUNBOOK Session Log. This is the quick snapshot.
