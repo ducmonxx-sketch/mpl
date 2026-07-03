@@ -241,6 +241,14 @@ For each: file + line (`path:line`), what's wrong, blast radius (admin-only vs s
 
 ## 6. Session Log
 
+### 2026-07-02 — Pulled main UI refresh; recovered CLAUDE.md/.claude; brands/colors wiring deferred
+- **Pulled `origin/main` → tier1-infra (FF to `220c4a1`).** main had been fast-forwarded from our tip (`18f4f07`) + 1 commit "Update admin components and configurations" (friend's UI refresh). Clean FF, **our backend wiring preserved** (verified: no API calls removed; create-pairing intact). `vite build` ✓.
+  - **UI in:** ArmadaSection (brand/model/color fields + Add-Brand/Add-Color **mock** modals), Clients/Drivers/Overview/TrackingSection tweaks, new `AdminDateTimePicker`, minor component updates.
+  - **⚠️ Same commit also DELETED `CLAUDE.md` + `.claude/agents/*` + `.claude/rules/*`** (friend migrated to `.agents/skills/**` + `AGENTS.md`) and added `docker-compose.yml`.
+- **Recovered** `CLAUDE.md` + `.claude/agents` (6 review subagents) + `.claude/rules` from `18f4f07` (per user) — **kept** the friend's `.agents/` + `AGENTS.md` alongside. (Restoring agent `.md`s mid-session doesn't re-register subagent types for the current run; available next session.)
+- **Deferred (design only):** wiring the mock Brands/Colors + Vehicle `brand`/`modelName`/`color` to the backend → captured as a "🚧 Next planned" section in DEV-PLAN + memory `mpl-vehicle-brand-color-wiring`. User will BUILD IN A NEW SESSION.
+- **Server/branch:** on `tier1-infra` = `220c4a1` + this recovery/docs commit; ahead of `origin/tier1-infra`; API server stopped.
+
 ### 2026-07-01 (cont.³) — Phase ②③: ON_DUTY lifecycle + Ditugaskan status + ShipmentsSection full rewrite
 - **Synced:** resumed from context summary; no pull/sync needed (same session, local tree unchanged from prior cont.² entry).
 - **Found:** ShipmentsSection.jsx had never been updated to use the driver-vehicle pairing logic; AdminModal rendered behind the detail panel (z-[100] < z-[101]).

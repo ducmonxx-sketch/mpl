@@ -136,6 +136,27 @@ Adding a vehicle now **requires** selecting a primary driver — a radio list of
 **Interplay:** ties to the create-time pairing above — archiving a primary driver must surface the widowed vehicle for re-pairing.
 **Blast radius:** schema (`Driver.archivedAt` + migration — shared contract) · `fleet.ts` (archive/reactivate + exclude-archived) · `DriversSection` (Resign button, hide archived, re-pair prompt). Admin-scope; client shipment reads unaffected.
 
+## 🚧 Next planned — Wire Vehicle brand/model/color + Brands/Colors lists to backend (2026-07-02, DESIGN ONLY)
+**Context:** the pulled `main` UI refresh (`220c4a1`) added — in `ArmadaSection` — brand/model/color form fields + "Add Brand"/"Add Color" nested modals, all currently **mock & not persisted**: `availableBrands`/`availableColors` are literal arrays, and `brand`/`modelName`/`color` form state is **not sent to `addVehicle`** and has **no DB column**. User wants them wired to the backend. **No code yet — build in the next session.**
+
+**Chosen approach:** lightweight lookup tables for the selectable lists + free-text name columns on Vehicle (matches the friend's "add + select from list" UI).
+
+**Backend:**
+- **`Vehicle` schema:** add `brand String?`, `modelName String?`, `color String?`. ⚠️ Use `modelName`, NOT `model` (Prisma keyword risk).
+- **New models:** `VehicleBrand { id @id @default(uuid); name String @unique; createdAt }` and `VehicleColor { …same… }`. Additive migration (no enum-migration gotchas).
+- **`fleet.ts`:** `POST`/`PATCH /vehicles` accept & persist `brand`/`modelName`/`color` (same `|| null` pattern as chassis/engine); `GET /api/fleet/brands` + `POST /api/fleet/brands {name}` (reject dup/empty); same for `/colors`. Vehicles GET already returns all scalars.
+
+**Frontend (`ArmadaSection.jsx` + `api.js`):**
+- `api.js`: `fleetAPI.getBrands/addBrand/getColors/addColor`.
+- Replace mock `availableBrands`/`availableColors` with API data (fetch on mount / when create modal opens).
+- Add-Brand / Add-Color modals → `POST` then refetch (instead of local array push).
+- `handleCreateVehicle` / `handleUpdateVehicle`: send `{ brand, modelName, color }` (currently omitted).
+- Display brand/model/color in the vehicle table + detail panel.
+- **Optional seed:** a few brands/colors + set them on some seed vehicles so dropdowns aren't empty.
+
+**Open decision (chosen = lookup tables):** dedicated `VehicleBrand`/`VehicleColor` tables (supports pre-adding a brand before any vehicle uses it — matches the Add-modals) vs. distinct-strings-from-vehicles (like `/api/users/companies`). Chose lookup tables; revisit if simpler preferred.
+**Blast radius:** schema (shared contract) + migration · `fleet.ts` · `api.js` · `ArmadaSection.jsx`. Admin-scope; client reads unaffected.
+
 ## Where we are right now (2026-07-01)
 > Authoritative session history = RUNBOOK Session Log. This is the quick snapshot.
 - **Branch:** `tier1-infra`, NOT pushed (per lock). `main` has nothing new (friend's frontend frozen → we have ownership of `apps/web`).
