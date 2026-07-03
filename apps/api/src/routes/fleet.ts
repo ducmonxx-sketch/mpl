@@ -12,6 +12,11 @@
 //
 //   PATCH  /api/fleet/vehicles/:id/pair-driver   → assign a primary driver to a vehicle
 //   PATCH  /api/fleet/vehicles/:id/unpair-driver → remove the primary driver from a vehicle
+//
+//   GET    /api/fleet/brands           → list vehicle brands (lookup)
+//   POST   /api/fleet/brands           → add a vehicle brand
+//   GET    /api/fleet/colors           → list vehicle colors (lookup)
+//   POST   /api/fleet/colors           → add a vehicle color
 
 import { Router, Response } from "express"
 import prisma from "../lib/prisma"
@@ -193,7 +198,7 @@ router.get("/vehicles", authenticate, adminOnly, async (req: AuthRequest, res: R
 
 router.post("/vehicles", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
   try {
-    const { type, licensePlate, stnkExpiry, kirExpiry, serviceDate, chassisNumber, engineNumber } = req.body
+    const { type, licensePlate, stnkExpiry, kirExpiry, serviceDate, chassisNumber, engineNumber, brand, modelName, color } = req.body
 
     const existing = await prisma.vehicle.findUnique({ where: { licensePlate } })
     if (existing) {
@@ -209,6 +214,9 @@ router.post("/vehicles", authenticate, adminOnly, async (req: AuthRequest, res: 
         serviceDate:          serviceDate ? new Date(serviceDate) : null,
         chassisNumber:        chassisNumber || null,
         engineNumber:         engineNumber || null,
+        brand:                brand || null,
+        modelName:            modelName || null,
+        color:                color || null,
         lastUpdatedByAdminId: req.user!.id,
       },
     })
@@ -237,7 +245,7 @@ router.post("/vehicles", authenticate, adminOnly, async (req: AuthRequest, res: 
 router.patch("/vehicles/:id", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
   try {
     const id = req.params.id as string
-    const { type, licensePlate, status, stnkExpiry, kirExpiry, serviceDate, chassisNumber, engineNumber } = req.body
+    const { type, licensePlate, status, stnkExpiry, kirExpiry, serviceDate, chassisNumber, engineNumber, brand, modelName, color } = req.body
 
     const vehicle = await prisma.vehicle.update({
       where: { id },
@@ -250,6 +258,9 @@ router.patch("/vehicles/:id", authenticate, adminOnly, async (req: AuthRequest, 
         ...(serviceDate   !== undefined && { serviceDate: serviceDate ? new Date(serviceDate) : null }),
         ...(chassisNumber !== undefined && { chassisNumber: chassisNumber || null }),
         ...(engineNumber  !== undefined && { engineNumber: engineNumber || null }),
+        ...(brand         !== undefined && { brand: brand || null }),
+        ...(modelName     !== undefined && { modelName: modelName || null }),
+        ...(color         !== undefined && { color: color || null }),
         lastUpdatedByAdminId: req.user!.id,
       },
     })
@@ -400,6 +411,67 @@ router.patch("/vehicles/:id/unpair-driver", authenticate, adminOnly, async (req:
   } catch (err) {
     console.error(err)
     res.status(500).json({ message: "Failed to unpair driver." })
+  }
+})
+
+// ════════════════════════════════════
+// VEHICLE LOOKUPS (brands + colors)
+// Selectable lists behind the Armada "pilih / tambah" dropdowns.
+// Read by any admin; created by any admin (no dedicated audit action — these are
+// minor lookup rows). The chosen name is copied onto Vehicle.brand/color as free text.
+// ════════════════════════════════════
+
+// --- Brands ---
+router.get("/brands", authenticate, adminOnly, async (_req: AuthRequest, res: Response) => {
+  try {
+    const brands = await prisma.vehicleBrand.findMany({ orderBy: { name: "asc" } })
+    res.json({ brands })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to fetch brands." })
+  }
+})
+
+router.post("/brands", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+  try {
+    const name = (req.body.name as string | undefined)?.trim()
+    if (!name) return res.status(400).json({ message: "Nama merk tidak boleh kosong." })
+
+    const existing = await prisma.vehicleBrand.findUnique({ where: { name } })
+    if (existing) return res.status(409).json({ message: "Merk ini sudah ada." })
+
+    const brand = await prisma.vehicleBrand.create({ data: { name } })
+    res.status(201).json({ message: "Brand created.", brand })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to create brand." })
+  }
+})
+
+// --- Colors ---
+router.get("/colors", authenticate, adminOnly, async (_req: AuthRequest, res: Response) => {
+  try {
+    const colors = await prisma.vehicleColor.findMany({ orderBy: { name: "asc" } })
+    res.json({ colors })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to fetch colors." })
+  }
+})
+
+router.post("/colors", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+  try {
+    const name = (req.body.name as string | undefined)?.trim()
+    if (!name) return res.status(400).json({ message: "Nama warna tidak boleh kosong." })
+
+    const existing = await prisma.vehicleColor.findUnique({ where: { name } })
+    if (existing) return res.status(409).json({ message: "Warna ini sudah ada." })
+
+    const color = await prisma.vehicleColor.create({ data: { name } })
+    res.status(201).json({ message: "Color created.", color })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to create color." })
   }
 })
 

@@ -79,15 +79,17 @@ export default function ArmadaSection() {
   const [editingVehicleId, setEditingVehicleId] = useState(null)
   const [status, setStatus] = useState('AVAILABLE')
 
-  // Brands mock state & Nested Modal
-  const [availableBrands, setAvailableBrands] = useState(['Toyota', 'Mitsubishi', 'Hino', 'Isuzu', 'Fuso'])
+  // Brands state (loaded from backend) & Nested Modal
+  const [availableBrands, setAvailableBrands] = useState([])
   const [showAddBrandModal, setShowAddBrandModal] = useState(false)
   const [newBrandName, setNewBrandName] = useState('')
+  const [savingBrand, setSavingBrand] = useState(false)
 
-  // Colors mock state & Nested Modal
-  const [availableColors, setAvailableColors] = useState(['Hitam', 'Putih', 'Kuning', 'Merah', 'Silver'])
+  // Colors state (loaded from backend) & Nested Modal
+  const [availableColors, setAvailableColors] = useState([])
   const [showAddColorModal, setShowAddColorModal] = useState(false)
   const [newColorName, setNewColorName] = useState('')
+  const [savingColor, setSavingColor] = useState(false)
 
   // Service Modal state
   const [showServiceModal, setShowServiceModal] = useState(false)
@@ -118,6 +120,9 @@ export default function ArmadaSection() {
         rawKirExpiry: v.kirExpiry,
         chassisNumber: v.chassisNumber || '-',
         engineNumber: v.engineNumber || '-',
+        brand: v.brand || '-',
+        modelName: v.modelName || '-',
+        color: v.color || '-',
         serviceDate: formatDate(v.serviceDate),
         rawServiceDate: v.serviceDate,
         assignments: v._count?.shipments ?? 0,
@@ -132,11 +137,22 @@ export default function ArmadaSection() {
     }
   }, [showToast])
 
+  const fetchLookups = useCallback(async () => {
+    try {
+      const [b, c] = await Promise.all([fleetAPI.getBrands(), fleetAPI.getColors()])
+      setAvailableBrands((b.brands || []).map((x) => x.name))
+      setAvailableColors((c.colors || []).map((x) => x.name))
+    } catch {
+      // Non-fatal: keep whatever is already loaded so the dropdowns still work.
+    }
+  }, [])
+
   useEffect(() => {
     fetchVehicles()
+    fetchLookups()
     const interval = setInterval(() => fetchVehicles({ silent: true }), 8000)
     return () => clearInterval(interval)
-  }, [fetchVehicles])
+  }, [fetchVehicles, fetchLookups])
 
   useEffect(() => {
     if (!loading) {
@@ -189,6 +205,7 @@ export default function ArmadaSection() {
   const handleOpenCreateModal = async () => {
     resetForm()
     setShowCreateModal(true)
+    fetchLookups() // refresh brand/color lists in case another admin added some
     // Load drivers so a primary driver can be paired at creation time.
     setLoadingDrivers(true)
     try {
@@ -210,9 +227,9 @@ export default function ArmadaSection() {
     setIsEditMode(true)
     setEditingVehicleId(row.id)
     setType(row.type || '')
-    setBrand('')
-    setModelName('')
-    setColor('')
+    setBrand(row.brand && row.brand !== '-' ? row.brand : '')
+    setModelName(row.modelName && row.modelName !== '-' ? row.modelName : '')
+    setColor(row.color && row.color !== '-' ? row.color : '')
     setLicensePlate(row.licensePlate || '')
     setChassisNumber(row.chassisNumber !== '-' ? row.chassisNumber : '')
     setEngineNumber(row.engineNumber !== '-' ? row.engineNumber : '')
@@ -252,7 +269,7 @@ export default function ArmadaSection() {
   }
 
   const handleCreateVehicle = async () => {
-    if (!type || !licensePlate.trim() || !stnkExpiry || !kirExpiry) {
+    if (!type || !brand || !modelName.trim() || !color || !licensePlate.trim() || !stnkExpiry || !kirExpiry) {
       showToast('Harap lengkapi semua field yang wajib diisi.', 'error')
       return
     }
@@ -262,7 +279,7 @@ export default function ArmadaSection() {
     }
     setSubmitting(true)
     try {
-      const { vehicle } = await fleetAPI.addVehicle({ type, licensePlate, stnkExpiry, kirExpiry, chassisNumber, engineNumber, serviceDate })
+      const { vehicle } = await fleetAPI.addVehicle({ type, brand, modelName, color, licensePlate, stnkExpiry, kirExpiry, chassisNumber, engineNumber, serviceDate })
       // Vehicle created → pair the chosen primary driver (separate endpoint).
       try {
         await fleetAPI.pairDriver(vehicle.id, selectedDriverId)
@@ -289,6 +306,9 @@ export default function ArmadaSection() {
     try {
       await fleetAPI.updateVehicle(editingVehicleId, {
         type,
+        brand,
+        modelName,
+        color,
         licensePlate,
         stnkExpiry,
         kirExpiry,
@@ -434,7 +454,19 @@ export default function ArmadaSection() {
       label: 'No. Plat',
       render: (v) => <span className="adm-table__cell-main">{v}</span>,
     },
-    { key: 'type', label: 'Jenis Kendaraan' },
+    {
+      key: 'type',
+      label: 'Jenis Kendaraan',
+      render: (v, row) => {
+        const sub = [row.brand, row.modelName].filter((x) => x && x !== '-').join(' ')
+        return (
+          <div className="flex flex-col">
+            <span className="adm-table__cell-main">{v}</span>
+            {sub && <span className="text-xs text-gray-400">{sub}</span>}
+          </div>
+        )
+      },
+    },
     {
       key: 'status',
       label: 'Status',
@@ -598,6 +630,11 @@ export default function ArmadaSection() {
     },
   ]
 
+  // Ensure the currently-selected value is always shown even if it's not in the
+  // lookup list (e.g. editing a vehicle whose brand/color was later removed).
+  const brandOptions = brand && !availableBrands.includes(brand) ? [brand, ...availableBrands] : availableBrands
+  const colorOptions = color && !availableColors.includes(color) ? [color, ...availableColors] : availableColors
+
   return (
     <div className="flex flex-col gap-6 w-full relative">
       {/* Header */}
@@ -747,6 +784,18 @@ export default function ArmadaSection() {
                   <div className="flex flex-col gap-1">
                     <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Jenis</span>
                     <span className="text-sm font-bold text-dash-primary">{selectedVehicle.type}</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Merk</span>
+                    <span className="text-sm font-bold text-dash-primary">{selectedVehicle.brand}</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Model</span>
+                    <span className="text-sm font-bold text-dash-primary">{selectedVehicle.modelName}</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Warna</span>
+                    <span className="text-sm font-bold text-dash-primary">{selectedVehicle.color}</span>
                   </div>
                   <div className="flex flex-col gap-1">
                     <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Nomor Rangka</span>
@@ -907,7 +956,7 @@ export default function ArmadaSection() {
                     className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-dash-secondary/20 focus:border-dash-secondary outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
                   >
                     <option value="" disabled>Pilih Merk...</option>
-                    {availableBrands.map((b) => (
+                    {brandOptions.map((b) => (
                       <option key={b} value={b}>{b}</option>
                     ))}
                   </select>
@@ -942,7 +991,7 @@ export default function ArmadaSection() {
                     className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-dash-secondary/20 focus:border-dash-secondary outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
                   >
                     <option value="" disabled>Pilih Warna...</option>
-                    {availableColors.map((c) => (
+                    {colorOptions.map((c) => (
                       <option key={c} value={c}>{c}</option>
                     ))}
                   </select>
@@ -1206,22 +1255,31 @@ export default function ArmadaSection() {
             setShowAddBrandModal(false)
             setNewBrandName('')
           }}
-          onSubmit={() => {
-            if (!newBrandName.trim()) {
+          onSubmit={async () => {
+            const name = newBrandName.trim()
+            if (!name) {
               showToast('Nama merk tidak boleh kosong', 'error')
               return
             }
-            if (availableBrands.includes(newBrandName.trim())) {
+            if (availableBrands.includes(name)) {
               showToast('Merk ini sudah ada', 'error')
               return
             }
-            setAvailableBrands(prev => [...prev, newBrandName.trim()])
-            setBrand(newBrandName.trim()) // auto-select the newly added brand
-            showToast(`Merk ${newBrandName.trim()} berhasil ditambahkan!`, 'success')
-            setShowAddBrandModal(false)
-            setNewBrandName('')
+            setSavingBrand(true)
+            try {
+              await fleetAPI.addBrand(name)
+              await fetchLookups()
+              setBrand(name) // auto-select the newly added brand
+              showToast(`Merk ${name} berhasil ditambahkan!`, 'success')
+              setShowAddBrandModal(false)
+              setNewBrandName('')
+            } catch (err) {
+              showToast(err.message || 'Gagal menambah merk.', 'error')
+            } finally {
+              setSavingBrand(false)
+            }
           }}
-          submitLabel="Tambah Merk"
+          submitLabel={savingBrand ? 'Menyimpan...' : 'Tambah Merk'}
         >
           <div className="flex flex-col gap-4">
             <AdminFormField label="Nama Merk Baru" required>
@@ -1246,22 +1304,31 @@ export default function ArmadaSection() {
             setShowAddColorModal(false)
             setNewColorName('')
           }}
-          onSubmit={() => {
-            if (!newColorName.trim()) {
+          onSubmit={async () => {
+            const name = newColorName.trim()
+            if (!name) {
               showToast('Nama warna tidak boleh kosong', 'error')
               return
             }
-            if (availableColors.includes(newColorName.trim())) {
+            if (availableColors.includes(name)) {
               showToast('Warna ini sudah ada', 'error')
               return
             }
-            setAvailableColors(prev => [...prev, newColorName.trim()])
-            setColor(newColorName.trim()) // auto-select
-            showToast(`Warna ${newColorName.trim()} berhasil ditambahkan!`, 'success')
-            setShowAddColorModal(false)
-            setNewColorName('')
+            setSavingColor(true)
+            try {
+              await fleetAPI.addColor(name)
+              await fetchLookups()
+              setColor(name) // auto-select
+              showToast(`Warna ${name} berhasil ditambahkan!`, 'success')
+              setShowAddColorModal(false)
+              setNewColorName('')
+            } catch (err) {
+              showToast(err.message || 'Gagal menambah warna.', 'error')
+            } finally {
+              setSavingColor(false)
+            }
           }}
-          submitLabel="Tambah Warna"
+          submitLabel={savingColor ? 'Menyimpan...' : 'Tambah Warna'}
         >
           <div className="flex flex-col gap-4">
             <AdminFormField label="Nama Warna Baru" required>

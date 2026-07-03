@@ -229,6 +229,9 @@ model Vehicle {
   serviceDate  DateTime?     // jadwal service berikutnya (di-flag sebagai compliance bila terlewat)
   chassisNumber String?      // nomor rangka
   engineNumber  String?      // nomor mesin
+  brand         String?      // merk kendaraan (e.g. Toyota) — free text, picked from the VehicleBrand list
+  modelName     String?      // nama/model kendaraan (e.g. Avanza). NOTE: 'modelName' not 'model' (Prisma keyword risk)
+  color         String?      // warna kendaraan — free text, picked from the VehicleColor list
 
   primaryDriverId String? @unique  // 1:1 pairing — driver can only be primary on one vehicle
   primaryDriver   Driver? @relation("VehiclePrimaryDriver", fields: [primaryDriverId], references: [id])
@@ -239,6 +242,29 @@ model Vehicle {
   shipments Shipment[]
 
   @@map("vehicles")
+}
+
+// ============================================================
+// VEHICLE LOOKUP TABLES (selectable brand/color lists)
+// Lightweight lookups powering the Armada "pilih / tambah" dropdowns.
+// The chosen name is copied onto Vehicle.brand / Vehicle.color as free text,
+// so deleting a lookup row never orphans a vehicle.
+// ============================================================
+
+model VehicleBrand {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  @@map("vehicle_brands")
+}
+
+model VehicleColor {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  @@map("vehicle_colors")
 }
 
 // ============================================================

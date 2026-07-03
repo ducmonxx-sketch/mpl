@@ -303,6 +303,22 @@ export const fleetAPI = {
   /** Remove the primary driver from a vehicle */
   unpairDriver: (vehicleId) =>
     api.patch(`/api/fleet/vehicles/${vehicleId}/unpair-driver`),
+
+  /** List selectable vehicle brands */
+  getBrands: () =>
+    api.get('/api/fleet/brands'),
+
+  /** Add a vehicle brand */
+  addBrand: (name) =>
+    api.post('/api/fleet/brands', { name }),
+
+  /** List selectable vehicle colors */
+  getColors: () =>
+    api.get('/api/fleet/colors'),
+
+  /** Add a vehicle color */
+  addColor: (name) =>
+    api.post('/api/fleet/colors', { name }),
 }
 
 // ─── Notifications API ──────────────────────────────────────

@@ -100,6 +100,19 @@ async function main() {
   console.log(`✅ ${drivers.length} drivers (4 active, 2 inactive, 2 active w/ expired SIM)`)
 
   // ════════════════════════════════════════════════════════════
+  // VEHICLE LOOKUPS — brands + colors powering the Armada dropdowns
+  // ════════════════════════════════════════════════════════════
+  const brandNames = ["Toyota", "Mitsubishi", "Hino", "Isuzu", "Fuso"]
+  const colorNames = ["Hitam", "Putih", "Kuning", "Merah", "Silver"]
+  for (const name of brandNames) {
+    await prisma.vehicleBrand.upsert({ where: { name }, update: {}, create: { name } })
+  }
+  for (const name of colorNames) {
+    await prisma.vehicleColor.upsert({ where: { name }, update: {}, create: { name } })
+  }
+  console.log(`✅ ${brandNames.length} vehicle brands + ${colorNames.length} colors`)
+
+  // ════════════════════════════════════════════════════════════
   // VEHICLES (9): 2 clean + every unique combo of overdue (STNK / KIR / Service)
   //   V1–V2 clean · V3 stnk · V4 kir · V5 service · V6 stnk+kir
   //   V7 stnk+service · V8 kir+service · V9 all three overdue
@@ -107,21 +120,21 @@ async function main() {
   const FUT = daysFromNow(300)   // comfortably valid
   const PAST = daysAgo(40)       // overdue
   const vehicleSeed = [
-    { id: "seed-vehicle-1", type: "Truk Box",    licensePlate: "B 1001 AA", status: "AVAILABLE",   chassisNumber: "MHFAB1001AA00001", engineNumber: "4D56-0001", stnkExpiry: FUT,  kirExpiry: FUT,  serviceDate: FUT },
-    { id: "seed-vehicle-2", type: "Truk Engkel", licensePlate: "B 1002 BB", status: "AVAILABLE",   chassisNumber: "MHFAB1002BB00002", engineNumber: "4D56-0002", stnkExpiry: FUT,  kirExpiry: FUT,  serviceDate: FUT },
-    { id: "seed-vehicle-3", type: "Pickup",      licensePlate: "B 1003 CC", status: "IN_USE",      chassisNumber: "MHFAB1003CC00003", engineNumber: "4D56-0003", stnkExpiry: PAST, kirExpiry: FUT,  serviceDate: FUT },
-    { id: "seed-vehicle-4", type: "Tronton",     licensePlate: "B 1004 DD", status: "IN_USE",      chassisNumber: "MHFAB1004DD00004", engineNumber: "4D56-0004", stnkExpiry: FUT,  kirExpiry: PAST, serviceDate: FUT },
-    { id: "seed-vehicle-5", type: "CDD",         licensePlate: "B 1005 EE", status: "MAINTENANCE", chassisNumber: "MHFAB1005EE00005", engineNumber: "4D56-0005", stnkExpiry: FUT,  kirExpiry: FUT,  serviceDate: PAST },
-    { id: "seed-vehicle-6", type: "Truk Box",    licensePlate: "B 1006 FF", status: "IN_USE",      chassisNumber: "MHFAB1006FF00006", engineNumber: "4D56-0006", stnkExpiry: PAST, kirExpiry: PAST, serviceDate: FUT },
-    { id: "seed-vehicle-7", type: "Truk Engkel", licensePlate: "B 1007 GG", status: "AVAILABLE",   chassisNumber: "MHFAB1007GG00007", engineNumber: "4D56-0007", stnkExpiry: PAST, kirExpiry: FUT,  serviceDate: PAST },
-    { id: "seed-vehicle-8", type: "Pickup",      licensePlate: "B 1008 HH", status: "MAINTENANCE", chassisNumber: "MHFAB1008HH00008", engineNumber: "4D56-0008", stnkExpiry: FUT,  kirExpiry: PAST, serviceDate: PAST },
-    { id: "seed-vehicle-9", type: "Tronton",     licensePlate: "B 1009 II", status: "MAINTENANCE", chassisNumber: "MHFAB1009II00009", engineNumber: "4D56-0009", stnkExpiry: PAST, kirExpiry: PAST, serviceDate: PAST },
+    { id: "seed-vehicle-1", type: "Truk Box",    brand: "Hino",       modelName: "Dutro",   color: "Putih",  licensePlate: "B 1001 AA", status: "AVAILABLE",   chassisNumber: "MHFAB1001AA00001", engineNumber: "4D56-0001", stnkExpiry: FUT,  kirExpiry: FUT,  serviceDate: FUT },
+    { id: "seed-vehicle-2", type: "Truk Engkel", brand: "Isuzu",      modelName: "Elf",     color: "Kuning", licensePlate: "B 1002 BB", status: "AVAILABLE",   chassisNumber: "MHFAB1002BB00002", engineNumber: "4D56-0002", stnkExpiry: FUT,  kirExpiry: FUT,  serviceDate: FUT },
+    { id: "seed-vehicle-3", type: "Pickup",      brand: "Mitsubishi", modelName: "L300",    color: "Hitam",  licensePlate: "B 1003 CC", status: "IN_USE",      chassisNumber: "MHFAB1003CC00003", engineNumber: "4D56-0003", stnkExpiry: PAST, kirExpiry: FUT,  serviceDate: FUT },
+    { id: "seed-vehicle-4", type: "Tronton",     brand: "Hino",       modelName: "Ranger",  color: "Merah",  licensePlate: "B 1004 DD", status: "IN_USE",      chassisNumber: "MHFAB1004DD00004", engineNumber: "4D56-0004", stnkExpiry: FUT,  kirExpiry: PAST, serviceDate: FUT },
+    { id: "seed-vehicle-5", type: "CDD",         brand: "Isuzu",      modelName: "Giga",    color: "Silver", licensePlate: "B 1005 EE", status: "MAINTENANCE", chassisNumber: "MHFAB1005EE00005", engineNumber: "4D56-0005", stnkExpiry: FUT,  kirExpiry: FUT,  serviceDate: PAST },
+    { id: "seed-vehicle-6", type: "Truk Box",    brand: "Mitsubishi", modelName: "Canter",  color: "Putih",  licensePlate: "B 1006 FF", status: "IN_USE",      chassisNumber: "MHFAB1006FF00006", engineNumber: "4D56-0006", stnkExpiry: PAST, kirExpiry: PAST, serviceDate: FUT },
+    { id: "seed-vehicle-7", type: "Truk Engkel", brand: "Toyota",     modelName: "Dyna",    color: "Kuning", licensePlate: "B 1007 GG", status: "AVAILABLE",   chassisNumber: "MHFAB1007GG00007", engineNumber: "4D56-0007", stnkExpiry: PAST, kirExpiry: FUT,  serviceDate: PAST },
+    { id: "seed-vehicle-8", type: "Pickup",      brand: "Toyota",     modelName: "Hilux",   color: "Hitam",  licensePlate: "B 1008 HH", status: "MAINTENANCE", chassisNumber: "MHFAB1008HH00008", engineNumber: "4D56-0008", stnkExpiry: FUT,  kirExpiry: PAST, serviceDate: PAST },
+    { id: "seed-vehicle-9", type: "Tronton",     brand: "Fuso",       modelName: "Fighter", color: "Merah",  licensePlate: "B 1009 II", status: "MAINTENANCE", chassisNumber: "MHFAB1009II00009", engineNumber: "4D56-0009", stnkExpiry: PAST, kirExpiry: PAST, serviceDate: PAST },
   ] as const
   const vehicles = []
   for (const v of vehicleSeed) {
     const vehicle = await prisma.vehicle.upsert({
       where: { id: v.id },
-      update: {},
+      update: { brand: v.brand, modelName: v.modelName, color: v.color },  // backfill lookups onto pre-existing rows
       create: { ...v, lastUpdatedByAdminId: admin.id },
     })
     vehicles.push(vehicle)
