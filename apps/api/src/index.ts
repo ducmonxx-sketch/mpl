@@ -19,6 +19,7 @@ import invoicesRouter      from "./routes/invoices"
 import filesRouter         from "./routes/files"
 import adminsRouter        from "./routes/admins"
 import adminNotificationsRouter from "./routes/adminNotifications"
+import auditLogsRouter     from "./routes/auditLogs"
 import { startAlertScheduler } from "./services/alertScheduler"
 
 const app  = express()
@@ -96,6 +97,7 @@ app.use("/api/notifications", notificationsRouter)
 app.use("/api/admin-notifications", adminNotificationsRouter)
 app.use("/api/invoices",      invoicesRouter)
 app.use("/api/admins",        adminsRouter)
+app.use("/api/audit-logs",    auditLogsRouter)
 
 // ── 404 Fallback ──────────────────────────────────────────────
 

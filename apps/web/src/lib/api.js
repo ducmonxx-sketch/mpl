@@ -363,6 +363,20 @@ export const invoicesAPI = {
     api.patch(`/api/invoices/${id}/cancel`),
 }
 
+// ─── Audit Logs API (SUPERADMIN only) ───────────────────────
+export const auditLogsAPI = {
+  /** Admin activity feed. params: { scope: 'normal'|'all', adminId, limit, offset } */
+  list: (params) =>
+    api.get('/api/audit-logs', params),
+}
+
+// ─── Admins API (SUPERADMIN only) ───────────────────────────
+export const adminsAPI = {
+  /** List admin accounts */
+  list: () =>
+    api.get('/api/admins'),
+}
+
 // ─── Admin Notifications API ────────────────────────────────
 export const adminNotificationsAPI = {
   /** List admin notifications */
