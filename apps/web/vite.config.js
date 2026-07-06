@@ -64,8 +64,8 @@ export default defineConfig({
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         // Google Fonts glyphs and Material Symbols.
         "font-src 'self' https://fonts.gstatic.com",
-        // Images: self + data URIs for small embedded assets.
-        "img-src 'self' data: blob:",
+        // Images: self + data/blob URIs + the API origin (avatars, proofs served from the backend).
+        "img-src 'self' data: blob: http://localhost:3001 https://api.mahkotaputralogistik.id",
         // API calls to the backend.
         "connect-src 'self' https://api.mahkotaputralogistik.id http://localhost:3001",
         // Cloudflare Turnstile widget iframe and Google Maps embeds.

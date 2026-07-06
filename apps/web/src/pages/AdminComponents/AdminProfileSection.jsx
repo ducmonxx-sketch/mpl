@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Icon from '../../components/Icon'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
-import { authAPI } from '../../lib/api'
+import { authAPI, BASE_URL } from '../../lib/api'
+import AdminModal from './components/AdminModal'
 
 export default function AdminProfileSection() {
   const { user } = useAuth()
@@ -24,6 +25,14 @@ export default function AdminProfileSection() {
   
   const [activityLogs, setActivityLogs] = useState([])
   const [isLoading, setIsLoading] = useState(true)
+
+  const [avatarUrl, setAvatarUrl] = useState(null)
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const [showAvatarModal, setShowAvatarModal] = useState(false)
+  const [selectedFile, setSelectedFile] = useState(null)
+  const [preview, setPreview] = useState(null)
+  const [dragOver, setDragOver] = useState(false)
+  const fileInputRef = useRef(null)
 
   // Mock data for activity logs since backend isn't ready
   useEffect(() => {
@@ -65,6 +74,74 @@ export default function AdminProfileSection() {
     }
   }
 
+  // Load the saved avatar on mount (backend returns a relative /api/files/... path).
+  useEffect(() => {
+    authAPI.getAdminMe()
+      .then(({ admin }) => setAvatarUrl(admin?.avatarUrl || null))
+      .catch(() => { /* keep the placeholder */ })
+  }, [])
+
+  const resolveAvatar = (u) => (u ? (u.startsWith('http') ? u : `${BASE_URL}${u}`) : null)
+
+  const openAvatarModal = () => {
+    setSelectedFile(null)
+    setPreview(null)
+    setDragOver(false)
+    setShowAvatarModal(true)
+  }
+
+  const closeAvatarModal = () => {
+    if (preview) URL.revokeObjectURL(preview)
+    setPreview(null)
+    setSelectedFile(null)
+    setShowAvatarModal(false)
+  }
+
+  const pickFile = (file) => {
+    if (!file) return
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      showToast('Format harus JPG, PNG, atau WEBP.', 'error')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('Ukuran maksimal 5 MB.', 'error')
+      return
+    }
+    if (preview) URL.revokeObjectURL(preview)
+    setSelectedFile(file)
+    setPreview(URL.createObjectURL(file))
+  }
+
+  const handleFileInput = (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // allow re-picking the same file
+    pickFile(file)
+  }
+
+  const handleDrop = (e) => {
+    e.preventDefault()
+    setDragOver(false)
+    pickFile(e.dataTransfer.files?.[0])
+  }
+
+  const handleUploadAvatar = async () => {
+    if (!selectedFile) {
+      showToast('Pilih atau seret gambar terlebih dahulu.', 'error')
+      return
+    }
+    setUploadingAvatar(true)
+    try {
+      const { avatarUrl: url } = await authAPI.uploadAdminAvatar(selectedFile)
+      setAvatarUrl(url)
+      showToast('Foto profil berhasil diperbarui.', 'success')
+      closeAvatarModal()
+    } catch (err) {
+      showToast(err.message || 'Gagal mengunggah foto.', 'error')
+    } finally {
+      setUploadingAvatar(false)
+    }
+  }
+
   return (
     <div className="max-w-6xl mx-auto space-y-6 lg:space-y-8">
       
@@ -82,14 +159,19 @@ export default function AdminProfileSection() {
         <div className="absolute top-0 right-0 w-64 h-64 bg-[#fec330] opacity-10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
         
         <div className="relative z-10 flex flex-col md:flex-row items-center gap-6">
-          <div className="relative group cursor-pointer">
-            <img 
-              src={`https://ui-avatars.com/api/?name=${encodeURIComponent(user?.fullName || 'Admin')}&background=fec330&color=002442&bold=true&size=128`}
+          <div
+            className="relative group cursor-pointer"
+            onClick={openAvatarModal}
+            title="Ubah foto profil"
+          >
+            <img
+              src={resolveAvatar(avatarUrl) || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.fullName || 'Admin')}&background=fec330&color=002442&bold=true&size=128`}
               alt="Profile"
-              className="w-24 h-24 md:w-32 md:h-32 rounded-full border-4 border-white/20 shadow-xl transition-transform duration-300 group-hover:scale-105"
+              className="w-24 h-24 md:w-32 md:h-32 rounded-full border-4 border-white/20 shadow-xl object-cover transition-transform duration-300 group-hover:scale-105"
             />
-            <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-              <Icon name="camera_alt" className="text-white" size={28} />
+            <div className="absolute inset-0 bg-black/40 rounded-full flex flex-col items-center justify-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+              <Icon name="camera_alt" className="text-white" size={26} />
+              <span className="text-[0.6rem] font-bold text-white uppercase tracking-wide">Ubah Foto</span>
             </div>
           </div>
           
@@ -260,6 +342,50 @@ export default function AdminProfileSection() {
         </div>
         
       </div>
+
+      {/* Avatar upload modal — click to select or drag & drop */}
+      {showAvatarModal && (
+        <AdminModal
+          title="Ubah Foto Profil"
+          subtitle="Pilih atau seret gambar. JPG, PNG, atau WEBP · maks 5MB."
+          onClose={closeAvatarModal}
+          onSubmit={handleUploadAvatar}
+          submitLabel={uploadingAvatar ? 'Mengunggah...' : 'Unggah Foto'}
+        >
+          <div
+            className={`relative flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed p-8 text-center cursor-pointer transition-colors ${
+              dragOver ? 'border-[#fec330] bg-[#fec330]/10' : 'border-gray-300 bg-gray-50 hover:bg-gray-100 hover:border-gray-400'
+            }`}
+            onClick={() => fileInputRef.current?.click()}
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
+          >
+            {preview ? (
+              <img src={preview} alt="Pratinjau" className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-md" />
+            ) : (
+              <div className="w-16 h-16 rounded-full bg-[#002442]/5 flex items-center justify-center text-[#002442]">
+                <Icon name="add_photo_alternate" size={32} />
+              </div>
+            )}
+            <div>
+              <p className="text-sm font-bold text-[#002442]">
+                {selectedFile ? selectedFile.name : (dragOver ? 'Lepaskan gambar di sini' : 'Klik untuk memilih atau seret gambar ke sini')}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                {selectedFile ? 'Klik untuk mengganti gambar' : 'JPG, PNG, atau WEBP · maks 5MB'}
+              </p>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={handleFileInput}
+            />
+          </div>
+        </AdminModal>
+      )}
     </div>
   )
 }

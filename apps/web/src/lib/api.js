@@ -13,7 +13,7 @@
  *   const { shipments } = await shipmentsAPI.list()
  */
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'
+export const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'
 
 // ─── Token helpers ──────────────────────────────────────────
 export function getToken() {
@@ -65,11 +65,11 @@ async function request(endpoint, options = {}) {
     if (qs) url += `?${qs}`
   }
 
-  // Build headers
-  const headers = {
-    'Content-Type': 'application/json',
-    ...customHeaders,
-  }
+  // Build headers. FormData carries its own multipart Content-Type (with boundary),
+  // so don't force application/json — let the browser set it.
+  const isForm = body instanceof FormData
+  const headers = { ...customHeaders }
+  if (!isForm) headers['Content-Type'] = 'application/json'
 
   const token = getToken()
   if (token) {
@@ -80,7 +80,7 @@ async function request(endpoint, options = {}) {
   const res = await fetch(url, {
     method,
     headers,
-    body: body ? JSON.stringify(body) : undefined,
+    body: body ? (isForm ? body : JSON.stringify(body)) : undefined,
   })
 
   // Parse JSON response
@@ -148,6 +148,17 @@ export const authAPI = {
   /** Admin: change own password (self-service; verifies current password) */
   changeAdminPassword: (data) =>
     api.patch('/api/auth/admin/me/password', data),
+
+  /** Admin: own profile (includes avatarUrl) */
+  getAdminMe: () =>
+    api.get('/api/auth/admin/me'),
+
+  /** Admin: upload profile picture (multipart, field `file`) → { avatarUrl } */
+  uploadAdminAvatar: (file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return api.post('/api/auth/admin/me/avatar', fd)
+  },
 }
 
 // ─── Users API ──────────────────────────────────────────────
