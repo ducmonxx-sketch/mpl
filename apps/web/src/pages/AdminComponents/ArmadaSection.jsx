@@ -104,6 +104,10 @@ export default function ArmadaSection() {
   const [loadingDrivers, setLoadingDrivers] = useState(false)
   const [pairing, setPairing] = useState(false)
 
+  // Lepas (unpair) confirmation modal — null vehicle = closed
+  const [unpairVehicle, setUnpairVehicle] = useState(null)
+  const [unpairing, setUnpairing] = useState(false)
+
   const fetchVehicles = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true)
     try {
@@ -400,15 +404,22 @@ export default function ArmadaSection() {
     }
   }
 
-  const handleUnpairDriver = async (vehicleId) => {
-    if (!window.confirm('Lepaskan driver utama dari kendaraan ini?')) return
+  const openUnpair = (vehicle) => setUnpairVehicle(vehicle)
+
+  const confirmUnpair = async () => {
+    if (!unpairVehicle) return
+    setUnpairing(true)
     try {
-      await fleetAPI.unpairDriver(vehicleId)
+      await fleetAPI.unpairDriver(unpairVehicle.id)
       showToast('Driver berhasil dilepaskan.', 'success')
-      if (selectedVehicle?.id === vehicleId) setSelectedVehicle(null)
+      // Keep the detail panel open but drop the driver so "Pasangkan Driver" re-enables.
+      setSelectedVehicle((prev) => (prev && prev.id === unpairVehicle.id ? { ...prev, primaryDriver: null } : prev))
+      setUnpairVehicle(null)
       await fetchVehicles()
     } catch (err) {
       showToast(err.message || 'Gagal melepaskan driver.', 'error')
+    } finally {
+      setUnpairing(false)
     }
   }
 
@@ -585,8 +596,11 @@ export default function ArmadaSection() {
           </button>
           <button
             className="adm-action-btn"
-            title={row.primaryDriver ? 'Ganti Driver Utama' : 'Pasangkan Driver'}
-            style={{ color: '#6366f1', backgroundColor: 'rgba(99, 102, 241, 0.1)' }}
+            title={row.primaryDriver ? 'Lepas driver dulu untuk mengganti' : 'Pasangkan Driver'}
+            disabled={!!row.primaryDriver}
+            style={row.primaryDriver
+              ? { color: '#9ca3af', backgroundColor: 'rgba(0,0,0,0.04)', cursor: 'not-allowed' }
+              : { color: '#6366f1', backgroundColor: 'rgba(99, 102, 241, 0.1)' }}
             onClick={(e) => {
               e.stopPropagation()
               handleOpenPairModal(row)
@@ -830,7 +844,7 @@ export default function ArmadaSection() {
                     </div>
                     <button
                       className="text-xs font-bold text-red-500 hover:text-red-700 px-2 py-1 rounded-lg hover:bg-red-50 transition-colors"
-                      onClick={() => handleUnpairDriver(selectedVehicle.id)}
+                      onClick={() => openUnpair(selectedVehicle)}
                     >
                       Lepas
                     </button>
@@ -875,7 +889,9 @@ export default function ArmadaSection() {
             {/* Footer actions */}
             <div className="p-6 border-t border-gray-100 bg-gray-50/50 flex flex-col gap-3">
               <button
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-all shadow-sm"
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-indigo-600"
+                disabled={!!selectedVehicle.primaryDriver}
+                title={selectedVehicle.primaryDriver ? 'Lepaskan driver saat ini terlebih dahulu' : undefined}
                 onClick={() => {
                   handleOpenPairModal(selectedVehicle)
                   setSelectedVehicle(null)
@@ -1208,6 +1224,21 @@ export default function ArmadaSection() {
               </div>
             </div>
           )}
+        </AdminModal>
+      )}
+
+      {/* Unpair (Lepas Driver) Confirmation Modal */}
+      {unpairVehicle && (
+        <AdminModal
+          title="Lepas Driver Utama"
+          subtitle={`Kendaraan: ${unpairVehicle.licensePlate} — ${unpairVehicle.type}`}
+          onClose={() => setUnpairVehicle(null)}
+          onSubmit={confirmUnpair}
+          submitLabel={unpairing ? 'Melepaskan...' : 'Lepas Driver'}
+        >
+          <p className="text-sm text-gray-600 leading-relaxed">
+            Lepaskan <span className="font-bold text-dash-primary">{unpairVehicle.primaryDriver?.fullName || 'driver utama'}</span> dari kendaraan <span className="font-bold text-dash-primary">{unpairVehicle.licensePlate}</span>? Kendaraan akan tanpa driver utama sampai dipasangkan kembali.
+          </p>
         </AdminModal>
       )}
 
