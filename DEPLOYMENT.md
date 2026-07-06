@@ -101,6 +101,7 @@ run the same code against the same DB; just control *exposure* per instance.
 ## 5. Open decisions (TODO before deploying)
 - [ ] **Managed Postgres host** — Supabase / Neon / Railway / RDS? (Migrate dev DB → cloud; set `DATABASE_URL`.)
 - [ ] **Public hosting** — frontend (Vercel/Netlify?) + API (Railway/Render/Fly?).
+- [ ] **CSP must include the API origin** — the frontend CSP needs the API origin in **both `img-src`** (avatars/files are served from the backend) **and `connect-src`**. It lives in `apps/web/public/_headers` (Netlify/Cloudflare Pages) and `public/.htaccess` (Apache) — **Vercel/nginx read neither**, so set CSP in `vercel.json`/nginx conf there. Keep the file for the chosen host aligned with the real API domain, and set `VITE_API_BASE_URL` at build to that same origin (it falls back to `http://localhost:3001` otherwise → everything breaks in prod).
 - [ ] **Domains** — decide client app + client API domains (drives `SameSite`/CORS/cookie config).
 - [ ] **One-backend-twice vs split** — how to run the admin backend locally against the cloud DB.
 - [ ] **Office static/public IP** — for the DB firewall allowlist (admin → cloud DB).

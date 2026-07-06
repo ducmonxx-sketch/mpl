@@ -204,16 +204,16 @@ Build reusable primitives first; most items depend on the same few.
 - [x] **RBAC / roles helper** ✅ → super-admin vs admin (#10) — pieces 1–3 done (status state machine + audit, expiry allow-late/log-missed, admin management). Design + frontend handoffs in [RBAC-PLAN.md](RBAC-PLAN.md).
 
 **3. Features built on the primitives**
-- [~] **#3 profile picture** — backend ✅ (admin + client); **FRONTEND PENDING** (see Parked / handoffs).
+- [~] **#3 profile picture** — backend ✅ (admin + client); **admin frontend ✅ (2026-07-07)** — Profil page upload via click-or-drag modal; **client frontend + admin topbar still pending** (see Parked / handoffs).
 - [x] **#2** Reset password in profile ✅ (admin self-service, both roles — `PATCH /api/auth/admin/me/password`). · **#1** cleaner notification integration · **#4** one-time-use WhatsApp driver notify · **#6** integrate client side to backend.
 
 **Recommended very-next action:** RBAC helper (#10), then features #2/#1/#4.
 
 ## Parked / handoffs
-- **#3 profile picture — FRONTEND PENDING (waiting on friend's UI).** Backend done & verified; wire when UI lands:
-  - Client: `POST /api/users/me/avatar` (multipart, field `file`) → `{ avatarUrl }`; `GET /api/users/me` now returns `user.avatarUrl`.
-  - Admin: `POST /api/auth/admin/me/avatar` (multipart, field `file`) → `{ avatarUrl }`; new `GET /api/auth/admin/me` → `admin.avatarUrl`.
-  - Display: `<img src={API_BASE + avatarUrl}>` (public `/api/files/...`). Upload via **FormData**, do NOT set `Content-Type` (the JSON `api.post` wrapper won't work — needs a small FormData helper in `api.js`). Limits: JPG/PNG/WEBP ≤5 MB.
+- **#3 profile picture — admin ✅ (2026-07-07); client + admin-topbar PENDING.**
+  - **Admin (DONE):** `AdminProfileSection` — click the hero avatar → `AdminModal` dropzone (click **or** drag-and-drop), circular preview, upload via `authAPI.uploadAdminAvatar` (FormData path added to `api.js`); shows the saved avatar via `GET /api/auth/admin/me`. CSP `img-src` now allows the API origin (dev `vite.config.js` + prod `_headers`/`.htaccess`).
+  - **🚧 Admin topbar avatar — NEXT (frontend-only):** the topbar (`AdminDashboardPage`) still renders a `ui-avatars` placeholder from `fullName`; it does NOT reflect the uploaded photo. Wire it so the avatar shows app-wide: add an additive `updateUser(patch)` (or an admin-aware `refreshProfile`) to `AuthContext`, have `AdminProfileSection` call it after upload + populate `avatarUrl` on mount, then render `resolveAvatar(user.avatarUrl)` (fallback to the ui-avatars placeholder) in the topbar. ⚠️ Touches `AuthContext` — keep the change **additive** (the localStorage→cookie auth rehaul is separately deferred; don't entangle).
+  - **Client (PENDING, waiting on friend's UI):** `POST /api/users/me/avatar` (field `file`) → `{ avatarUrl }`; `GET /api/users/me` returns `user.avatarUrl`. Reuse the same `api.js` FormData path + the dropzone-modal pattern from `AdminProfileSection`.
 - **PDF generator — PARKED, needs design first.** Don't build until the invoice/PDF layout is decided (ties to frontend faktur item #6: "view details = total + notes only, no tax"). Then pdfkit/pdf-lib → invoice PDF + send-to-WhatsApp (#5).
 
 ## Dev-infrastructure tiers (accelerators — how we go faster)
