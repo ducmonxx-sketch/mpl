@@ -7,6 +7,9 @@ import AdminModal from './components/AdminModal'
 import AdminFormField from './components/AdminFormField'
 import { usersAPI } from '../../lib/api'
 
+// Boxed input style shared by the Klien form fields (matches the Armada form).
+const INPUT_CLASS = 'w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-dash-secondary/20 focus:border-dash-secondary outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white'
+
 export default function ClientsSection() {
   const { showToast } = useToast()
   const [searchQuery, setSearchQuery] = useState('')
@@ -573,6 +576,7 @@ export default function ClientsSection() {
                 value={formCompanyName}
                 onChange={(e) => setFormCompanyName(e.target.value)}
                 required
+                className={INPUT_CLASS}
               />
             </AdminFormField>
             <AdminFormField label="Nama PIC" required>
@@ -582,6 +586,7 @@ export default function ClientsSection() {
                 value={formPicName}
                 onChange={(e) => setFormPicName(e.target.value)}
                 required
+                className={INPUT_CLASS}
               />
             </AdminFormField>
             <AdminFormField label="No. Telepon" required>
@@ -591,6 +596,7 @@ export default function ClientsSection() {
                 value={formPhone}
                 onChange={(e) => setFormPhone(e.target.value)}
                 required
+                className={INPUT_CLASS}
               />
             </AdminFormField>
             <AdminFormField label="Email" required>
@@ -600,6 +606,7 @@ export default function ClientsSection() {
                 value={formEmail}
                 onChange={(e) => setFormEmail(e.target.value)}
                 required
+                className={INPUT_CLASS}
               />
             </AdminFormField>
             <AdminFormField label="Kota" required>
@@ -609,6 +616,7 @@ export default function ClientsSection() {
                 value={formCity}
                 onChange={(e) => setFormCity(e.target.value)}
                 required
+                className={INPUT_CLASS}
               />
             </AdminFormField>
             <AdminFormField label="Alamat" required fullWidth>
@@ -618,6 +626,7 @@ export default function ClientsSection() {
                 value={formAddress}
                 onChange={(e) => setFormAddress(e.target.value)}
                 required
+                className={INPUT_CLASS}
               />
             </AdminFormField>
             <AdminFormField label="NPWP" required>
@@ -627,6 +636,7 @@ export default function ClientsSection() {
                 value={formNpwp}
                 onChange={(e) => setFormNpwp(e.target.value)}
                 required
+                className={INPUT_CLASS}
               />
             </AdminFormField>
           </div>
