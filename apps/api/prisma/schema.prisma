@@ -27,10 +27,19 @@ datasource db {
 // ENUMS
 // ============================================================
 
+enum Manufacturer {
+  HONDA
+  YAMAHA
+  SUZUKI
+}
+
 enum AdminRole {
   SUPERADMIN
   OPERATIONS
   SUPPORT
+  KEPALA_ARMADA
+  PIC_PABRIK
+  PIC_GUDANG
 }
 
 enum VerificationStatus {
@@ -54,6 +63,7 @@ enum VehicleStatus {
 enum ShipmentStatus {
   PENDING      // created, not yet processed
   DITUGASKAN   // driver & vehicle assigned; staging before departure
+  AT_PLANT     // Truck arrives at plant
   TRANSIT      // currently being delivered
   DELIVERED    // successfully delivered
   FAILED       // delivery failed (legacy; no longer offered as a forward option)
@@ -268,6 +278,22 @@ model VehicleColor {
 }
 
 // ============================================================
+// PICKUP PLANTS
+// ============================================================
+
+model PickupPlant {
+  id           String       @id @default(uuid())
+  name         String       @unique
+  code         String?
+  manufacturer Manufacturer
+  createdAt    DateTime     @default(now())
+
+  shipments    Shipment[]
+
+  @@map("pickup_plants")
+}
+
+// ============================================================
 // SHIPMENTS
 // ID format: #MPL-00001-JKT (generated in route code)
 // ============================================================
@@ -288,6 +314,19 @@ model Shipment {
   estimatedArrival       DateTime?      // ETA / estimasi tiba
   completionDate         DateTime?
   createdAt              DateTime       @default(now())
+
+  // --- New fields for pipeline roles ---
+  shippingCategory       String?        // 'Unit', 'Cargo', 'Container'
+  dimensions             String?        // for Cargo (PxLxT)
+  containerType          String?        // for Container ('20 Feet', '40 Feet')
+  pickupPlantId          String?
+  pickupPlant            PickupPlant?   @relation(fields: [pickupPlantId], references: [id])
+  vehicleCondition       String?        // by Pengurus Pabrik
+  lkuNumber              String?        // by Pengurus Pabrik
+  pabrikNotes            String?        // by Pengurus Pabrik
+  serahTerimaUrl         String?        // by Kepala Gudang
+  handoverNotes          String?        // by Kepala Gudang
+  // -------------------------------------
 
   clientId String
   client   User   @relation(fields: [clientId], references: [id])

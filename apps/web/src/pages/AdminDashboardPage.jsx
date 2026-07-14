@@ -30,10 +30,8 @@ const AnimatedSection = ({ children }) => {
   useLayoutEffect(() => {
     if (!containerRef.current) return;
 
-    const wrapper = containerRef.current.firstElementChild;
-    const targets = (wrapper && wrapper.children.length > 0) 
-      ? Array.from(wrapper.children) 
-      : containerRef.current;
+    const targets = Array.from(containerRef.current.children);
+    if (targets.length === 0) return;
 
     anime.set(targets, { opacity: 0, translateY: 15 });
 
@@ -45,7 +43,7 @@ const AnimatedSection = ({ children }) => {
       delay: anime.stagger(75),
       duration: 1000
     });
-  }, []) 
+  }, [])
 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%' }}>
@@ -258,15 +256,15 @@ export default function AdminDashboardPage() {
 
   const renderSection = () => {
     switch (activeNav) {
-      case 'overview': return <OverviewSection onChangeNav={handleNavChange} onNavigateToShipment={navigateToShipment} />
-      case 'shipments': return <ShipmentsSection onTrackFull={navigateToTracking} highlightShipmentId={shipmentHighlightId} />
+      case 'overview': return <OverviewSection onChangeNav={handleNavChange} onNavigateToShipment={navigateToShipment} userRole={displayRole} />
+      case 'shipments': return <ShipmentsSection onTrackFull={navigateToTracking} highlightShipmentId={shipmentHighlightId} userRole={displayRole} />
       case 'clients': return <ClientsSection />
-      case 'drivers': return <DriversSection />
-      case 'armada': return <ArmadaSection />
+      case 'drivers': return <DriversSection userRole={displayRole} />
+      case 'armada': return <ArmadaSection userRole={displayRole} />
       case 'invoices': return <InvoicesSection />
       case 'users': return <UsersSection />
       case 'profile': return <AdminProfileSection />
-      case 'tracking': return <TrackingSection initialSearchQuery={trackingId} isAdmin={true} />
+      case 'tracking': return <TrackingSection initialSearchQuery={trackingId} isAdmin={true} userRole={displayRole} />
       default: return <OverviewSection onChangeNav={handleNavChange} onNavigateToShipment={navigateToShipment} />
     }
   }
@@ -284,6 +282,7 @@ export default function AdminDashboardPage() {
         handleNavChange={handleNavChange}
         handleLogout={handleLogout}
         displayName={displayName}
+        userRole={displayRole}
       />
       
       <div className="flex flex-col flex-1 min-w-0">

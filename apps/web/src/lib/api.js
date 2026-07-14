@@ -253,9 +253,21 @@ export const shipmentsAPI = {
   updateStatus: (id, data) =>
     api.patch(`/api/shipments/${encodeURIComponent(id)}/status`, data),
 
+  /** Admin: Pengurus Pabrik check */
+  plantCheck: (id, data) =>
+    api.patch(`/api/shipments/${encodeURIComponent(id)}/plant-check`, data),
+
+  /** Admin: Kepala Gudang handover */
+  handover: (id, data) =>
+    api.patch(`/api/shipments/${encodeURIComponent(id)}/handover`, data),
+
   /** Admin: send WhatsApp assignment notification to the assigned driver (via OpenWA) */
   notifyDriver: (id) =>
     api.post(`/api/shipments/${encodeURIComponent(id)}/notify-driver`),
+
+  /** Admin: get pickup plants */
+  getPickupPlants: () =>
+    api.get('/api/shipments/pickup-plants'),
 }
 
 // ─── Tracking API ───────────────────────────────────────────

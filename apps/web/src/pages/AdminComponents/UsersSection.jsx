@@ -72,7 +72,7 @@ export default function UsersSection() {
       setUSERS(mapped)
     } catch (err) {
       console.error('Failed to fetch users:', err)
-      showToast('Gagal memuat data pengguna.', 'error')
+      showToast('Gagal memuat data admin.', 'error')
     } finally {
       if (!silent) setLoading(false)
     }
@@ -164,7 +164,7 @@ export default function UsersSection() {
       setCreateSuccess(true)
       fetchUsers()
     } catch (err) {
-      showToast(err.message || 'Gagal membuat pengguna.', 'error')
+      showToast(err.message || 'Gagal membuat admin.', 'error')
     }
   }
 
@@ -311,12 +311,12 @@ export default function UsersSection() {
     <div className="dash-content">
       <section className="dash-header">
         <div>
-          <h2 className="dash-header__title">Manajemen Pengguna</h2>
+          <h2 className="dash-header__title">Daftar Admin</h2>
           <p className="dash-header__subtitle">Kelola akses staf internal dan akun klien.</p>
         </div>
         <div className="adm-section-actions">
           <button className="adm-create-btn" onClick={() => { resetModal(); setShowCreateModal(true) }}>
-            <Icon name="group_add" size={18} /> Tambah Pengguna
+            <Icon name="group_add" size={18} /> Tambah Admin
           </button>
         </div>
       </section>
@@ -326,7 +326,7 @@ export default function UsersSection() {
         <div className="adm-kpi-card glass-card opacity-0">
           <div className="adm-kpi-card__icon"><Icon name="group" size={24} /></div>
           <div className="adm-kpi-card__info">
-            <h3 className="adm-kpi-card__title">Total Pengguna</h3>
+            <h3 className="adm-kpi-card__title">Total Admin</h3>
             <p className="adm-kpi-card__value">{statsTotalUsers}</p>
           </div>
         </div>
@@ -378,7 +378,7 @@ export default function UsersSection() {
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>Memuat data pengguna...</div>
+        <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>Memuat data admin...</div>
       ) : (
         <div style={{ marginTop: '1rem' }}>
           <AdminDataTable columns={columns} data={filteredUsers} onRowClick={setSelectedUser} />
@@ -436,8 +436,8 @@ export default function UsersSection() {
       {/* Create Modal — two modes: Manual Form | Magic Link */}
       {showCreateModal && (
         <AdminModal
-          title="Tambah Pengguna Baru"
-          subtitle={createSuccess ? 'Kredensial pengguna baru.' : (showMagicLinkSection ? 'Bagikan link pendaftaran kepada klien.' : 'Isi data akun atau gunakan magic link.')}
+          title="Tambah Admin Baru"
+          subtitle={createSuccess ? 'Kredensial admin baru.' : (showMagicLinkSection ? 'Bagikan link pendaftaran kepada klien.' : 'Isi data akun atau gunakan magic link.')}
           onClose={() => { setShowCreateModal(false); resetModal() }}
           onSubmit={handleModalSubmit}
           submitLabel={createSuccess ? 'Selesai' : (showMagicLinkSection ? 'Selesai' : 'Buat Akun')}
@@ -456,7 +456,7 @@ export default function UsersSection() {
               >
                 <Icon name="check_circle" size={40} style={{ color: '#16a34a', marginBottom: '0.75rem' }} />
                 <h4 style={{ margin: '0 0 0.5rem', color: 'var(--dash-primary)', fontWeight: 800 }}>
-                  Pengguna Berhasil Dibuat!
+                  Admin Berhasil Dibuat!
                 </h4>
                 <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '0 0 1rem' }}>
                   Simpan kredensial berikut sebelum menutup.
@@ -719,8 +719,8 @@ export default function UsersSection() {
       {/* Reset Password Modal */}
       {showResetModal && resetUser && (
         <AdminModal
-          title="Reset Password Pengguna"
-          subtitle={`Bagikan link ini ke pengguna (${resetUser.name}) untuk mereset password mereka.`}
+          title="Reset Password Admin"
+          subtitle={`Bagikan link ini ke admin (${resetUser.name}) untuk mereset password mereka.`}
           onClose={() => { setShowResetModal(false); setResetLink(''); setResetUser(null) }}
           onSubmit={() => { setShowResetModal(false); setResetLink(''); setResetUser(null) }}
           submitLabel="Selesai"

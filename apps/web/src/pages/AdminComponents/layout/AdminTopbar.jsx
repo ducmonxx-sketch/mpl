@@ -17,7 +17,7 @@ export default function AdminTopbar({
   handleNotifNavigate
 }) {
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between px-8 py-6 bg-[#f8f9fa]/80 backdrop-blur-xl border-b border-gray-200 shadow-[0_4px_30px_rgba(0,0,0,0.03)]">
+    <header className="sticky top-0 z-30 flex items-center justify-between px-4 py-4 md:px-8 md:py-6 bg-[#f8f9fa]/80 backdrop-blur-xl border-b border-gray-200 shadow-[0_4px_30px_rgba(0,0,0,0.03)]">
       
       {/* ── Left side: Mobile menu ── */}
       <div className="flex items-center gap-4 flex-1">

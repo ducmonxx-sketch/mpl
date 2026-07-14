@@ -1,4 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
+import anime from 'animejs'
 import Icon from '../../components/Icon'
 import { useToast } from '../../contexts/ToastContext'
 import { useAuth } from '../../contexts/AuthContext'
@@ -50,7 +52,7 @@ const VEHICLE_STATUS_BADGE_MAP = {
   MAINTENANCE: 'inactive',
 }
 
-export default function ArmadaSection() {
+export default function ArmadaSection({ userRole }) {
   const { showToast } = useToast()
   const { user } = useAuth()
 
@@ -608,37 +610,43 @@ export default function ArmadaSection() {
           >
             <Icon name="person_add" size={16} />
           </button>
-          <button
-            className="adm-action-btn"
-            title="Update Service"
-            style={{ color: '#eab308', backgroundColor: 'rgba(234, 179, 8, 0.1)' }}
-            onClick={(e) => {
-              e.stopPropagation()
-              handleOpenService(row)
-            }}
-          >
-            <Icon name="build" size={16} />
-          </button>
-          <button
-            className="adm-action-btn"
-            title="Edit"
-            onClick={(e) => {
-              e.stopPropagation()
-              handleOpenEdit(row)
-            }}
-          >
-            <Icon name="edit" size={16} />
-          </button>
-          <button
-            className="adm-action-btn adm-action-btn--danger"
-            title="Hapus"
-            onClick={(e) => {
-              e.stopPropagation()
-              handleDeleteVehicle(row.id, row.licensePlate)
-            }}
-          >
-            <Icon name="delete" size={16} />
-          </button>
+          {userRole !== 'KEPALA_ARMADA' && (
+            <button
+              className="adm-action-btn"
+              title="Update Service"
+              style={{ color: '#eab308', backgroundColor: 'rgba(234, 179, 8, 0.1)' }}
+              onClick={(e) => {
+                e.stopPropagation()
+                handleOpenService(row)
+              }}
+            >
+              <Icon name="build" size={16} />
+            </button>
+          )}
+          {userRole !== 'KEPALA_ARMADA' && (
+            <button
+              className="adm-action-btn"
+              title="Edit"
+              onClick={(e) => {
+                e.stopPropagation()
+                handleOpenEdit(row)
+              }}
+            >
+              <Icon name="edit" size={16} />
+            </button>
+          )}
+          {userRole !== 'KEPALA_ARMADA' && (
+            <button
+              className="adm-action-btn adm-action-btn--danger"
+              title="Hapus"
+              onClick={(e) => {
+                e.stopPropagation()
+                handleDeleteVehicle(row.id, row.licensePlate)
+              }}
+            >
+              <Icon name="delete" size={16} />
+            </button>
+          )}
         </div>
       ),
     },
@@ -657,12 +665,14 @@ export default function ArmadaSection() {
           <h2 className="text-2xl md:text-3xl font-black text-dash-primary tracking-tight">Daftar Kendaraan</h2>
           <p className="text-sm text-gray-500 font-medium">Kelola kendaraan, status, dan dokumen armada.</p>
         </div>
-        <button 
-          className="flex items-center justify-center gap-2 px-5 py-2.5 bg-dash-secondary hover:brightness-110 text-dash-primary font-bold rounded-xl shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5" 
-          onClick={handleOpenCreateModal}
-        >
-          <Icon name="add" size={18} /> Tambah Kendaraan
-        </button>
+        {userRole !== 'KEPALA_ARMADA' && (
+          <button 
+            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-dash-secondary hover:brightness-110 text-dash-primary font-bold rounded-xl shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5" 
+            onClick={handleOpenCreateModal}
+          >
+            <Icon name="add" size={18} /> Tambah Kendaraan
+          </button>
+        )}
       </section>
 
       {/* Summary Stats */}
@@ -751,7 +761,7 @@ export default function ArmadaSection() {
       </div>
 
       {/* Slide-over Detail Panel */}
-      {selectedVehicle && (
+      {selectedVehicle && createPortal(
         <div className="fixed inset-0 z-[100] flex justify-end">
           {/* Backdrop */}
           <div 
@@ -920,7 +930,8 @@ export default function ArmadaSection() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Create Modal */}

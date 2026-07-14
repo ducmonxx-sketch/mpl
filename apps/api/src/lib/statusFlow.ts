@@ -13,7 +13,8 @@ export type StatusKind = "shipment" | "invoice"
 const FORWARD: Record<StatusKind, Record<string, string[]>> = {
   shipment: {
     PENDING:    ["DITUGASKAN"],
-    DITUGASKAN: ["TRANSIT"],
+    DITUGASKAN: ["AT_PLANT", "TRANSIT"], // allow direct to TRANSIT if they skip plant check? Or strict flow? strict is AT_PLANT.
+    AT_PLANT:   ["TRANSIT"],
     TRANSIT:    ["DELIVERED", "CANCELLED"],
     DELIVERED:  [],
     FAILED:     [],  // legacy; no longer offered as a forward option

@@ -64,7 +64,7 @@ export default function ClientSidebar({
       <aside
         className={`fixed lg:sticky top-0 left-0 h-screen bg-[#002442] text-white flex flex-col z-50 transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
           collapsed ? 'w-20' : 'w-64'
-        } ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'} shadow-2xl lg:shadow-[4px_0_24px_rgba(0,0,0,0.05)] relative`}
+        } ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'} shadow-2xl lg:shadow-[4px_0_24px_rgba(0,0,0,0.05)]`}
       >
         {/* Toggle Collapse Button (Desktop Only) */}
         {!isMobile && (

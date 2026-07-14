@@ -35,7 +35,7 @@ export const NAV_GROUPS = [
   {
     title: 'SISTEM',
     items: [
-      { id: 'users', label: 'Pengguna', icon: 'admin_panel_settings' },
+      { id: 'users', label: 'Daftar Admin', icon: 'admin_panel_settings' },
       { id: 'profile', label: 'Profil', icon: 'account_circle' },
     ]
   }
@@ -48,12 +48,29 @@ export default function AdminSidebar({
   activeNav,
   handleNavChange,
   handleLogout,
-  displayName
+  displayName,
+  userRole
 }) {
   const [isCollapsed, setIsCollapsed] = useState(false)
   
   const firstName = displayName?.split(' ')[0] || 'Admin'
   const greeting = getGreeting()
+
+  // Filter NAV_GROUPS based on userRole
+  const filteredNavGroups = NAV_GROUPS.map(group => {
+    const items = group.items.filter(item => {
+      if (userRole === 'SUPERADMIN') return true;
+      if (userRole === 'KEPALA_ARMADA') {
+         return ['overview', 'armada', 'drivers', 'tracking', 'shipments', 'profile'].includes(item.id);
+      }
+      if (userRole === 'PIC_PABRIK' || userRole === 'PIC_GUDANG') {
+         return ['overview', 'shipments', 'tracking', 'profile'].includes(item.id);
+      }
+      // Default (e.g. OPERATIONS or SUPPORT)
+      return item.id !== 'users'; 
+    });
+    return { ...group, items };
+  }).filter(group => group.items.length > 0);
 
   // Force expand on mobile
   const collapsed = isCollapsed && !isMobile
@@ -71,7 +88,7 @@ export default function AdminSidebar({
       <aside
         className={`fixed lg:sticky top-0 left-0 h-screen bg-[#002442] text-white flex flex-col z-50 transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
           collapsed ? 'w-20' : 'w-64'
-        } ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'} shadow-2xl lg:shadow-[4px_0_24px_rgba(0,0,0,0.05)] relative`}
+        } ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'} shadow-2xl lg:shadow-[4px_0_24px_rgba(0,0,0,0.05)]`}
       >
         {/* Toggle Collapse Button (Desktop Only) */}
         {!isMobile && (
@@ -107,7 +124,7 @@ export default function AdminSidebar({
         </div>
 
         <nav className="flex-1 overflow-y-auto overflow-x-hidden py-4 flex flex-col gap-4 custom-scrollbar">
-          {NAV_GROUPS.map((group, groupIdx) => (
+          {filteredNavGroups.map((group, groupIdx) => (
             <div key={groupIdx} className="flex flex-col px-3 gap-1">
               {/* Group Title */}
               {!collapsed && (

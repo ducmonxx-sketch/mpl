@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import Icon from '../../components/Icon'
 import { useToast } from '../../contexts/ToastContext'
 import { shipmentsAPI, trackingAPI } from '../../lib/api'
@@ -48,7 +49,7 @@ const EMPTY_ADD_EVENT_FORM = {
   status: 'ACTIVE',
 }
 
-export default function TrackingSection({ initialSearchQuery = '', isAdmin = false }) {
+export default function TrackingSection({ initialSearchQuery = '', isAdmin = false, userRole }) {
   const { showToast } = useToast()
 
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery)
@@ -411,7 +412,7 @@ export default function TrackingSection({ initialSearchQuery = '', isAdmin = fal
           </div>
 
           {/* ── Slide-over Detail Panel ── */}
-          {selectedShipment && (
+          {selectedShipment && createPortal(
             <>
               {/* Backdrop */}
               <div 
@@ -552,7 +553,7 @@ export default function TrackingSection({ initialSearchQuery = '', isAdmin = fal
                   )}
                   
                   {/* Admin Controls */}
-                  {isAdmin && (
+                  {isAdmin && userRole !== 'KEPALA_ARMADA' && (
                     <div className="mt-auto pt-6 border-t border-gray-100 flex flex-col gap-4">
                       <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Admin Controls</h4>
                       
@@ -640,7 +641,8 @@ export default function TrackingSection({ initialSearchQuery = '', isAdmin = fal
 
                 </div>
               </div>
-            </>
+            </>,
+            document.body
           )}
 
           {/* Add Event Modal (Overlay) */}
