@@ -1,7 +1,7 @@
 # DEV-PLAN — resume point
 
 > **Resuming?** Read this first, then [RUNBOOK.md](RUNBOOK.md) (sync + audit) and [CLAUDE.md](CLAUDE.md) (scope).
-> Last updated: 2026-07-15. **Latest accurate state is the RUNBOOK Session Log (2026-06-30 + 2026-07-01)** (the "Where we are" section below predates recent work).
+> Last updated: 2026-07-16. **Latest accurate state is the RUNBOOK Session Log (2026-06-30 + 2026-07-01)** (the "Where we are" section below predates recent work).
 
 ## ✅ DONE (2026-07-15) — Pipeline roles migration + plant-check/handover bug fixes
 Pulled `main` (friend's agent had added the 3 pipeline roles + AT_PLANT status in `schema.prisma` with **no migration**). Reconciled DB to schema and fixed two bugs in the friend's pipeline routes.
@@ -22,6 +22,17 @@ The live `plant-check` route promotes a shipment straight to `TRANSIT` but **byp
 2. **ON_DUTY promotion** — does not flip the driver `ACTIVE → ON_DUTY` on departure, so the driver looks free while actually driving.
 Result: a shipment departing via the PIC_PABRIK plant-check flow leaves the driver's status inconsistent and unguarded. Fixing it means routing plant-check's TRANSIT promotion through the same guard+lifecycle as `/status` (or extracting that logic into a shared helper both call) — a design decision on the friend's pipeline feature, so left for the coordination chat. Same class of concern applies to any other route that sets `TRANSIT`/`DELIVERED`/`CANCELLED` directly.
 
+## ✅ DONE (2026-07-16) — Merge friend's parallel armada work + diterima/diturunkan vocab + remove invoices
+Two-agent collision: the friend pushed **"Refine Kepala_Armada role"** + landing refresh to `origin/main` (`9f38e98`), overlapping our overhaul. Merged into `tier1-infra` (`141a132`) keeping ours as base, then removed invoices (`e6b43df`). Not pushed. Full detail in RUNBOOK Session Log `2026-07-16`.
+
+**Merge reconciliation:** `AdminModal` (both portaled — kept ours + their SSR guard); `ShipmentsSection` (kept ours + adopted their armada UX: Dalam Proses/Selesai views, date sort, centered detail modal, status-filter dropdown); `shipments.ts` (kept both — our routes + their WhatsApp-on-assign); **dropped the friend's duplicate role migration** (`…090316`, byte-identical to our `…040528`).
+
+**Decisions:** armada visibility → **friend's model** (sees full lifecycle, removed our Menunggu+Standby-only rule); adopted **`diterima`/`diturunkan`** status vocab. New enum values + `migration add_diterima_diturunkan_status`; `statusFlow` `Transit → Diterima → Diturunkan → Delivered`; frontend badges/labels/filters; `DELIVERED` label → "Selesai". **Triggers deferred** to the Pabrik/Gudang flow.
+
+**Invoices removed entirely** (`e6b43df`, −1523): model + `InvoiceStatus` enum + relations, `routes/invoices.ts`, `migration remove_invoices` (DROP TABLE + TYPE), backend refs (`shipments.ts`/`users.ts`/`statusFlow.ts`/smoke), and frontend (`invoicesAPI`, admin+client `InvoicesSection` + `InvoiceTable`, dashboards, both sidebars). Left harmless display mappings + `*_INVOICE` audit enum values.
+
+**Verified:** web build ✓, API typecheck 43 (no new), smoke 22/22, status chain walk, `/api/invoices` → 404.
+
 ## ✅ DONE (2026-07-15) — Kepala Armada flow overhaul (STANDBY, status mirror, Tipe Pengiriman, substitute, delete)
 Built the KEPALA_ARMADA pipeline on top of the pulled roles. All admin-scope, uncommitted on `tier1-infra`. Full detail in RUNBOOK Session Log `2026-07-15`.
 
@@ -40,15 +51,17 @@ Built the KEPALA_ARMADA pipeline on top of the pulled roles. All admin-scope, un
 **Migrations (4):** `add_pipeline_roles_plant_fields`, `add_standby_status`, `drop_shipment_price_eta`, `add_driver_vehicle_standby`. **Seed rewritten:** 5 drivers (3 paired 1:1 to 3 clean vehicles, 2 spare), no shipments. **Verified:** web build ✓, API typecheck no-new-errors, smoke 26/26, full lifecycle + substitute + delete exercised live.
 
 ### 🚧 Next (this arc) — not yet built
-1. **Full invoice removal** (user: "drop all of invoice… not included in this project") — Invoice model + migration + `invoices.ts` + `InvoicesSection.jsx` + sidebar + seed/smoke refs + `api.js`. Deferred to its own step.
-2. **Pengurus Pabrik flow** (the DITUGASKAN → plant-check → TRANSIT leg) — next role after armada.
-3. **Admin-created → Menunggu → armada pickup** path (future; for now only armada creates).
-4. Leftover: old KEPALA_ARMADA PENDING assign-modal branch is dead for armada (OPERATIONS still uses it) — clean up when convenient. Plant-check departure-guard/ON_DUTY gap (see ⚠️ Open above).
+1. ✅ ~~Full invoice removal~~ — DONE 2026-07-16.
+2. **Pengurus Pabrik / Kepala Gudang flow** — wire the *triggers* for the now-existing statuses: who sets `AT_PLANT`, `Diterima`, `Diturunkan` (→ `Delivered`). Open design questions: **keep or drop `AT_PLANT`** (defined + in statusFlow but no route sets it); pabrik/gudang **list visibility** (which statuses each sees); the **"vehicle data & accessories"** fields for the pabrik check.
+3. **`context.md` refresh** — the one-time rewrite; do after the pabrik/gudang flow lands (it's materially stale: predates STANDBY, the status mirror, diterima/diturunkan, dropped price/eta, Tipe Pengiriman, invoice removal).
+4. **Admin-created → Menunggu → armada pickup** path (future; for now only armada creates).
+5. Leftover: old KEPALA_ARMADA PENDING assign-modal branch is dead for armada (OPERATIONS still uses it). Plant-check departure-guard/ON_DUTY gap (see ⚠️ Open above).
 
 ### 🔵 Client-side follow-ups (do NOT fix client here — note only)
-- Dropping `estimatedArrival` blanks the ETA on the shared `TrackingSection` (client tracking). It was already non-persisting (`/status` ignores it). Did not modify TrackingSection.
-- `InvoicesSection` reads `shipment.price` (now dropped) → subtotal prefill empty (moot once invoices are removed).
-- New STANDBY/DITUGASKAN/AT_PLANT statuses + pipeline roles are client-visible when the client dashboard pass happens.
+- **Client Faktur pages removed** (invoice removal deleted the client dashboard InvoicesSection/InvoiceTable/route/sidebar) — friend's domain; flag so their agent doesn't re-add.
+- Friend's **auto-WhatsApp-on-assign** (merged) now double-fires with our manual `/notify-driver` — a driver can get two messages.
+- Dropping `estimatedArrival` blanks the ETA on the shared `TrackingSection` (client tracking); was already non-persisting. Did not modify TrackingSection.
+- New STANDBY/DITUGASKAN/AT_PLANT/DITERIMA/DITURUNKAN statuses + pipeline roles are client-visible when the client dashboard pass happens.
 
 ## ✅ DONE (2026-06-30) — Shipment status-change UX rework
 **Implemented** (original frontend roadmap item #8 "Apply-status button + confirm box on shipment status"). Decisions used: **SUPERADMIN = all-except-current**; **selectable option buttons**. See RUNBOOK Session Log `2026-06-30 (cont.)`. Spec below kept as a record.
