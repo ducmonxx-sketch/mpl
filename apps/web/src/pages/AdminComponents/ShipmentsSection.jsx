@@ -262,6 +262,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
         originCity:            s.originLocation,
         destinationCity:       s.destinationLocation,
         pickupDate:            formatDate(s.pickupDate || s.createdAt),
+        rawPickupDate:         s.pickupDate || s.createdAt,
         estimatedArrival:      s.estimatedArrival ? formatDate(s.estimatedArrival) : '-',
         cargoDescription:      s.packageType,
         weightKg:              s.weightKg,
@@ -321,14 +322,15 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
         const anime = animeModule.default
         anime({
           targets: '.adm-detail-panel',
-          translateX: [50, 0],
+          translateX: role === 'KEPALA_ARMADA' ? [0, 0] : [50, 0],
+          translateY: role === 'KEPALA_ARMADA' ? [20, 0] : [0, 0],
           opacity: [0, 1],
           easing: 'easeOutExpo',
           duration: 400
         })
       })
     }
-  }, [selectedShipment])
+  }, [selectedShipment, role])
 
   // ── Fleet fetch helpers ───────────────────────────────────────
   const fetchFleet = async () => {
@@ -1062,7 +1064,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   // ── Filtering & pagination ────────────────────────────────────
   const ITEMS_PER_PAGE = 20
 
-  const filtered = SHIPMENTS.filter(s => {
+  let filtered = SHIPMENTS.filter(s => {
     const matchStatus  = filter === 'all' || s.status === filter
     const matchClient  = filterClient === 'all' || s.client === filterClient
     const matchService = filterService === 'all' || s.serviceType === filterService
@@ -1071,12 +1073,35 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
       s.client.toLowerCase().includes(searchQuery.toLowerCase())
     
     let matchViewMode = true
-    if (['KEPALA_ARMADA', 'PIC_PABRIK', 'PIC_GUDANG'].includes(role) && viewMode === 'today') {
-      matchViewMode = s.pickupDate === formatDate(new Date())
+    if (['KEPALA_ARMADA', 'PIC_PABRIK', 'PIC_GUDANG'].includes(role)) {
+      if (role === 'KEPALA_ARMADA') {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const pDate = new Date(s.rawPickupDate);
+        
+        if (viewMode === 'today') {
+          // "Dalam Proses": today or future dates
+          matchViewMode = pDate >= today;
+        } else if (viewMode === 'history') {
+          // "Selesai": past shipments
+          matchViewMode = pDate < today;
+        }
+      } else if (viewMode === 'today') {
+        matchViewMode = s.pickupDate === formatDate(new Date())
+      }
     }
 
     return matchStatus && matchClient && matchService && matchSearch && matchViewMode
   })
+
+  // Sort by date for KEPALA_ARMADA so next day shipments are separated from today
+  if (role === 'KEPALA_ARMADA') {
+    filtered.sort((a, b) => {
+      const da = new Date(a.rawPickupDate).getTime();
+      const db = new Date(b.rawPickupDate).getTime();
+      return viewMode === 'today' ? da - db : db - da; // ASC for Dalam Proses, DESC for Selesai
+    });
+  }
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE))
   const paginated  = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
@@ -1153,7 +1178,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
                     : 'text-gray-500 hover:text-gray-800'
                 }`}
               >
-                Hari Ini
+                {role === 'KEPALA_ARMADA' ? 'Dalam Proses' : 'Hari Ini'}
               </button>
               <button
                 onClick={() => { setViewMode('history'); setCurrentPage(1); }}
@@ -1163,7 +1188,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
                     : 'text-gray-500 hover:text-gray-800'
                 }`}
               >
-                Semua Riwayat
+                {role === 'KEPALA_ARMADA' ? 'Selesai' : 'Semua Riwayat'}
               </button>
             </div>
           )}
@@ -1198,50 +1223,72 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
             allLabel="Semua Klien (A-Z)"
             className="w-full sm:w-56"
           />
-          <SearchableSelect
-            options={[
-              { value: 'Darat',       label: 'Darat' },
-              { value: 'Laut',        label: 'Laut' },
-              { value: 'Udara',       label: 'Udara' },
-              { value: 'inter_island', label: 'Antar Pulau' },
-              { value: 'last_mile',   label: 'Lokal' },
-              { value: 'warehousing', label: 'Gudang' },
-            ]}
-            value={filterService}
-            onChange={v => { setFilterService(v); setCurrentPage(1) }}
-            placeholder="Semua Layanan"
-            searchPlaceholder="Cari layanan..."
-            allLabel="Semua Layanan"
-            className="w-full sm:w-48"
-          />
+          {role !== 'KEPALA_ARMADA' ? (
+            <SearchableSelect
+              options={[
+                { value: 'Darat',       label: 'Darat' },
+                { value: 'Laut',        label: 'Laut' },
+                { value: 'Udara',       label: 'Udara' },
+                { value: 'inter_island', label: 'Antar Pulau' },
+                { value: 'last_mile',   label: 'Lokal' },
+                { value: 'warehousing', label: 'Gudang' },
+              ]}
+              value={filterService}
+              onChange={v => { setFilterService(v); setCurrentPage(1) }}
+              placeholder="Semua Layanan"
+              searchPlaceholder="Cari layanan..."
+              allLabel="Semua Layanan"
+              className="w-full sm:w-48"
+            />
+          ) : (
+            <SearchableSelect
+              options={[
+                { value: 'pending',    label: 'Menunggu' },
+                { value: 'standby',    label: 'Standby' },
+                { value: 'assigned',   label: 'Ditugaskan' },
+                { value: 'in_transit', label: 'Dalam Perjalanan' },
+                { value: 'diterima',   label: 'Diterima' },
+                { value: 'diturunkan', label: 'Diturunkan' },
+                { value: 'delivered',  label: 'Selesai' },
+              ]}
+              value={filter}
+              onChange={v => { setFilter(v); setCurrentPage(1) }}
+              placeholder="Semua Status"
+              searchPlaceholder="Cari status..."
+              allLabel="Semua Status"
+              className="w-full sm:w-48"
+            />
+          )}
         </div>
       </div>
 
       {/* Status filter tabs */}
-      <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-px">
-        {filters.map(f => {
-          const baseSet = SHIPMENTS.filter(s =>
-            (filterClient  === 'all' || s.client      === filterClient) &&
-            (filterService === 'all' || s.serviceType === filterService)
-          )
-          const count = f.id === 'all'
-            ? baseSet.length
-            : baseSet.filter(s => s.status === f.id).length
-          const isActive = filter === f.id
-          return (
-            <button
-              key={f.id}
-              className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${isActive ? 'border-dash-primary text-dash-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
-              onClick={() => { setFilter(f.id); setCurrentPage(1) }}
-            >
-              {f.label}
-              <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${isActive ? 'bg-dash-primary/10 text-dash-primary' : 'bg-gray-100 text-gray-500'}`}>
-                {count}
-              </span>
-            </button>
-          )
-        })}
-      </div>
+      {role !== 'KEPALA_ARMADA' && (
+        <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-px">
+          {filters.map(f => {
+            const baseSet = SHIPMENTS.filter(s =>
+              (filterClient  === 'all' || s.client      === filterClient) &&
+              (filterService === 'all' || s.serviceType === filterService)
+            )
+            const count = f.id === 'all'
+              ? baseSet.length
+              : baseSet.filter(s => s.status === f.id).length
+            const isActive = filter === f.id
+            return (
+              <button
+                key={f.id}
+                className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${isActive ? 'border-dash-primary text-dash-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+                onClick={() => { setFilter(f.id); setCurrentPage(1) }}
+              >
+                {f.label}
+                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${isActive ? 'bg-dash-primary/10 text-dash-primary' : 'bg-gray-100 text-gray-500'}`}>
+                  {count}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {/* Table / Card View */}
       <div>
@@ -1308,9 +1355,14 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
       {selectedShipment && createPortal(
         <>
           <div className="fixed inset-0 bg-dash-primary/20 backdrop-blur-sm z-[100]" onClick={() => setSelectedShipment(null)} />
-          <div className="adm-detail-panel opacity-0 fixed right-0 top-0 h-screen w-full sm:w-[500px] bg-white shadow-2xl z-[101] flex flex-col border-l border-gray-200">
-            {/* Panel Header */}
-            <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex flex-col gap-4">
+          <div className={`fixed inset-0 z-[101] pointer-events-none ${role === 'KEPALA_ARMADA' ? 'flex items-center justify-center p-4' : ''}`}>
+            <div className={`adm-detail-panel opacity-0 bg-white shadow-2xl flex flex-col pointer-events-auto ${
+              role === 'KEPALA_ARMADA'
+                ? 'w-[90vw] aspect-[9/16] md:w-[700px] md:aspect-auto md:h-fit max-h-[90vh] rounded-2xl overflow-hidden relative'
+                : 'absolute right-0 top-0 h-screen w-full sm:w-[500px] border-l border-gray-200'
+            }`}>
+              {/* Panel Header */}
+              <div className={`p-6 border-b border-gray-100 bg-gray-50/50 flex flex-col gap-4 ${role === 'KEPALA_ARMADA' ? 'shrink-0' : ''}`}>
               <div className="flex justify-between items-start">
                 <AdminStatusBadge status={selectedShipment.status} type="shipment" />
                 <button
@@ -1464,20 +1516,23 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
               </div>
 
               {/* Harga */}
-              <div className="flex flex-col gap-3">
-                <h4 className="flex items-center gap-2 text-sm font-bold text-gray-900 border-b border-gray-100 pb-2">
-                  <Icon name="payments" size={18} className="text-gray-400" /> Harga
-                </h4>
-                <div className="grid grid-cols-3 gap-2">
-                  <span className="text-sm text-gray-500 font-medium">Invoice</span>
-                  <span className="text-sm font-black text-green-700 col-span-2">
-                    {selectedShipment.price !== null && selectedShipment.price !== undefined
-                      ? 'Rp ' + Number(selectedShipment.price).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                      : '-'}
-                  </span>
+              {role !== 'KEPALA_ARMADA' && (
+                <div className="flex flex-col gap-3">
+                  <h4 className="flex items-center gap-2 text-sm font-bold text-gray-900 border-b border-gray-100 pb-2">
+                    <Icon name="payments" size={18} className="text-gray-400" /> Harga
+                  </h4>
+                  <div className="grid grid-cols-3 gap-2">
+                    <span className="text-sm text-gray-500 font-medium">Invoice</span>
+                    <span className="text-sm font-black text-green-700 col-span-2">
+                      {selectedShipment.price !== null && selectedShipment.price !== undefined
+                        ? 'Rp ' + Number(selectedShipment.price).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                        : '-'}
+                    </span>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
+          </div>
           </div>
         </>,
         document.body
