@@ -50,19 +50,22 @@ enum VerificationStatus {
 
 enum DriverStatus {
   ACTIVE
+  STANDBY      // reserved for a Standby shipment (pre-assigned, not yet on duty)
   ON_DUTY
   UNAVAILABLE
 }
 
 enum VehicleStatus {
   AVAILABLE
+  STANDBY      // reserved for a Standby shipment (pre-assigned, not yet in use)
   IN_USE
   MAINTENANCE
 }
 
 enum ShipmentStatus {
-  PENDING      // created, not yet processed
-  DITUGASKAN   // driver & vehicle assigned; staging before departure
+  PENDING      // created by admin, not yet picked up by armada (Menunggu)
+  STANDBY      // created/assigned by armada; awaiting driver-availability reconfirm before Ditugaskan
+  DITUGASKAN   // driver & vehicle assigned + reconfirmed; staging before departure
   AT_PLANT     // Truck arrives at plant
   TRANSIT      // currently being delivered
   DELIVERED    // successfully delivered
@@ -307,11 +310,9 @@ model Shipment {
   originLocation         String
   destinationLocation    String
   specialNotes           String?
-  price                  Decimal?       @db.Decimal(12, 2)  // quoted invoice price set at creation
   status                 ShipmentStatus @default(PENDING)
   currentProgressPercent Int            @default(0)
   pickupDate             DateTime?
-  estimatedArrival       DateTime?      // ETA / estimasi tiba
   completionDate         DateTime?
   createdAt              DateTime       @default(now())
 

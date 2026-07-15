@@ -56,10 +56,12 @@ router.get("/", authenticate, async (req: AuthRequest, res: Response) => {
           : {}),
       },
       include: {
-        client:  { select: { fullName: true, companyName: true } },
-        driver:  { select: { fullName: true, phoneNumber: true } },
-        vehicle: { select: { type: true, licensePlate: true, primaryDriverId: true } },
-        invoice: { select: { id: true } },
+        client:         { select: { fullName: true, companyName: true } },
+        driver:         { select: { fullName: true, phoneNumber: true } },
+        vehicle:        { select: { type: true, licensePlate: true, primaryDriverId: true } },
+        pickupPlant:    { select: { name: true, code: true, manufacturer: true } },
+        createdByAdmin: { select: { fullName: true } },
+        invoice:        { select: { id: true } },
       },
       orderBy: { createdAt: "desc" },
     })
@@ -115,10 +117,12 @@ router.get("/:id", authenticate, async (req: AuthRequest, res: Response) => {
     const shipment = await prisma.shipment.findUnique({
       where: { id: req.params.id },
       include: {
-        client:  { select: { fullName: true, companyName: true, email: true } },
-        driver:  { select: { fullName: true, phoneNumber: true } },
-        vehicle: { select: { type: true, licensePlate: true } },
-        events:  { orderBy: { eventTimestamp: "asc" } },
+        client:         { select: { fullName: true, companyName: true, email: true } },
+        driver:         { select: { fullName: true, phoneNumber: true } },
+        vehicle:        { select: { type: true, licensePlate: true, primaryDriverId: true } },
+        pickupPlant:    { select: { name: true, code: true, manufacturer: true } },
+        createdByAdmin: { select: { fullName: true } },
+        events:         { orderBy: { eventTimestamp: "asc" } },
       },
     })
 
@@ -149,19 +153,22 @@ router.post("/", authenticate, async (req: AuthRequest, res: Response) => {
       originLocation,
       destinationLocation,
       specialNotes,
-      price,
       pickupDate,
-      estimatedArrival,
       shippingCategory,
       dimensions,
       containerType,
       pickupPlantId,
       driverId,
+      vehicleId,
     } = req.body
 
     const isAdmin  = req.user?.type === "admin"
     const clientId = isAdmin ? req.body.clientId : req.user!.id
     const id       = await generateShipmentId()
+
+    // Armada creates a shipment already carrying its driver+vehicle → starts at STANDBY
+    // (awaiting driver-availability reconfirm). Everyone else starts at PENDING (Menunggu).
+    const initialStatus = req.user?.role === "KEPALA_ARMADA" ? "STANDBY" : "PENDING"
 
     const shipment = await prisma.shipment.create({
       data: {
@@ -173,18 +180,34 @@ router.post("/", authenticate, async (req: AuthRequest, res: Response) => {
         originLocation,
         destinationLocation,
         specialNotes,
-        price:            price != null ? Number(price) : null,
         pickupDate:       pickupDate ? new Date(pickupDate) : null,
-        estimatedArrival: estimatedArrival ? new Date(estimatedArrival) : null,
         shippingCategory,
         dimensions,
         containerType,
         pickupPlantId,
         driverId,
+        vehicleId,
+        status:           initialStatus,
         clientId,
         createdByAdminId: isAdmin ? req.user!.id : null,
       },
     })
+
+    // Standby shipment → mirror status onto its driver + armada (Tersedia → Standby).
+    if (initialStatus === "STANDBY") {
+      if (driverId) {
+        await prisma.driver.updateMany({
+          where: { id: driverId, status: "ACTIVE" },
+          data:  { status: "STANDBY" },
+        })
+      }
+      if (vehicleId) {
+        await prisma.vehicle.updateMany({
+          where: { id: vehicleId, status: "AVAILABLE" },
+          data:  { status: "STANDBY" },
+        })
+      }
+    }
 
     // Notify the client
     await prisma.notification.create({
@@ -354,7 +377,7 @@ router.patch("/:id/plant-check", authenticate, adminOnly, async (req: AuthReques
     await prisma.adminAuditLog.create({
       data: {
         adminId: req.user!.id,
-        actionType: "UPDATE_SHIPMENT_STATUS" as any,
+        actionType: "UPDATE_STATUS",
         targetTable: "shipments",
         targetRecordId: shipment.id,
         changesSummary: `Completed Plant Check with LKU ${lkuNumber}. Status -> TRANSIT`,
@@ -373,6 +396,10 @@ router.patch("/:id/plant-check", authenticate, adminOnly, async (req: AuthReques
 router.patch("/:id/handover", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
   try {
     const { serahTerimaUrl, handoverNotes } = req.body
+    const existing = await prisma.shipment.findUnique({
+      where:  { id: req.params.id },
+      select: { driverId: true, vehicleId: true },
+    })
     const shipment = await prisma.shipment.update({
       where: { id: req.params.id },
       data: {
@@ -385,10 +412,24 @@ router.patch("/:id/handover", authenticate, adminOnly, async (req: AuthRequest, 
       },
     })
 
+    // Completing a shipment frees its driver + vehicle (mirrors the /status release).
+    if (existing?.vehicleId) {
+      await prisma.vehicle.updateMany({
+        where: { id: existing.vehicleId, status: "IN_USE" },
+        data:  { status: "AVAILABLE" },
+      })
+    }
+    if (existing?.driverId) {
+      await prisma.driver.updateMany({
+        where: { id: existing.driverId, status: "ON_DUTY" },
+        data:  { status: "ACTIVE" },
+      })
+    }
+
     await prisma.adminAuditLog.create({
       data: {
         adminId: req.user!.id,
-        actionType: "UPDATE_SHIPMENT_STATUS" as any,
+        actionType: "UPDATE_STATUS",
         targetTable: "shipments",
         targetRecordId: shipment.id,
         changesSummary: `Completed Handover. Status -> DELIVERED`,
@@ -428,19 +469,21 @@ router.patch("/:id/status", authenticate, adminOnly, async (req: AuthRequest, re
       })
     }
 
-    // Departure guard: block TRANSIT move if the assigned driver is already ON_DUTY elsewhere.
+    // Departure guard: a driver may hold several Ditugaskan shipments (all ON_DUTY), but only
+    // ONE may be in transit at a time. Block the TRANSIT move if the driver already has a
+    // DIFFERENT shipment in transit. (ON_DUTY alone no longer signals a conflict — it starts at Ditugaskan.)
     if (status === "TRANSIT" && existing.driverId) {
-      const driver = await prisma.driver.findUnique({
-        where:  { id: existing.driverId },
-        select: { status: true, fullName: true },
+      const conflict = await prisma.shipment.findFirst({
+        where:  { driverId: existing.driverId, status: "TRANSIT", id: { not: id } },
+        select: { id: true },
       })
-      if (driver?.status === "ON_DUTY") {
-        const conflict = await prisma.shipment.findFirst({
-          where:  { driverId: existing.driverId, status: "TRANSIT" },
-          select: { id: true },
+      if (conflict) {
+        const driver = await prisma.driver.findUnique({
+          where:  { id: existing.driverId },
+          select: { fullName: true },
         })
         return res.status(409).json({
-          message: `${driver.fullName} sedang bertugas di pengiriman ${conflict?.id ?? "lain"}. Selesaikan pengiriman tersebut terlebih dahulu.`,
+          message: `${driver?.fullName ?? "Driver"} sedang bertugas di pengiriman ${conflict.id}. Selesaikan pengiriman tersebut terlebih dahulu.`,
         })
       }
     }
@@ -457,19 +500,29 @@ router.patch("/:id/status", authenticate, adminOnly, async (req: AuthRequest, re
       },
     })
 
-    // Phase ②: Auto-manage driver ON_DUTY status based on shipment lifecycle.
-    if (existing.driverId) {
-      if (status === "TRANSIT") {
-        // ACTIVE → ON_DUTY when shipment departs (guard with status filter for idempotency)
+    // Mirror the shipment status onto its driver + vehicle (armada), 1-to-1.
+    //  Standby              → driver STANDBY,  vehicle STANDBY
+    //  Ditugaskan / Transit → driver ON_DUTY,  vehicle IN_USE (Digunakan)
+    //  Delivered / Cancelled→ driver ACTIVE,   vehicle AVAILABLE (released)
+    // Status-filtered so UNAVAILABLE drivers and MAINTENANCE vehicles are never overridden.
+    const mirror = { STANDBY:  { driverFrom: ["ACTIVE"],            driverTo: "STANDBY", vehFrom: ["AVAILABLE"],          vehTo: "STANDBY"   },
+                     ENGAGE:   { driverFrom: ["ACTIVE", "STANDBY"], driverTo: "ON_DUTY", vehFrom: ["AVAILABLE", "STANDBY"], vehTo: "IN_USE"    },
+                     RELEASE:  { driverFrom: ["ON_DUTY", "STANDBY"], driverTo: "ACTIVE",  vehFrom: ["IN_USE", "STANDBY"],    vehTo: "AVAILABLE" } } as const
+    const m = status === "STANDBY" ? mirror.STANDBY
+            : (status === "DITUGASKAN" || status === "TRANSIT") ? mirror.ENGAGE
+            : (status === "DELIVERED" || status === "CANCELLED") ? mirror.RELEASE
+            : null
+    if (m) {
+      if (existing.driverId) {
         await prisma.driver.updateMany({
-          where: { id: existing.driverId, status: "ACTIVE" },
-          data:  { status: "ON_DUTY" },
+          where: { id: existing.driverId, status: { in: m.driverFrom as any } },
+          data:  { status: m.driverTo as any },
         })
-      } else if (status === "DELIVERED" || status === "CANCELLED") {
-        // ON_DUTY → ACTIVE when shipment completes (UNAVAILABLE drivers are NOT auto-reactivated)
-        await prisma.driver.updateMany({
-          where: { id: existing.driverId, status: "ON_DUTY" },
-          data:  { status: "ACTIVE" },
+      }
+      if (shipment.vehicleId) {
+        await prisma.vehicle.updateMany({
+          where: { id: shipment.vehicleId, status: { in: m.vehFrom as any } },
+          data:  { status: m.vehTo as any },
         })
       }
     }
@@ -503,94 +556,59 @@ router.patch("/:id/status", authenticate, adminOnly, async (req: AuthRequest, re
   }
 })
 
-export default router
-
-// ── PATCH /api/shipments/:id/plant-check ────────────────────
-// Pengurus Pabrik inputs vehicle check, LKU and notes.
-router.patch("/:id/plant-check", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+// ── DELETE /api/shipments/:id ────────────────────────────────
+// Regular admins may only delete a STANDBY shipment; SUPERADMIN may delete any status.
+// Frees the assigned driver + armada and removes tracking events (cascade).
+router.delete("/:id", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
   try {
-    const { vehicleCondition, lkuNumber, pabrikNotes } = req.body
-
+    const id = String(req.params.id)
     const existing = await prisma.shipment.findUnique({
-      where: { id: req.params.id },
-      select: { status: true }
+      where:  { id },
+      select: { status: true, driverId: true, vehicleId: true, invoice: { select: { id: true } } },
     })
-    
-    if (!existing) return res.status(404).json({ message: "Shipment not found." })
+    if (!existing) {
+      return res.status(404).json({ message: "Pengiriman tidak ditemukan." })
+    }
 
-    const shipment = await prisma.shipment.update({
-      where: { id: req.params.id },
-      data: {
-        vehicleCondition,
-        lkuNumber,
-        pabrikNotes,
-        ...(existing.status === "DITUGASKAN" && { status: "TRANSIT" }), // Flow says after Pabrik check, it goes.
-        lastUpdatedByAdminId: req.user!.id
-      }
-    })
+    const isSuperAdmin = req.user!.role === "SUPERADMIN"
+    if (!isSuperAdmin && existing.status !== "STANDBY") {
+      return res.status(403).json({ message: "Hanya pengiriman berstatus Standby yang dapat dihapus." })
+    }
+    if (existing.invoice) {
+      return res.status(409).json({ message: "Pengiriman ini memiliki faktur. Hapus faktur terlebih dahulu." })
+    }
 
-    await prisma.adminAuditLog.create({
-      data: {
-        adminId:        req.user!.id,
-        actionType:     "UPDATE_SHIPMENT",
-        targetTable:    "shipments",
-        targetRecordId: shipment.id,
-        changesSummary: `Pengurus Pabrik plant check completed.`,
-      },
-    })
-
-    res.json({ message: "Plant check completed.", shipment })
-  } catch (err) {
-    console.error(err)
-    res.status(500).json({ message: "Failed to process plant check." })
-  }
-})
-
-// ── PATCH /api/shipments/:id/handover ───────────────────────
-// Kepala Gudang inputs handover form notes and confirms delivery.
-router.patch("/:id/handover", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
-  try {
-    const { serahTerimaUrl, handoverNotes } = req.body
-
-    const existing = await prisma.shipment.findUnique({
-      where: { id: req.params.id },
-      select: { status: true, driverId: true }
-    })
-    
-    if (!existing) return res.status(404).json({ message: "Shipment not found." })
-
-    const shipment = await prisma.shipment.update({
-      where: { id: req.params.id },
-      data: {
-        serahTerimaUrl,
-        handoverNotes,
-        status: "DELIVERED",
-        completionDate: new Date(),
-        currentProgressPercent: 100,
-        lastUpdatedByAdminId: req.user!.id
-      }
-    })
-
+    // Free the pair (Standby/On Duty → Tersedia). Idempotent + status-filtered.
     if (existing.driverId) {
       await prisma.driver.updateMany({
-        where: { id: existing.driverId, status: "ON_DUTY" },
+        where: { id: existing.driverId, status: { in: ["STANDBY", "ON_DUTY"] } },
         data:  { status: "ACTIVE" },
       })
     }
+    if (existing.vehicleId) {
+      await prisma.vehicle.updateMany({
+        where: { id: existing.vehicleId, status: { in: ["STANDBY", "IN_USE"] } },
+        data:  { status: "AVAILABLE" },
+      })
+    }
+
+    await prisma.shipment.delete({ where: { id } })  // ShipmentEvent cascades
 
     await prisma.adminAuditLog.create({
       data: {
         adminId:        req.user!.id,
         actionType:     "UPDATE_SHIPMENT",
         targetTable:    "shipments",
-        targetRecordId: shipment.id,
-        changesSummary: `Kepala Gudang handover completed (DELIVERED).`,
+        targetRecordId: id,
+        changesSummary: `Deleted shipment ${id} (was ${existing.status})`,
       },
     })
 
-    res.json({ message: "Handover completed.", shipment })
+    res.json({ message: "Pengiriman dihapus." })
   } catch (err) {
     console.error(err)
-    res.status(500).json({ message: "Failed to process handover." })
+    res.status(500).json({ message: "Failed to delete shipment." })
   }
 })
+
+export default router

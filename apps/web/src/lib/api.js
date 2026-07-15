@@ -268,6 +268,10 @@ export const shipmentsAPI = {
   /** Admin: get pickup plants */
   getPickupPlants: () =>
     api.get('/api/shipments/pickup-plants'),
+
+  /** Admin: delete a shipment (regular admins: Standby only; SUPERADMIN: any) */
+  remove: (id) =>
+    api.delete(`/api/shipments/${encodeURIComponent(id)}`),
 }
 
 // ─── Tracking API ───────────────────────────────────────────

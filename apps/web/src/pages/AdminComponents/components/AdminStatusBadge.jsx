@@ -2,6 +2,7 @@ export default function AdminStatusBadge({ status, type = 'shipment' }) {
   const configs = {
     shipment: {
       pending:    { label: 'Menunggu',          cls: 'bg-gray-100 text-gray-600 border border-gray-200' },
+      standby:    { label: 'Standby',           cls: 'bg-indigo-50 text-indigo-700 border border-indigo-200' },
       assigned:   { label: 'Ditugaskan',        cls: 'bg-blue-50 text-blue-700 border border-blue-200' },
       processing: { label: 'Diproses',          cls: 'bg-blue-50 text-blue-700 border border-blue-200' },
       in_transit: { label: 'Dalam Perjalanan',  cls: 'bg-amber-50 text-amber-700 border border-amber-200' },
@@ -20,7 +21,8 @@ export default function AdminStatusBadge({ status, type = 'shipment' }) {
     },
     driver: {
       available: { label: 'Tersedia', cls: 'bg-green-50 text-green-700 border border-green-200' },
-      on_duty: { label: 'Bertugas', cls: 'bg-amber-50 text-amber-700 border border-amber-200' },
+      standby: { label: 'Standby', cls: 'bg-indigo-50 text-indigo-700 border border-indigo-200' },
+      on_duty: { label: 'Bertugas', cls: 'bg-blue-50 text-blue-700 border border-blue-200' },
       inactive: { label: 'Tidak Aktif', cls: 'bg-red-50 text-red-700 border border-red-200' },
     },
     user: {

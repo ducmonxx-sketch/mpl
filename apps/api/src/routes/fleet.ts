@@ -45,6 +45,13 @@ router.get("/drivers", authenticate, adminOnly, async (req: AuthRequest, res: Re
             status:      true,
           },
         },
+        // Most-recent active shipment → is this driver currently a substitute (driving a vehicle not their pairing)?
+        shipments: {
+          where:   { status: { in: ["STANDBY", "DITUGASKAN", "TRANSIT"] } },
+          select:  { id: true, status: true, vehicleId: true, vehicle: { select: { primaryDriverId: true, type: true, licensePlate: true } } },
+          orderBy: { createdAt: "desc" },
+          take:    1,
+        },
       },
       orderBy: { fullName: "asc" },
     })
@@ -184,6 +191,13 @@ router.get("/vehicles", authenticate, adminOnly, async (req: AuthRequest, res: R
             status:       true,
             licenseExpiry: true,
           },
+        },
+        // Most-recent active shipment → who is *currently* driving this armada (may be a substitute)
+        shipments: {
+          where:   { status: { in: ["STANDBY", "DITUGASKAN", "TRANSIT"] } },
+          select:  { id: true, status: true, driverId: true, driver: { select: { fullName: true } } },
+          orderBy: { createdAt: "desc" },
+          take:    1,
         },
       },
       orderBy: { type: "asc" },

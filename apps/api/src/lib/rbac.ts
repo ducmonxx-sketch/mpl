@@ -5,8 +5,10 @@
 // raw role strings, so the whole policy lives in one matrix and new gates (including
 // future page/feature-level ones, e.g. "page:clients") slot in without rework.
 //
-// Admin roles (schema enum AdminRole): SUPERADMIN | OPERATIONS | SUPPORT.
-// For now SUPERADMIN = super-admin; OPERATIONS + SUPPORT = regular admin (same rights).
+// Admin roles (schema enum AdminRole): SUPERADMIN | OPERATIONS | SUPPORT |
+// KEPALA_ARMADA | PIC_PABRIK | PIC_GUDANG.
+// SUPERADMIN = super-admin; everyone else is a scoped/regular admin with no elevated
+// permissions here (pipeline roles are gated per-status in the UI, not via this matrix).
 // See RBAC-PLAN.md.
 
 import type { Response, NextFunction } from "express"
@@ -18,9 +20,12 @@ export type Permission =
 
 // Single source of truth: which roles hold which permissions.
 const ROLE_PERMISSIONS: Record<string, Permission[]> = {
-  SUPERADMIN: ["status:override", "admin:manage"],
-  OPERATIONS: [],
-  SUPPORT:    [],
+  SUPERADMIN:    ["status:override", "admin:manage"],
+  OPERATIONS:    [],
+  SUPPORT:       [],
+  KEPALA_ARMADA: [],
+  PIC_PABRIK:    [],
+  PIC_GUDANG:    [],
 }
 
 export function roleHas(role: string | undefined, perm: Permission): boolean {

@@ -1,7 +1,54 @@
 # DEV-PLAN — resume point
 
 > **Resuming?** Read this first, then [RUNBOOK.md](RUNBOOK.md) (sync + audit) and [CLAUDE.md](CLAUDE.md) (scope).
-> Last updated: 2026-07-01. **Latest accurate state is the RUNBOOK Session Log (2026-06-30 + 2026-07-01)** (the "Where we are" section below predates recent work).
+> Last updated: 2026-07-15. **Latest accurate state is the RUNBOOK Session Log (2026-06-30 + 2026-07-01)** (the "Where we are" section below predates recent work).
+
+## ✅ DONE (2026-07-15) — Pipeline roles migration + plant-check/handover bug fixes
+Pulled `main` (friend's agent had added the 3 pipeline roles + AT_PLANT status in `schema.prisma` with **no migration**). Reconciled DB to schema and fixed two bugs in the friend's pipeline routes.
+
+**Migration** — `20260715040528_add_pipeline_roles_plant_fields` (created + applied): `Manufacturer` enum, 3 new `AdminRole` values (`KEPALA_ARMADA`/`PIC_PABRIK`/`PIC_GUDANG`), `AT_PLANT` shipment status, `pickup_plants` table + FK, and 9 new `Shipment` pipeline columns (`shippingCategory`/`dimensions`/`containerType`/`pickupPlantId`/`vehicleCondition`/`lkuNumber`/`pabrikNotes`/`serahTerimaUrl`/`handoverNotes`). Client regenerated, seed re-run (adds 3 role accounts + 7 pickup plants), migrate status clean (13/13).
+
+**`lib/rbac.ts`** — added the 3 new roles to `ROLE_PERMISSIONS` with `[]` (no elevated perms; pipeline roles are gated per-status in the UI, not via this matrix). They were already safe via fall-through; now explicit.
+
+**`routes/shipments.ts` bug fixes:**
+- **Duplicate routes deleted** — `/:id/plant-check` and `/:id/handover` were each defined twice, the second pair *after* `export default router` (dead code; Express used the first registration).
+- **Invalid audit enum → 500** — the live routes wrote `actionType: "UPDATE_SHIPMENT_STATUS" as any`, which isn't in `AuditActionType`. The shipment update committed, then the audit insert threw → client saw a 500 on a change that had actually succeeded. Fixed to `"UPDATE_STATUS"`.
+- **Preserved driver-reset in handover** — on `DELIVERED`, the assigned driver now goes `ON_DUTY → ACTIVE` (locked ON_DUTY spec, context.md §6). This logic only lived in the dead duplicate that was removed; without carrying it over, drivers would stay `ON_DUTY` and trip the departure guard on their next shipment.
+- **Verified live:** plant-check 200, handover 200 + driver freed to ACTIVE; smoke 26/26; typecheck clean (pre-existing friction only).
+
+### ⚠️ Open — plant-check bypasses departure guard + ON_DUTY promotion (NOT fixed; needs friend coordination)
+The live `plant-check` route promotes a shipment straight to `TRANSIT` but **bypasses** the two safeguards the main `/status` route enforces on the same transition:
+1. **Departure guard** — no check that the assigned driver is already `ON_DUTY` on another in-transit shipment (should 409 if so).
+2. **ON_DUTY promotion** — does not flip the driver `ACTIVE → ON_DUTY` on departure, so the driver looks free while actually driving.
+Result: a shipment departing via the PIC_PABRIK plant-check flow leaves the driver's status inconsistent and unguarded. Fixing it means routing plant-check's TRANSIT promotion through the same guard+lifecycle as `/status` (or extracting that logic into a shared helper both call) — a design decision on the friend's pipeline feature, so left for the coordination chat. Same class of concern applies to any other route that sets `TRANSIT`/`DELIVERED`/`CANCELLED` directly.
+
+## ✅ DONE (2026-07-15) — Kepala Armada flow overhaul (STANDBY, status mirror, Tipe Pengiriman, substitute, delete)
+Built the KEPALA_ARMADA pipeline on top of the pulled roles. All admin-scope, uncommitted on `tier1-infra`. Full detail in RUNBOOK Session Log `2026-07-15`.
+
+**New shipment status flow:** `Menunggu (PENDING) → Standby (STANDBY, new) → Ditugaskan → [AT_PLANT] → Dalam Perjalanan (TRANSIT) → Berhasil (DELIVERED) / Dibatalkan (CANCELLED)`.
+- Armada **creates** a shipment (driver+vehicle from the paired dropdown) → starts at **STANDBY** (server-derived by role). Reconfirm (reuses the driver card + **Ganti Driver** checkbox + **Pengganti** badge; substitute swaps driver only, keeps vehicle, list = all ACTIVE drivers) advances **STANDBY → Ditugaskan**, which is where Pengurus Pabrik picks it up.
+- `statusFlow.ts` + frontend `FORWARD_STATUS`/`RAW_STATUS_OPTIONS`/`mapStatus` + filter tabs updated. `rbac.ts` lists the 3 pipeline roles (`[]`).
+
+**Status mirror (1:1 shipment → driver → armada):** Standby→driver+vehicle **STANDBY** (new enum values on both); Ditugaskan/Transit→**ON_DUTY / IN_USE (Digunakan)**; Delivered/Cancelled→**release (Tersedia)**. Centralized in `/status`; create route mirrors on STANDBY; `/handover` frees both. Departure guard rewritten to check for a *different* TRANSIT shipment (ON_DUTY now begins at Ditugaskan, so it no longer signals a conflict by itself).
+
+**Tipe Pengiriman:** table column Layanan→**Tipe Pengiriman** (Unit/Cargo/Container). Per-type create persists all fields, `-` for non-applicable strings. **Unit** → Asal = selected plant label, Tujuan = **"Gudang MPL"**. Detail modal differentiates by type, dropped **Harga** + **Est. Tiba** (and the `price`/`estimatedArrival` DB columns), **Dibuat Oleh** = real creator's fullName. Kepala Armada list shows only PENDING+STANDBY; detail view uniform across all admin roles.
+
+**Fleet/UI:** `AdminModal` portaled to `<body>` (top-layer + backdrop blur, fixes trapped z-index on create/status modals app-wide); create-form drivers = paired **and** armada Tersedia; pair modal excludes already-paired drivers; **substitute ("Pengganti")** shown in Armada "Driver Utama" column + Driver page (via active-shipment includes on `/fleet/vehicles` + `/fleet/drivers`); driver On-Duty badge removed on Armada; **Bertugas** badge → blue (Standby indigo); **delete shipment** (regular admins: STANDBY only; SUPERADMIN: any status — frees the pair, blocks if invoice exists); Edit button in the driver detail panel.
+
+**Bug fixes (friend's pipeline routes):** removed duplicate `plant-check`/`handover` routes defined after `export default router`; fixed the live copies' invalid audit enum (`"UPDATE_SHIPMENT_STATUS" as any` → `"UPDATE_STATUS"`, was 500-ing) and preserved the driver-release the dead copy had.
+
+**Migrations (4):** `add_pipeline_roles_plant_fields`, `add_standby_status`, `drop_shipment_price_eta`, `add_driver_vehicle_standby`. **Seed rewritten:** 5 drivers (3 paired 1:1 to 3 clean vehicles, 2 spare), no shipments. **Verified:** web build ✓, API typecheck no-new-errors, smoke 26/26, full lifecycle + substitute + delete exercised live.
+
+### 🚧 Next (this arc) — not yet built
+1. **Full invoice removal** (user: "drop all of invoice… not included in this project") — Invoice model + migration + `invoices.ts` + `InvoicesSection.jsx` + sidebar + seed/smoke refs + `api.js`. Deferred to its own step.
+2. **Pengurus Pabrik flow** (the DITUGASKAN → plant-check → TRANSIT leg) — next role after armada.
+3. **Admin-created → Menunggu → armada pickup** path (future; for now only armada creates).
+4. Leftover: old KEPALA_ARMADA PENDING assign-modal branch is dead for armada (OPERATIONS still uses it) — clean up when convenient. Plant-check departure-guard/ON_DUTY gap (see ⚠️ Open above).
+
+### 🔵 Client-side follow-ups (do NOT fix client here — note only)
+- Dropping `estimatedArrival` blanks the ETA on the shared `TrackingSection` (client tracking). It was already non-persisting (`/status` ignores it). Did not modify TrackingSection.
+- `InvoicesSection` reads `shipment.price` (now dropped) → subtotal prefill empty (moot once invoices are removed).
+- New STANDBY/DITUGASKAN/AT_PLANT statuses + pipeline roles are client-visible when the client dashboard pass happens.
 
 ## ✅ DONE (2026-06-30) — Shipment status-change UX rework
 **Implemented** (original frontend roadmap item #8 "Apply-status button + confirm box on shipment status"). Decisions used: **SUPERADMIN = all-except-current**; **selectable option buttons**. See RUNBOOK Session Log `2026-06-30 (cont.)`. Spec below kept as a record.

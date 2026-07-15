@@ -37,6 +37,7 @@ const mapDriverStatus = (apiStatus) => {
   if (!apiStatus) return 'inactive'
   const s = apiStatus.toUpperCase()
   if (s === 'ACTIVE')      return 'available'
+  if (s === 'STANDBY')     return 'standby'
   if (s === 'ON_DUTY')     return 'on_duty'
   if (s === 'UNAVAILABLE') return 'inactive'
   return apiStatus.toLowerCase()
@@ -71,7 +72,11 @@ export default function DriversSection({ userRole }) {
     if (!silent) setLoading(true)
     try {
       const data = await fleetAPI.getDrivers()
-      const mapped = (data.drivers || []).map((d) => ({
+      const mapped = (data.drivers || []).map((d) => {
+        // Substitute = currently driving a vehicle on an active shipment that isn't their 1:1 pairing.
+        const activeShipment = (d.shipments && d.shipments[0]) || null
+        const isSubstitute = !!(activeShipment && activeShipment.vehicle && activeShipment.vehicle.primaryDriverId !== d.id)
+        return {
         id: d.id,
         name: d.fullName || '-',
         phone: d.phoneNumber || '-',
@@ -83,7 +88,10 @@ export default function DriversSection({ userRole }) {
         rawStatus: d.status,
         assignments: d._count?.shipments ?? 0,
         primaryVehicle: d.primaryVehicle || null,
-      }))
+        isSubstitute,
+        substituteVehicle: isSubstitute && activeShipment.vehicle ? `${activeShipment.vehicle.type} • ${activeShipment.vehicle.licensePlate}` : null,
+      }
+      })
       setDrivers(mapped)
     } catch (err) {
       console.error('Failed to fetch drivers:', err)
@@ -218,6 +226,7 @@ export default function DriversSection({ userRole }) {
   const filters = [
     { id: 'all', label: 'Semua' },
     { id: 'available', label: 'Tersedia' },
+    { id: 'standby', label: 'Standby' },
     { id: 'on_duty', label: 'On Duty' },
     { id: 'inactive', label: 'Tidak Aktif' },
   ]
@@ -245,6 +254,11 @@ export default function DriversSection({ userRole }) {
         return (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span className="adm-table__cell-main">{v}</span>
+            {row.isSubstitute && (
+              <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '1px 6px', borderRadius: '99px', background: 'rgba(245,158,11,0.15)', color: '#b45309', border: '1px solid rgba(245,158,11,0.35)' }} title={row.substituteVehicle ? `Pengganti di ${row.substituteVehicle}` : 'Driver pengganti'}>
+                Pengganti
+              </span>
+            )}
             {warning && (
               <span className={`adm-expiry-badge adm-expiry-badge--${warning.status}`} title={warning.label}>
                 <Icon name={warning.status === 'expired' ? 'error' : 'warning'} size={12} />
@@ -555,6 +569,16 @@ export default function DriversSection({ userRole }) {
                 )}
               </div>
 
+            </div>
+
+            {/* Footer action */}
+            <div className="p-6 border-t border-gray-100 bg-gray-50/50">
+              <button
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-dash-secondary hover:brightness-110 text-dash-primary font-bold rounded-xl shadow-sm transition-all"
+                onClick={() => { const d = selectedDriver; setSelectedDriver(null); handleOpenEdit(d) }}
+              >
+                <Icon name="edit" size={18} /> Edit Driver
+              </button>
             </div>
           </div>
         </div>,

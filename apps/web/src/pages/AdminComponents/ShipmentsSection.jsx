@@ -26,6 +26,7 @@ export const STATUS_OPTIONS = ['pending', 'assigned', 'in_transit', 'delivered',
 // Statuses offered as targets in the SUPERADMIN picker (FAILED omitted — legacy only).
 const RAW_STATUS_OPTIONS = [
   { value: 'PENDING',     label: 'Menunggu' },
+  { value: 'STANDBY',     label: 'Standby' },
   { value: 'DITUGASKAN',  label: 'Ditugaskan' },
   { value: 'TRANSIT',     label: 'Dalam Perjalanan' },
   { value: 'DELIVERED',   label: 'Terkirim' },
@@ -34,7 +35,8 @@ const RAW_STATUS_OPTIONS = [
 
 // Forward transitions for regular admins — mirrors statusFlow.ts.
 const FORWARD_STATUS = {
-  PENDING:    ['DITUGASKAN'],
+  PENDING:    ['STANDBY'],
+  STANDBY:    ['DITUGASKAN'],
   DITUGASKAN: ['TRANSIT'],
   TRANSIT:    ['DELIVERED', 'CANCELLED'],
   DELIVERED:  [],
@@ -51,6 +53,7 @@ const availableStatusOptions = (role, from) =>
 const mapStatus = (s) => {
   const map = {
     PENDING:    'pending',
+    STANDBY:    'standby',
     DITUGASKAN: 'assigned',
     TRANSIT:    'in_transit',
     DELIVERED:  'delivered',
@@ -67,15 +70,6 @@ const formatDate = (raw) => {
   } catch {
     return '-'
   }
-}
-
-const formatRupiahInput = (value) => {
-  const num = String(value).replace(/\D/g, '')
-  return num.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-}
-
-const parseRupiahInput = (formatted) => {
-  return formatted.replace(/\D/g, '')
 }
 
 // ── Expiry helpers ────────────────────────────────────────────
@@ -166,6 +160,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   // DITUGASKAN reconfirm UI
   const [gantiDriverChecked, setGantiDriverChecked] = useState(false)
   const [newDriverVehicleId, setNewDriverVehicleId] = useState('')
+  const [newDriverId, setNewDriverId]               = useState('') // STANDBY reconfirm: substitute driver (keeps vehicle)
   const [tandaiTidakTersedia, setTandaiTidakTersedia] = useState(true)
 
   // ── Role-specific UI states ─────────────────────────────────
@@ -201,7 +196,6 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   const [formPackageType, setFormPackageType]         = useState('')
   const [formUnits, setFormUnits]                     = useState('')
   const [formWeight, setFormWeight]                   = useState('')
-  const [formPrice, setFormPrice]                     = useState('')
   const [formNotes, setFormNotes]                     = useState('')
   
   // Extra fields for KEPALA_ARMADA
@@ -226,6 +220,14 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   // Vehicles that have an ACTIVE primary driver (available for assignment)
   const assignableVehicles = fleetVehicles.filter(v => v.primaryDriver && v.primaryDriver.status === 'ACTIVE')
 
+  // Drivers paired 1:1 with a vehicle (getDrivers includes primaryVehicle) — only these are selectable in the Armada form
+  const pairedDrivers = availableDrivers.filter(d => d.primaryVehicle)
+
+  // A driver+armada pair is selectable only while its armada is Tersedia (AVAILABLE).
+  // Once engaged (Standby/Ditugaskan/Transit) the vehicle leaves AVAILABLE, so the pair drops
+  // out of the list until the shipment completes and the armada returns to Tersedia.
+  const selectableCreateDrivers = pairedDrivers.filter(d => d.primaryVehicle?.status === 'AVAILABLE')
+
   // Current vehicle of the open shipment (for DITUGASKAN read-only card)
   const currentShipmentVehicle = selectedShipment
     ? fleetVehicles.find(v => v.id === selectedShipment.vehicleId)
@@ -243,10 +245,10 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   const canUpdateStatus = selectedShipment && (() => {
     if (isSuperAdmin) return statusOptions.length > 0;
     const rs = selectedShipment.rawStatus;
-    if (role === 'KEPALA_ARMADA') return rs === 'PENDING';
+    if (role === 'KEPALA_ARMADA') return rs === 'STANDBY';
     if (role === 'PIC_PABRIK') return rs === 'DITUGASKAN' || rs === 'AT_PLANT';
     if (role === 'PIC_GUDANG') return rs === 'TRANSIT';
-    return ['PENDING', 'DITUGASKAN', 'AT_PLANT', 'TRANSIT'].includes(rs);
+    return ['PENDING', 'STANDBY', 'DITUGASKAN', 'AT_PLANT', 'TRANSIT'].includes(rs);
   })();
 
   // ── Data fetching ─────────────────────────────────────────────
@@ -259,14 +261,16 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
         clientId:              s.clientId,
         client:                s.client?.companyName || s.client?.fullName || '-',
         serviceType:           s.serviceLevel || 'Darat',
+        shippingCategory:      s.shippingCategory || '-',
         originCity:            s.originLocation,
         destinationCity:       s.destinationLocation,
         pickupDate:            formatDate(s.pickupDate || s.createdAt),
-        estimatedArrival:      s.estimatedArrival ? formatDate(s.estimatedArrival) : '-',
         cargoDescription:      s.packageType,
         weightKg:              s.weightKg,
         units:                 s.units || '-',
-        price:                 s.price ? Number(s.price) : null,
+        dimensions:            s.dimensions || '-',
+        containerType:         s.containerType || '-',
+        pickupPlantName:       s.pickupPlant ? `${s.pickupPlant.manufacturer} - ${s.pickupPlant.name}${s.pickupPlant.code ? ` (${s.pickupPlant.code})` : ''}` : '-',
         driverId:              s.driverId,
         driverName:            s.driver?.fullName || null,
         vehicleId:             s.vehicleId,
@@ -275,7 +279,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
         status:                mapStatus(s.status),
         rawStatus:             s.status,
         notes:                 s.specialNotes || '',
-        createdBy:             'Admin',
+        createdBy:             s.createdByAdmin?.fullName || s.client?.fullName || '-',
       }))
       setSHIPMENTS(mapped)
     } catch (err) {
@@ -381,7 +385,6 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     setFormPackageType('')
     setFormUnits('')
     setFormWeight('')
-    setFormPrice('')
     setFormNotes('')
     setFormDriverId('')
     setFormPickupPlantId('')
@@ -453,10 +456,6 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
         showToast('Harap isi Units / Pcs dengan nilai lebih dari 0.', 'error')
         return
       }
-      if (!formPrice || Number(formPrice) <= 0) {
-        showToast('Harap isi Total Invoice Price dengan nilai lebih dari 0.', 'error')
-        return
-      }
     }
 
     const finalOrigin      = formOriginPoint.trim()      ? `${formOriginPoint.trim()} - ${formOrigin.trim()}`      : formOrigin.trim()
@@ -465,6 +464,31 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     // Auto map packageType and serviceLevel for KEPALA_ARMADA if empty
     const pType = role === 'KEPALA_ARMADA' ? (formShippingCategory === 'Unit' ? 'Kendaraan' : (formShippingCategory === 'Cargo' ? 'Kargo' : 'Kontainer')) : formPackageType;
 
+    // Armada shipments carry the paired driver's vehicle from creation (→ backend starts them at STANDBY).
+    const armadaVehicleId = role === 'KEPALA_ARMADA'
+      ? availableDrivers.find(d => d.id === formDriverId)?.primaryVehicle?.id
+      : undefined
+
+    // Per-type fields. Non-applicable string fields are persisted as "-".
+    let originLocation      = finalOrigin || '-'
+    let destinationLocation = finalDestination || '-'
+    let dimensions          = '-'
+    let containerType       = '-'
+    let pickupPlantId        // FK — stays undefined (null) when not a Unit shipment
+
+    if (role === 'KEPALA_ARMADA') {
+      if (formShippingCategory === 'Unit') {
+        const plant = pickupPlants.find(p => p.id === formPickupPlantId)
+        originLocation      = plant ? `${plant.manufacturer} - ${plant.name}${plant.code ? ` (${plant.code})` : ''}` : '-'
+        destinationLocation = 'Gudang MPL'
+        pickupPlantId       = formPickupPlantId
+      } else if (formShippingCategory === 'Cargo') {
+        dimensions = formDimensions || '-'
+      } else if (formShippingCategory === 'Container') {
+        containerType = formContainerType || '-'
+      }
+    }
+
     try {
       await shipmentsAPI.create({
         clientId:            formClientId,
@@ -472,16 +496,16 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
         weightKg:            Number(formWeight) || 0,
         units:               formUnits ? Number(formUnits) : null,
         serviceLevel:        formService,
-        originLocation:      finalOrigin || '-',
-        destinationLocation: finalDestination || '-',
+        originLocation,
+        destinationLocation,
         specialNotes:        formNotes || null,
         pickupDate:          formPickupDate ? new Date(formPickupDate).toISOString() : null,
-        price:               formPrice ? Number(formPrice) : null,
         shippingCategory:    role === 'KEPALA_ARMADA' ? formShippingCategory : null,
         driverId:            role === 'KEPALA_ARMADA' ? formDriverId : undefined,
-        pickupPlantId:       role === 'KEPALA_ARMADA' && formShippingCategory === 'Unit' ? formPickupPlantId : undefined,
-        dimensions:          role === 'KEPALA_ARMADA' && formShippingCategory === 'Cargo' ? formDimensions : undefined,
-        containerType:       role === 'KEPALA_ARMADA' && formShippingCategory === 'Container' ? formContainerType : undefined,
+        vehicleId:           armadaVehicleId,
+        pickupPlantId,
+        dimensions:          role === 'KEPALA_ARMADA' ? dimensions : undefined,
+        containerType:       role === 'KEPALA_ARMADA' ? containerType : undefined,
       })
       showToast('Pengiriman baru berhasil dibuat!', 'success')
       setShowCreateModal(false)
@@ -543,6 +567,23 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     }
   }
 
+  // ── Delete shipment ───────────────────────────────────────────
+  // Regular admins may delete only Standby shipments; SUPERADMIN may delete any status.
+  const canDeleteShipment = selectedShipment && (isSuperAdmin || selectedShipment.rawStatus === 'STANDBY')
+
+  const handleDeleteShipment = async () => {
+    if (!selectedShipment) return
+    if (!window.confirm(`Hapus pengiriman ${selectedShipment.id}? Tindakan ini tidak dapat dibatalkan.`)) return
+    try {
+      await shipmentsAPI.remove(selectedShipment.id)
+      showToast('Pengiriman dihapus.', 'success')
+      setSelectedShipment(null)
+      fetchShipments({ silent: true })
+    } catch (err) {
+      showToast(err.message || 'Gagal menghapus pengiriman.', 'error')
+    }
+  }
+
   // ── Update Status modal ───────────────────────────────────────
   const resetModalState = () => {
     setPendingStatus(null)
@@ -551,6 +592,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     setLinkedShipmentId('')
     setGantiDriverChecked(false)
     setNewDriverVehicleId('')
+    setNewDriverId('')
     setTandaiTidakTersedia(true)
     setAssignPickupPlantId('')
     setAssignPickupDate('')
@@ -568,6 +610,10 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     if (rawStatus === 'PENDING' || rawStatus === 'DITUGASKAN') {
       await fetchFleetVehicles()
     }
+    // STANDBY reconfirm needs the current vehicle card (fleetVehicles) + the substitute driver list (availableDrivers)
+    if (rawStatus === 'STANDBY') {
+      await Promise.all([fetchFleetVehicles(), fetchFleet()])
+    }
   }
 
   const handleConfirmStatus = async () => {
@@ -575,6 +621,33 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     const { rawStatus, id, driverId, vehicleId } = selectedShipment
 
     if (isRegularAdmin) {
+      // ── KEPALA_ARMADA reconfirm driver availability (STANDBY → DITUGASKAN) ──
+      if (role === 'KEPALA_ARMADA' && rawStatus === 'STANDBY') {
+        try {
+          if (gantiDriverChecked) {
+            if (!newDriverId) {
+              showToast('Pilih driver pengganti terlebih dahulu.', 'error')
+              return
+            }
+            // Substitute: swap the driver only, keep the vehicle (new driver ≠ vehicle primary → Pengganti)
+            await shipmentsAPI.assign(id, { driverId: newDriverId, vehicleId })
+            if (tandaiTidakTersedia && driverId) {
+              await fleetAPI.updateDriver(driverId, { status: 'UNAVAILABLE' })
+            }
+          }
+          const ok = await handleStatusUpdate('DITUGASKAN')
+          if (ok) {
+            showToast('Driver dikonfirmasi! Status → Ditugaskan.', 'success')
+            setShowStatusModal(false)
+            resetModalState()
+            fetchShipments({ silent: true })
+          }
+        } catch (err) {
+          showToast(err.message || 'Gagal mengonfirmasi driver.', 'error')
+        }
+        return
+      }
+
       if (role === 'KEPALA_ARMADA' && rawStatus === 'PENDING') {
         if (!selectedVehicleId) {
           showToast('Pilih driver & kendaraan terlebih dahulu.', 'error')
@@ -685,6 +758,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   // Modal title / subtitle / submit label
   const getModalTitle = () => {
     if (!selectedShipment || isSuperAdmin) return 'Update Status Pengiriman'
+    if (role === 'KEPALA_ARMADA' && selectedShipment.rawStatus === 'STANDBY') return 'Konfirmasi Ketersediaan Driver'
     if (role === 'KEPALA_ARMADA' && selectedShipment.rawStatus === 'PENDING') return 'Tugaskan Driver & Kendaraan'
     if (role === 'PIC_PABRIK' && (selectedShipment.rawStatus === 'DITUGASKAN' || selectedShipment.rawStatus === 'AT_PLANT')) return 'Pengecekan Kendaraan (Pabrik)'
     if (role === 'PIC_GUDANG' && selectedShipment.rawStatus === 'TRANSIT') return 'Serah Terima (Gudang)'
@@ -699,7 +773,8 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     if (!selectedShipment) return ''
     const sid = selectedShipment.id.startsWith('#') ? selectedShipment.id : `#${selectedShipment.id}`
     if (isSuperAdmin) return `${sid} — pilih status baru`
-    
+
+    if (role === 'KEPALA_ARMADA' && selectedShipment.rawStatus === 'STANDBY') return `${sid} — konfirmasi driver & armada sebelum ditugaskan`
     if (role === 'KEPALA_ARMADA' && selectedShipment.rawStatus === 'PENDING') return `${sid} — pilih driver, armada & pabrik`
     if (role === 'PIC_PABRIK' && (selectedShipment.rawStatus === 'DITUGASKAN' || selectedShipment.rawStatus === 'AT_PLANT')) return `${sid} — lengkapi LKU dan cek kondisi`
     if (role === 'PIC_GUDANG' && selectedShipment.rawStatus === 'TRANSIT') return `${sid} — upload bukti serah terima`
@@ -713,6 +788,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
 
   const getSubmitLabel = () => {
     if (!selectedShipment || isSuperAdmin) return 'Konfirmasi'
+    if (role === 'KEPALA_ARMADA' && selectedShipment.rawStatus === 'STANDBY') return 'Konfirmasi & Tugaskan'
     if (role === 'KEPALA_ARMADA' && selectedShipment.rawStatus === 'PENDING') return 'Tugaskan & Simpan'
     if (role === 'PIC_PABRIK' && (selectedShipment.rawStatus === 'DITUGASKAN' || selectedShipment.rawStatus === 'AT_PLANT')) return 'Selesaikan Pengecekan'
     if (role === 'PIC_GUDANG' && selectedShipment.rawStatus === 'TRANSIT') return 'Konfirmasi Serah Terima'
@@ -729,6 +805,102 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     const { rawStatus } = selectedShipment
 
     if (isRegularAdmin) {
+      // ── KEPALA_ARMADA reconfirm driver availability (STANDBY) ──
+      if (role === 'KEPALA_ARMADA' && rawStatus === 'STANDBY') {
+        const substituteDrivers = availableDrivers.filter(d => d.status === 'ACTIVE' && d.id !== selectedShipment.driverId)
+        const isSubstitute = gantiDriverChecked && !!newDriverId && newDriverId !== selectedShipment.driverId
+        return (
+          <div className="flex flex-col gap-5">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-gray-500">Status saat ini:</span>
+              <AdminStatusBadge status="standby" type="shipment" />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <span className="text-sm font-bold text-gray-900">Driver &amp; Armada Saat Ini</span>
+              {modalLoading ? (
+                <div className="flex items-center gap-2 p-4 text-gray-400">
+                  <Icon name="sync" size={18} className="animate-spin" />
+                  <span className="text-xs">Memuat...</span>
+                </div>
+              ) : currentShipmentVehicle ? (
+                <DriverVehicleCard vehicle={currentShipmentVehicle} selected={false} onClick={undefined} />
+              ) : (
+                <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-600">
+                  {selectedShipment.driverName || 'Driver'} — {selectedShipment.vehicleName || 'Kendaraan'}
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-3 pt-3 border-t border-gray-100">
+              <label className="flex items-center gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={gantiDriverChecked}
+                  onChange={e => { setGantiDriverChecked(e.target.checked); setNewDriverId('') }}
+                  className="w-4 h-4 rounded accent-[#fec330]"
+                />
+                <span className="text-sm font-bold text-gray-700">Ganti Driver (driver utama tidak tersedia)</span>
+              </label>
+
+              {gantiDriverChecked && (
+                <div className="flex flex-col gap-3 ml-2">
+                  <p className="text-xs text-gray-500">Driver pengganti tetap memakai armada yang sama. Driver akan ditandai sebagai <span className="font-bold">Pengganti</span>.</p>
+                  {substituteDrivers.length === 0 ? (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+                      Tidak ada driver aktif lain yang tersedia.
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-2 max-h-56 overflow-y-auto custom-scrollbar pr-1">
+                      {substituteDrivers.map(d => {
+                        const chosen = newDriverId === d.id
+                        return (
+                          <label
+                            key={d.id}
+                            className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${
+                              chosen ? 'border-dash-secondary bg-dash-secondary/10' : 'border-gray-200 hover:border-dash-secondary/50 bg-white'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="substituteDriver"
+                              value={d.id}
+                              checked={chosen}
+                              onChange={() => setNewDriverId(d.id)}
+                              className="accent-dash-secondary"
+                            />
+                            <div className="flex-1 text-sm">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-dash-primary">{d.fullName}</span>
+                                {chosen && (
+                                  <span className="px-2 py-0.5 rounded-full text-[0.6rem] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 border border-amber-200">Pengganti</span>
+                                )}
+                              </div>
+                              <p className="text-xs text-gray-500">{d.phoneNumber || '-'} · SIM {d.licenseType || '-'}</p>
+                              <ExpiryLabel date={d.licenseExpiry} label="SIM" />
+                            </div>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  <label className="flex items-center gap-2.5 cursor-pointer mt-1">
+                    <input
+                      type="checkbox"
+                      checked={tandaiTidakTersedia}
+                      onChange={e => setTandaiTidakTersedia(e.target.checked)}
+                      className="w-4 h-4 rounded accent-[#fec330]"
+                    />
+                    <span className="text-sm text-gray-700">Tandai driver lama tidak tersedia</span>
+                  </label>
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      }
+
       // ── KEPALA_ARMADA (or Fallback PENDING) ─────────────────
       if (rawStatus === 'PENDING') {
         return (
@@ -1075,7 +1247,11 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
       matchViewMode = s.pickupDate === formatDate(new Date())
     }
 
-    return matchStatus && matchClient && matchService && matchSearch && matchViewMode
+    // Kepala Armada only sees shipments still in their hands (Menunggu + Standby);
+    // once Ditugaskan they move to Pengurus Pabrik and drop off the armada list.
+    const matchRoleVisibility = role !== 'KEPALA_ARMADA' || ['PENDING', 'STANDBY'].includes(s.rawStatus)
+
+    return matchStatus && matchClient && matchService && matchSearch && matchViewMode && matchRoleVisibility
   })
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE))
@@ -1084,6 +1260,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   const filters = [
     { id: 'all',        label: 'Semua' },
     { id: 'pending',    label: 'Menunggu' },
+    { id: 'standby',    label: 'Standby' },
     { id: 'assigned',   label: 'Ditugaskan' },
     { id: 'in_transit', label: 'Dalam Perjalanan' },
     { id: 'delivered',  label: 'Terkirim' },
@@ -1098,7 +1275,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
       render: (v) => <span className="adm-table__cell-main">{v}</span>,
     },
     { key: 'client', label: 'Klien' },
-    { key: 'serviceType', label: 'Layanan', render: (v) => SERVICE_LABELS[v] || v },
+    { key: 'shippingCategory', label: 'Tipe Pengiriman', render: (v) => v || '-' },
     { key: 'destinationCity', label: 'Tujuan' },
     {
       key: 'status',
@@ -1341,6 +1518,15 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
                     Lacak Penuh
                   </button>
                 )}
+                {canDeleteShipment && (
+                  <button
+                    className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
+                    onClick={handleDeleteShipment}
+                    title="Hapus pengiriman"
+                  >
+                    <Icon name="delete" size={14} /> Hapus
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1367,6 +1553,10 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
                   <Icon name="route" size={18} className="text-gray-400" /> Rute Pengiriman
                 </h4>
                 <div className="grid grid-cols-3 gap-2">
+                  <span className="text-sm text-gray-500 font-medium">Tipe Pengiriman</span>
+                  <span className="text-sm font-bold text-gray-900 col-span-2">{selectedShipment.shippingCategory}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
                   <span className="text-sm text-gray-500 font-medium">Asal</span>
                   <span className="text-sm font-bold text-gray-900 col-span-2">{selectedShipment.originCity}</span>
                 </div>
@@ -1374,13 +1564,21 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
                   <span className="text-sm text-gray-500 font-medium">Tujuan</span>
                   <span className="text-sm font-bold text-gray-900 col-span-2">{selectedShipment.destinationCity}</span>
                 </div>
+                {selectedShipment.shippingCategory === 'Cargo' && (
+                  <div className="grid grid-cols-3 gap-2">
+                    <span className="text-sm text-gray-500 font-medium">Dimensi</span>
+                    <span className="text-sm font-bold text-gray-900 col-span-2">{selectedShipment.dimensions}</span>
+                  </div>
+                )}
+                {selectedShipment.shippingCategory === 'Container' && (
+                  <div className="grid grid-cols-3 gap-2">
+                    <span className="text-sm text-gray-500 font-medium">Tipe Container</span>
+                    <span className="text-sm font-bold text-gray-900 col-span-2">{selectedShipment.containerType}</span>
+                  </div>
+                )}
                 <div className="grid grid-cols-3 gap-2">
                   <span className="text-sm text-gray-500 font-medium">Pickup</span>
                   <span className="text-sm font-bold text-gray-900 col-span-2">{selectedShipment.pickupDate}</span>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <span className="text-sm text-gray-500 font-medium">Est. Tiba</span>
-                  <span className="text-sm font-bold text-gray-900 col-span-2">{selectedShipment.estimatedArrival}</span>
                 </div>
               </div>
 
@@ -1463,20 +1661,6 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
                 )}
               </div>
 
-              {/* Harga */}
-              <div className="flex flex-col gap-3">
-                <h4 className="flex items-center gap-2 text-sm font-bold text-gray-900 border-b border-gray-100 pb-2">
-                  <Icon name="payments" size={18} className="text-gray-400" /> Harga
-                </h4>
-                <div className="grid grid-cols-3 gap-2">
-                  <span className="text-sm text-gray-500 font-medium">Invoice</span>
-                  <span className="text-sm font-black text-green-700 col-span-2">
-                    {selectedShipment.price !== null && selectedShipment.price !== undefined
-                      ? 'Rp ' + Number(selectedShipment.price).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                      : '-'}
-                  </span>
-                </div>
-              </div>
             </div>
           </div>
         </>,
@@ -1572,8 +1756,10 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
                       className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-white"
                     >
                       <option value="">-- Pilih Driver --</option>
-                      {availableDrivers.map(d => (
-                        <option key={d.id} value={d.id}>{d.fullName}</option>
+                      {selectableCreateDrivers.map(d => (
+                        <option key={d.id} value={d.id}>
+                          {d.fullName}{d.primaryVehicle ? ` — ${d.primaryVehicle.type} • ${d.primaryVehicle.licensePlate}` : ''}
+                        </option>
                       ))}
                     </select>
                   </AdminFormField>
@@ -1713,7 +1899,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
 
                 <div className="bg-gray-50/50 p-5 border border-gray-200 rounded-2xl flex flex-col gap-4">
                   <h4 className="text-sm font-bold text-gray-900 border-b border-gray-200 pb-2 flex items-center gap-2">
-                    <Icon name="inventory_2" size={18} className="text-gray-400" /> Detail Muatan &amp; Harga
+                    <Icon name="inventory_2" size={18} className="text-gray-400" /> Detail Muatan
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <AdminFormField label="Deskripsi Barang" required fullWidth>
@@ -1727,14 +1913,6 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
                     <AdminFormField label="Berat (kg)">
                       <input type="number" min="0" placeholder="0" value={formWeight} onChange={e => setFormWeight(e.target.value)}
                         className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white" />
-                    </AdminFormField>
-                  </div>
-                  <div className="p-5 bg-amber-50/50 border-2 border-amber-200 rounded-2xl my-2">
-                    <AdminFormField label="Total Invoice Price (Jumlah Harga Invoice)" required>
-                      <input type="text" placeholder="Masukkan total harga invoice (Cth: 5,000,000)"
-                        value={formPrice ? 'Rp. ' + formatRupiahInput(formPrice) : ''}
-                        onChange={e => setFormPrice(parseRupiahInput(e.target.value))} required
-                        className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-[#002442] focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-white" />
                     </AdminFormField>
                   </div>
                   <AdminFormField label="Catatan Tambahan" fullWidth>

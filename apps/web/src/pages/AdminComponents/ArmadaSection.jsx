@@ -37,6 +37,7 @@ const getExpiryStatus = (dateStr) => {
 
 const VEHICLE_STATUS_DISPLAY = {
   AVAILABLE: 'Tersedia',
+  STANDBY: 'Standby',
   IN_USE: 'Digunakan',
   MAINTENANCE: 'Perawatan',
 }
@@ -48,6 +49,7 @@ const mapVehicleStatus = (apiStatus) => {
 
 const VEHICLE_STATUS_BADGE_MAP = {
   AVAILABLE: 'available',
+  STANDBY: 'standby',
   IN_USE: 'on_duty',
   MAINTENANCE: 'inactive',
 }
@@ -110,11 +112,18 @@ export default function ArmadaSection({ userRole }) {
   const [unpairVehicle, setUnpairVehicle] = useState(null)
   const [unpairing, setUnpairing] = useState(false)
 
+  // Drivers free to pair: not already the primary driver of any vehicle (excludes UNAVAILABLE — already filtered on fetch)
+  const unpairedDrivers = availableDrivers.filter(d => !vehicles.some(v => v.primaryDriver?.id === d.id))
+
   const fetchVehicles = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true)
     try {
       const data = await fleetAPI.getVehicles()
-      const mapped = (data.vehicles || data || []).map((v) => ({
+      const mapped = (data.vehicles || data || []).map((v) => {
+        // Who is currently driving this armada? Its most-recent active shipment's driver.
+        const activeShipment = (v.shipments && v.shipments[0]) || null
+        const isSubstitute = !!(activeShipment && activeShipment.driverId && activeShipment.driverId !== (v.primaryDriver?.id || null))
+        return {
         id: v.id,
         type: v.type || '-',
         licensePlate: v.licensePlate || '-',
@@ -133,7 +142,10 @@ export default function ArmadaSection({ userRole }) {
         rawServiceDate: v.serviceDate,
         assignments: v._count?.shipments ?? 0,
         primaryDriver: v.primaryDriver || null,
-      }))
+        activeDriverName: activeShipment?.driver?.fullName || null,
+        isSubstitute,
+      }
+      })
       setVehicles(mapped)
     } catch (err) {
       console.error('Failed to fetch vehicles:', err)
@@ -444,6 +456,7 @@ export default function ArmadaSection({ userRole }) {
   const filters = [
     { id: 'all', label: 'Semua' },
     { id: 'AVAILABLE', label: 'Tersedia' },
+    { id: 'STANDBY', label: 'Standby' },
     { id: 'IN_USE', label: 'Digunakan' },
     { id: 'MAINTENANCE', label: 'Perawatan' },
   ]
@@ -494,12 +507,16 @@ export default function ArmadaSection({ userRole }) {
             background:
               v === 'AVAILABLE'
                 ? 'rgba(34,197,94,0.12)'
+                : v === 'STANDBY'
+                ? 'rgba(99,102,241,0.12)'
                 : v === 'IN_USE'
                 ? 'rgba(59,130,246,0.12)'
                 : 'rgba(239,68,68,0.12)',
             color:
               v === 'AVAILABLE'
                 ? '#16a34a'
+                : v === 'STANDBY'
+                ? '#4f46e5'
                 : v === 'IN_USE'
                 ? '#2563eb'
                 : '#dc2626',
@@ -566,15 +583,16 @@ export default function ArmadaSection({ userRole }) {
     {
       key: 'primaryDriver',
       label: 'Driver Utama',
-      render: (v) => {
+      render: (v, row) => {
         if (!v) return <span className="text-gray-400 text-xs italic">Belum dipasangkan</span>
-        const isOnDuty = v.status === 'ON_DUTY'
+        // Show the driver actually assigned to the active shipment — a substitute if it isn't the 1:1 primary.
+        const name = row.isSubstitute ? row.activeDriverName : v.fullName
         return (
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span className="adm-table__cell-main">{v.fullName}</span>
-            {isOnDuty && (
-              <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '1px 6px', borderRadius: '99px', background: 'rgba(59,130,246,0.12)', color: '#2563eb' }}>
-                On Duty
+            <span className="adm-table__cell-main">{name}</span>
+            {row.isSubstitute && (
+              <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '1px 6px', borderRadius: '99px', background: 'rgba(245,158,11,0.15)', color: '#b45309', border: '1px solid rgba(245,158,11,0.35)' }}>
+                Pengganti
               </span>
             )}
           </div>
@@ -846,9 +864,9 @@ export default function ArmadaSection({ userRole }) {
                     <div className="flex flex-col gap-1">
                       <span className="text-sm font-bold text-dash-primary">{selectedVehicle.primaryDriver.fullName}</span>
                       <span className="text-xs text-gray-500">{selectedVehicle.primaryDriver.phoneNumber || '-'}</span>
-                      {selectedVehicle.primaryDriver.status === 'ON_DUTY' && (
-                        <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: '99px', background: 'rgba(59,130,246,0.12)', color: '#2563eb', display: 'inline-block', marginTop: '2px' }}>
-                          Sedang Bertugas
+                      {selectedVehicle.isSubstitute && (
+                        <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: '99px', background: 'rgba(245,158,11,0.15)', color: '#b45309', border: '1px solid rgba(245,158,11,0.35)', display: 'inline-block', marginTop: '2px' }}>
+                          Digantikan: {selectedVehicle.activeDriverName}
                         </span>
                       )}
                     </div>
@@ -1123,7 +1141,7 @@ export default function ArmadaSection({ userRole }) {
               {loadingDrivers ? (
                 <div className="text-center py-4 text-gray-400 text-sm">Memuat daftar driver...</div>
               ) : (() => {
-                const opts = availableDrivers.filter(d => !vehicles.some(v => v.primaryDriver?.id === d.id))
+                const opts = unpairedDrivers
                 if (opts.length === 0) {
                   return <p className="text-sm text-amber-600 py-2">Tidak ada driver bebas untuk dipasangkan. Tambah driver baru atau lepaskan driver dari kendaraan lain terlebih dahulu.</p>
                 }
@@ -1181,13 +1199,13 @@ export default function ArmadaSection({ userRole }) {
               <Icon name="sync" size={24} />
               <p className="mt-2 text-sm">Memuat daftar driver...</p>
             </div>
-          ) : availableDrivers.length === 0 ? (
-            <p className="text-sm text-gray-500 text-center py-4">Tidak ada driver tersedia.</p>
+          ) : unpairedDrivers.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-4">Tidak ada driver bebas untuk dipasangkan.</p>
           ) : (
             <div className="flex flex-col gap-3">
               <p className="text-xs text-gray-500">Pilih driver untuk dipasangkan sebagai driver utama kendaraan ini. Driver On Duty tidak dapat dipilih.</p>
               <div className="flex flex-col gap-2 max-h-72 overflow-y-auto custom-scrollbar pr-1">
-                {availableDrivers.map((d) => {
+                {unpairedDrivers.map((d) => {
                   const isOnDuty = d.status === 'ON_DUTY'
                   const licExpiry = d.licenseExpiry ? getExpiryStatus(d.licenseExpiry) : null
                   return (
