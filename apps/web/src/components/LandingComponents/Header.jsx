@@ -165,7 +165,9 @@ export default function Header() {
                     {/* Desktop CTAs */}
                     <div className="hidden lg:flex items-center gap-4 relative z-50">
                         <a
-                            href={`mailto:${env.VITE_CONTACT_EMAIL}`}
+                            href={env.VITE_WHATSAPP_LINK}
+                            target="_blank" 
+                            rel="noopener noreferrer"
                             className="flex h-10 items-center justify-center rounded-xl bg-secondary px-5 text-sm font-bold text-primary transition-all duration-300 hover:-translate-y-[2px] hover:bg-[#ffe066] hover:shadow-[0_0_20px_rgba(242,184,36,0.3)]"
                         >
                             Hubungi Kami
@@ -218,7 +220,9 @@ export default function Header() {
                         
                         <div className="w-full max-w-[280px] mt-12 flex flex-col gap-4">
                             <a
-                                href={`mailto:${env.VITE_CONTACT_EMAIL}`}
+                                href={env.VITE_WHATSAPP_LINK}
+                                target="_blank" 
+                                rel="noopener noreferrer"
                                 className="mobile-link-item flex h-14 items-center justify-center rounded-xl bg-secondary px-6 text-lg font-bold text-primary shadow-[0_0_20px_rgba(242,184,36,0.2)] transition-all duration-300"
                             >
                                 Hubungi Kami

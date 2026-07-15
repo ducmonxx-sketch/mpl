@@ -136,7 +136,7 @@ export default function Footer() {
                                     <Phone size={18} />
                                 </div>
                                 <span className="transition-colors group-hover:text-white">
-                                    +62 812-9116-6006
+                                    +62 853-5343-5343
                                 </span>
                             </li>
                             <li className="flex items-center gap-4 group">

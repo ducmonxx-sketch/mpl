@@ -19,7 +19,7 @@ export default function CTASection() {
                     if (entry.isIntersecting && !animatedRef.current) {
                         animatedRef.current = true
 
-                        const tl = anime.timeline({ easing: 'spring(1, 100, 14, 0)', duration: 500 })
+                        const tl = anime.timeline({ easing: 'spring(1, 120, 12, 0)', duration: 400 })
 
                         // Pop the glass container in
                         tl.add({
@@ -86,24 +86,15 @@ export default function CTASection() {
                             <div className="mt-10 flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4">
                                 {/* Primary CTA */}
                                 <a 
-                                    href={`mailto:${env.VITE_CONTACT_EMAIL}`} 
-                                    className="cta-item group relative flex h-14 w-full sm:w-auto min-w-[220px] items-center justify-center gap-3 overflow-hidden rounded-xl bg-secondary px-6 text-base font-bold text-primary shadow-[0_0_40px_rgba(255,204,0,0.2)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_60px_rgba(255,204,0,0.4)]"
-                                >
-                                    <Mail size={20} strokeWidth={2.5} className="transition-transform duration-300 group-hover:scale-110" />
-                                    <span>Hubungi Kami</span>
-                                    {/* Shiny sweep effect */}
-                                    <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/40 to-transparent transition-transform duration-[800ms] group-hover:translate-x-full"></div>
-                                </a>
-                                
-                                {/* Secondary Frosted CTA */}
-                                <a 
-                                    href={env.VITE_WHATSAPP_LINK || '#'} 
+                                    href={env.VITE_WHATSAPP_LINK}
                                     target="_blank" 
-                                    rel="noopener noreferrer" 
-                                    className="cta-item group flex h-14 w-full sm:w-auto min-w-[220px] items-center justify-center gap-3 rounded-xl border border-white/20 bg-white/5 px-6 text-base font-bold text-white backdrop-blur-md transition-all duration-300 hover:-translate-y-1 hover:bg-white/10 hover:border-white/40 hover:shadow-lg"
+                                    rel="noopener noreferrer"
+                                    className="cta-item group relative flex h-14 w-full sm:w-auto min-w-[220px] items-center justify-center gap-3 overflow-hidden rounded-xl bg-secondary px-6 text-base font-bold text-primary shadow-[0_0_40px_rgba(255,204,0,0.2)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_60px_rgba(255,204,0,0.4)]"
                                 >
                                     <MessageCircle size={20} strokeWidth={2.5} className="transition-transform duration-300 group-hover:scale-110" />
                                     <span>Chat WhatsApp</span>
+                                    {/* Shiny sweep effect */}
+                                    <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/40 to-transparent transition-transform duration-[800ms] group-hover:translate-x-full"></div>
                                 </a>
                             </div>
                         </div>

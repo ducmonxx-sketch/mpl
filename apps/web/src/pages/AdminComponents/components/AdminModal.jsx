@@ -5,6 +5,8 @@ export default function AdminModal({ title, subtitle, onClose, onSubmit, submitL
   // Portal to <body> so the overlay always escapes any ancestor stacking context
   // (transforms/filters on the dashboard layout would otherwise trap `fixed` + z-index
   // and the backdrop blur). Mirrors the detail-panel pattern in ShipmentsSection.
+  if (typeof document === 'undefined') return null
+
   return createPortal(
     <div className="fixed inset-0 bg-[#002442]/40 backdrop-blur-md z-[200] flex items-center justify-center p-4 sm:p-6" onClick={onClose}>
       <form

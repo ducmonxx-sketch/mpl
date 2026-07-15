@@ -61,7 +61,7 @@ export default function AdminSidebar({
     const items = group.items.filter(item => {
       if (userRole === 'SUPERADMIN') return true;
       if (userRole === 'KEPALA_ARMADA') {
-         return ['overview', 'armada', 'drivers', 'tracking', 'shipments', 'profile'].includes(item.id);
+         return ['overview', 'armada', 'drivers', 'shipments', 'profile'].includes(item.id);
       }
       if (userRole === 'PIC_PABRIK' || userRole === 'PIC_GUDANG') {
          return ['overview', 'shipments', 'tracking', 'profile'].includes(item.id);

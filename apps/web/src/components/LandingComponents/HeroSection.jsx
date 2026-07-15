@@ -1,10 +1,40 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import anime from 'animejs'
 import { env } from '../../lib/env.js'
 import Icon from '../Icon'
 
+const images = [
+    { src: '/armada.webp', pos: 'object-center' }, 
+    { src: '/truck-carrying-bikes.webp', pos: 'object-[center_80%]' },
+    { src: '/armada-2.webp', pos: 'object-center' }
+];
+
 export default function HeroSection() {
     const heroRef = useRef(null)
+    const [currentImageIndex, setCurrentImageIndex] = useState(0)
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setCurrentImageIndex((prevIndex) => (prevIndex + 1) % images.length);
+        }, 5000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const isInitialMount = useRef(true);
+
+    useEffect(() => {
+        if (isInitialMount.current) {
+            isInitialMount.current = false;
+            return;
+        }
+        anime({
+            targets: '.hero-carousel-image',
+            opacity: (el, i) => i === currentImageIndex ? 1 : 0,
+            scale: (el, i) => i === currentImageIndex ? [1.05, 1] : 1,
+            duration: 1200,
+            easing: 'easeInOutQuad'
+        });
+    }, [currentImageIndex]);
 
     useEffect(() => {
         // Ensure elements are hidden before animation kicks in
@@ -17,8 +47,8 @@ export default function HeroSection() {
         anime.set('.hero-floating-card', { translateZ: 0, translateY: 50 });
 
         const tl = anime.timeline({
-            easing: 'spring(1, 100, 14, 0)',
-            duration: 500,
+            easing: 'spring(1, 120, 12, 0)',
+            duration: 400,
         });
 
         tl.add({
@@ -123,7 +153,7 @@ export default function HeroSection() {
                         </p>
 
                         <div className="mt-4 flex flex-wrap gap-4">
-                            <a href={`mailto:${env.VITE_CONTACT_EMAIL}`} className="hero-cta flex h-12 items-center justify-center rounded-lg bg-secondary px-8 text-base font-bold text-primary shadow-md shadow-secondary/20 transition-all hover:scale-105 hover:bg-[#ffe066] hover:shadow-xl hover:shadow-secondary/30 will-change-transform">
+                            <a href={env.VITE_WHATSAPP_LINK} target="_blank" rel="noopener noreferrer" className="hero-cta flex h-12 items-center justify-center rounded-lg bg-secondary px-8 text-base font-bold text-primary shadow-md shadow-secondary/20 transition-all hover:scale-105 hover:bg-[#ffe066] hover:shadow-xl hover:shadow-secondary/30 will-change-transform">
                                 Hubungi Kami
                             </a>
                             <a 
@@ -158,16 +188,23 @@ export default function HeroSection() {
                     {/* Right Column — Hero Image with Antigravity 3D Transforms */}
                     <div className="relative w-full lg:h-[600px] aspect-[4/3] lg:aspect-auto" style={{ perspective: '1200px' }}>
                         <div className="hero-image-container relative h-full w-full overflow-hidden rounded-2xl shadow-[0_20px_40px_rgba(0,0,0,0.08)] border border-white/50 bg-white will-change-transform" style={{ transformStyle: 'preserve-3d' }}>
-                            <img
-                                alt="Operasional armada truk pengiriman PT Mahkota Putra Logistik"
-                                className="h-full w-full object-cover object-[center_40%] transition-transform duration-[2000ms] hover:scale-110"
-                                src="/1.webp"
-                                loading="eager"
-                                fetchPriority="high"
-                                width="600"
-                                height="600"
-                                decoding="async"
-                            />
+                            {images.map((img, index) => (
+                                <img
+                                    key={img.src}
+                                    alt={`Operasional armada truk pengiriman PT Mahkota Putra Logistik - ${index + 1}`}
+                                    className={`hero-carousel-image absolute inset-0 h-full w-full object-cover ${img.pos} transition-transform duration-[2000ms] hover:scale-110`}
+                                    src={img.src}
+                                    loading={index === 0 ? "eager" : "lazy"}
+                                    fetchPriority={index === 0 ? "high" : "auto"}
+                                    width="600"
+                                    height="600"
+                                    decoding="async"
+                                    style={{ 
+                                        opacity: index === 0 ? 1 : 0,
+                                        zIndex: index === currentImageIndex ? 10 : 0
+                                    }}
+                                />
+                            ))}
                         </div>
                         
                         {/* Floating glassmorphic card with Z-axis depth */}

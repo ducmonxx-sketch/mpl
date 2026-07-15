@@ -68,7 +68,9 @@ enum ShipmentStatus {
   DITUGASKAN   // driver & vehicle assigned + reconfirmed; staging before departure
   AT_PLANT     // Truck arrives at plant
   TRANSIT      // currently being delivered
-  DELIVERED    // successfully delivered
+  DITERIMA     // received at destination/gudang (Gudang leg) ← ADDED 2026-07-15
+  DITURUNKAN   // unloaded at destination/gudang ← ADDED 2026-07-15
+  DELIVERED    // successfully delivered (Selesai)
   FAILED       // delivery failed (legacy; no longer offered as a forward option)
   CANCELLED    // delivery cancelled after departure (vehicle returned with payload)
 }

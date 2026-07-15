@@ -16,7 +16,9 @@ const FORWARD: Record<StatusKind, Record<string, string[]>> = {
     STANDBY:    ["DITUGASKAN"],           // armada reconfirms driver availability → Ditugaskan
     DITUGASKAN: ["AT_PLANT", "TRANSIT"], // allow direct to TRANSIT if they skip plant check? Or strict flow? strict is AT_PLANT.
     AT_PLANT:   ["TRANSIT"],
-    TRANSIT:    ["DELIVERED", "CANCELLED"],
+    TRANSIT:    ["DITERIMA", "DELIVERED", "CANCELLED"], // Gudang leg: → Diterima; DELIVERED kept for direct handover
+    DITERIMA:   ["DITURUNKAN", "CANCELLED"],
+    DITURUNKAN: ["DELIVERED"],
     DELIVERED:  [],
     FAILED:     [],  // legacy; no longer offered as a forward option
     CANCELLED:  [],
