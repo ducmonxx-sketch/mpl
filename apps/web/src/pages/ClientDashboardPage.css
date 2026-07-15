@@ -372,6 +372,14 @@
   gap: 2rem;
 }
 
+@media (max-width: 768px) {
+  .dash-content {
+    padding: 1rem 0;
+    gap: 1.25rem;
+  }
+}
+
+
 /* ── Header Section ── */
 .dash-header {
   display: flex;

@@ -23,6 +23,19 @@ const generateShipmentId = async (): Promise<string> => {
   return `#MPL-${number}-JKT`
 }
 
+// ── GET /api/shipments/pickup-plants ──────────────────────────
+router.get("/pickup-plants", authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const plants = await prisma.pickupPlant.findMany({
+      orderBy: [{ manufacturer: 'asc' }, { name: 'asc' }]
+    })
+    res.json({ plants })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to fetch pickup plants." })
+  }
+})
+
 // ── GET /api/shipments ────────────────────────────────────────
 router.get("/", authenticate, async (req: AuthRequest, res: Response) => {
   try {
@@ -139,6 +152,11 @@ router.post("/", authenticate, async (req: AuthRequest, res: Response) => {
       price,
       pickupDate,
       estimatedArrival,
+      shippingCategory,
+      dimensions,
+      containerType,
+      pickupPlantId,
+      driverId,
     } = req.body
 
     const isAdmin  = req.user?.type === "admin"
@@ -149,7 +167,7 @@ router.post("/", authenticate, async (req: AuthRequest, res: Response) => {
       data: {
         id,
         packageType,
-        weightKg,
+        weightKg:         weightKg != null ? Number(weightKg) : 0,
         units:            units != null ? Number(units) : null,
         serviceLevel,
         originLocation,
@@ -158,6 +176,11 @@ router.post("/", authenticate, async (req: AuthRequest, res: Response) => {
         price:            price != null ? Number(price) : null,
         pickupDate:       pickupDate ? new Date(pickupDate) : null,
         estimatedArrival: estimatedArrival ? new Date(estimatedArrival) : null,
+        shippingCategory,
+        dimensions,
+        containerType,
+        pickupPlantId,
+        driverId,
         clientId,
         createdByAdminId: isAdmin ? req.user!.id : null,
       },
@@ -184,7 +207,7 @@ router.post("/", authenticate, async (req: AuthRequest, res: Response) => {
 // Only advances status when coming from PENDING (→ DITUGASKAN); other statuses are untouched.
 router.patch("/:id/assign", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
   try {
-    const { driverId, vehicleId } = req.body
+    const { driverId, vehicleId, pickupPlantId, pickupDate } = req.body
 
     const current = await prisma.shipment.findUnique({
       where:  { id: req.params.id },
@@ -196,6 +219,8 @@ router.patch("/:id/assign", authenticate, adminOnly, async (req: AuthRequest, re
       data: {
         driverId,
         vehicleId,
+        pickupPlantId,
+        ...(pickupDate && { pickupDate: new Date(pickupDate) }),
         ...(current?.status === "PENDING" && { status: "DITUGASKAN" }),
         lastUpdatedByAdminId: req.user!.id,
       },
@@ -324,6 +349,73 @@ router.post("/:id/notify-driver", authenticate, adminOnly, async (req: AuthReque
   }
 })
 
+// ── PATCH /api/shipments/:id/plant-check ────────────────────────
+// PIC Pengurus Pabrik completes LKU and vehicle check
+router.patch("/:id/plant-check", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+  try {
+    const { vehicleCondition, lkuNumber, pabrikNotes } = req.body
+    const shipment = await prisma.shipment.update({
+      where: { id: req.params.id },
+      data: {
+        vehicleCondition,
+        lkuNumber,
+        pabrikNotes,
+        status: "TRANSIT",
+        lastUpdatedByAdminId: req.user!.id,
+      },
+    })
+    
+    await prisma.adminAuditLog.create({
+      data: {
+        adminId: req.user!.id,
+        actionType: "UPDATE_SHIPMENT_STATUS" as any,
+        targetTable: "shipments",
+        targetRecordId: shipment.id,
+        changesSummary: `Completed Plant Check with LKU ${lkuNumber}. Status -> TRANSIT`,
+      }
+    })
+
+    res.json({ message: "Plant check completed.", shipment })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to complete plant check." })
+  }
+})
+
+// ── PATCH /api/shipments/:id/handover ──────────────────────────
+// PIC Kepala Gudang completes handover
+router.patch("/:id/handover", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+  try {
+    const { serahTerimaUrl, handoverNotes } = req.body
+    const shipment = await prisma.shipment.update({
+      where: { id: req.params.id },
+      data: {
+        serahTerimaUrl,
+        handoverNotes,
+        status: "DELIVERED",
+        completionDate: new Date(),
+        currentProgressPercent: 100,
+        lastUpdatedByAdminId: req.user!.id,
+      },
+    })
+
+    await prisma.adminAuditLog.create({
+      data: {
+        adminId: req.user!.id,
+        actionType: "UPDATE_SHIPMENT_STATUS" as any,
+        targetTable: "shipments",
+        targetRecordId: shipment.id,
+        changesSummary: `Completed Handover. Status -> DELIVERED`,
+      }
+    })
+
+    res.json({ message: "Handover completed.", shipment })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to complete handover." })
+  }
+})
+
 // ── PATCH /api/shipments/:id/status ──────────────────────────
 // Admin updates shipment status and progress percent
 router.patch("/:id/status", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
@@ -426,3 +518,93 @@ router.patch("/:id/status", authenticate, adminOnly, async (req: AuthRequest, re
 })
 
 export default router
+
+// ── PATCH /api/shipments/:id/plant-check ────────────────────
+// Pengurus Pabrik inputs vehicle check, LKU and notes.
+router.patch("/:id/plant-check", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+  try {
+    const { vehicleCondition, lkuNumber, pabrikNotes } = req.body
+
+    const existing = await prisma.shipment.findUnique({
+      where: { id: req.params.id },
+      select: { status: true }
+    })
+    
+    if (!existing) return res.status(404).json({ message: "Shipment not found." })
+
+    const shipment = await prisma.shipment.update({
+      where: { id: req.params.id },
+      data: {
+        vehicleCondition,
+        lkuNumber,
+        pabrikNotes,
+        ...(existing.status === "DITUGASKAN" && { status: "TRANSIT" }), // Flow says after Pabrik check, it goes.
+        lastUpdatedByAdminId: req.user!.id
+      }
+    })
+
+    await prisma.adminAuditLog.create({
+      data: {
+        adminId:        req.user!.id,
+        actionType:     "UPDATE_SHIPMENT",
+        targetTable:    "shipments",
+        targetRecordId: shipment.id,
+        changesSummary: `Pengurus Pabrik plant check completed.`,
+      },
+    })
+
+    res.json({ message: "Plant check completed.", shipment })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to process plant check." })
+  }
+})
+
+// ── PATCH /api/shipments/:id/handover ───────────────────────
+// Kepala Gudang inputs handover form notes and confirms delivery.
+router.patch("/:id/handover", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+  try {
+    const { serahTerimaUrl, handoverNotes } = req.body
+
+    const existing = await prisma.shipment.findUnique({
+      where: { id: req.params.id },
+      select: { status: true, driverId: true }
+    })
+    
+    if (!existing) return res.status(404).json({ message: "Shipment not found." })
+
+    const shipment = await prisma.shipment.update({
+      where: { id: req.params.id },
+      data: {
+        serahTerimaUrl,
+        handoverNotes,
+        status: "DELIVERED",
+        completionDate: new Date(),
+        currentProgressPercent: 100,
+        lastUpdatedByAdminId: req.user!.id
+      }
+    })
+
+    if (existing.driverId) {
+      await prisma.driver.updateMany({
+        where: { id: existing.driverId, status: "ON_DUTY" },
+        data:  { status: "ACTIVE" },
+      })
+    }
+
+    await prisma.adminAuditLog.create({
+      data: {
+        adminId:        req.user!.id,
+        actionType:     "UPDATE_SHIPMENT",
+        targetTable:    "shipments",
+        targetRecordId: shipment.id,
+        changesSummary: `Kepala Gudang handover completed (DELIVERED).`,
+      },
+    })
+
+    res.json({ message: "Handover completed.", shipment })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to process handover." })
+  }
+})

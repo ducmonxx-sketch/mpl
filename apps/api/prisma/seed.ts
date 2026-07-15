@@ -37,7 +37,37 @@ async function main() {
       role: "OPERATIONS",
     },
   })
-  console.log("✅ Admins: admin@mpl.com (SUPERADMIN), ops@mpl.com (OPERATIONS)")
+  await prisma.admin.upsert({
+    where: { email: "armada@mpl.com" },
+    update: { role: "KEPALA_ARMADA", passwordHash: await bcrypt.hash("armada1234", 10) },
+    create: {
+      fullName: "Kepala Armada",
+      email: "armada@mpl.com",
+      passwordHash: await bcrypt.hash("armada1234", 10),
+      role: "KEPALA_ARMADA",
+    },
+  })
+  await prisma.admin.upsert({
+    where: { email: "pabrik@mpl.com" },
+    update: { role: "PIC_PABRIK", passwordHash: await bcrypt.hash("pabrik1234", 10) },
+    create: {
+      fullName: "PIC Pabrik",
+      email: "pabrik@mpl.com",
+      passwordHash: await bcrypt.hash("pabrik1234", 10),
+      role: "PIC_PABRIK",
+    },
+  })
+  await prisma.admin.upsert({
+    where: { email: "gudang@mpl.com" },
+    update: { role: "PIC_GUDANG", passwordHash: await bcrypt.hash("gudang1234", 10) },
+    create: {
+      fullName: "PIC Gudang",
+      email: "gudang@mpl.com",
+      passwordHash: await bcrypt.hash("gudang1234", 10),
+      role: "PIC_GUDANG",
+    },
+  })
+  console.log("✅ Admins: admin@mpl.com (SUPERADMIN), ops@mpl.com (OPERATIONS), armada@mpl.com (KEPALA_ARMADA), pabrik@mpl.com (PIC_PABRIK), gudang@mpl.com (PIC_GUDANG)")
 
   // ════════════════════════════════════════════════════════════
   // CLIENTS (10): 8 tracked-in-shipments (idx 0–7) + 2 idle (idx 8–9).
@@ -111,6 +141,27 @@ async function main() {
     await prisma.vehicleColor.upsert({ where: { name }, update: {}, create: { name } })
   }
   console.log(`✅ ${brandNames.length} vehicle brands + ${colorNames.length} colors`)
+
+  // ════════════════════════════════════════════════════════════
+  // PICKUP PLANTS
+  // ════════════════════════════════════════════════════════════
+  const plantSeed = [
+    { name: "Cibitung Plant 3", code: "1300", manufacturer: "HONDA" as const },
+    { name: "Cibitung Plant 3A Onepack", code: "1350", manufacturer: "HONDA" as const },
+    { name: "Dawuan (Karawang) Plant 4", code: "1600", manufacturer: "HONDA" as const },
+    { name: "Dawuan (Karawang) Plant 5", code: "1700", manufacturer: "HONDA" as const },
+    { name: "Delta Mas Plant 6", code: "1800", manufacturer: "HONDA" as const },
+    { name: "Pondok Ungu", code: null, manufacturer: "YAMAHA" as const },
+    { name: "Tambun", code: null, manufacturer: "SUZUKI" as const },
+  ]
+  for (const p of plantSeed) {
+    await prisma.pickupPlant.upsert({
+      where: { name: p.name },
+      update: {},
+      create: p,
+    })
+  }
+  console.log(`✅ ${plantSeed.length} pickup plants`)
 
   // ════════════════════════════════════════════════════════════
   // VEHICLES (9): 2 clean + every unique combo of overdue (STNK / KIR / Service)

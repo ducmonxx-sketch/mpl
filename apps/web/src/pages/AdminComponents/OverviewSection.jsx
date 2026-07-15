@@ -108,7 +108,7 @@ function formatAuditSummary(summary) {
   return summary
 }
 
-export default function OverviewSection({ onChangeNav, onNavigateToShipment }) {
+export default function OverviewSection({ onChangeNav, onNavigateToShipment, userRole }) {
   const { user } = useAuth()
   const isSuperAdmin = user?.role === 'SUPERADMIN'
 
@@ -243,35 +243,7 @@ export default function OverviewSection({ onChangeNav, onNavigateToShipment }) {
   ]
 
   useEffect(() => {
-    if (!loading) {
-      import('animejs').then((animeModule) => {
-        const anime = animeModule.default;
-        
-        // Main timeline
-        const tl = anime.timeline({
-          easing: 'easeOutExpo'
-        });
-
-        tl.add({
-          targets: '.adm-overview-header',
-          translateY: [20, 0],
-          opacity: [0, 1],
-          duration: 800,
-        })
-        .add({
-          targets: '.adm-recent-shipments',
-          translateY: [30, 0],
-          opacity: [0, 1],
-          duration: 800,
-        }, '-=400')
-        .add({
-          targets: '.adm-activity-log-card',
-          translateX: [40, 0],
-          opacity: [0, 1],
-          duration: 800,
-        }, '-=600');
-      });
-    }
+    // Activities will be loaded via the other useEffect if isSuperAdmin
   }, [loading]);
 
   if (loading) {
@@ -289,7 +261,7 @@ export default function OverviewSection({ onChangeNav, onNavigateToShipment }) {
     <div className="flex flex-col gap-8 max-w-[1600px] mx-auto w-full pb-10">
       
       {/* Command Center Header */}
-      <section className="adm-overview-header opacity-0 flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-gray-200 pb-6">
+      <section className="adm-overview-header flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-gray-200 pb-6">
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-3">
             <h2 className="text-2xl md:text-3xl font-black text-[#002442] tracking-tight">Command Center</h2>
@@ -308,12 +280,14 @@ export default function OverviewSection({ onChangeNav, onNavigateToShipment }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
             <AdminKPICard icon="local_shipping" label="Pengiriman Aktif" sublabel="Dalam Perjalanan" value={String(kpiData.activeShipments)} trend={`${kpiData.unassignedDrivers} menunggu`} color="primary" delay={0.05} onClick={() => onChangeNav?.('tracking')} />
             <AdminKPICard icon="receipt" label="Total Pengiriman" sublabel="Semua Transaksi" value={String(kpiData.total || 0)} color="gold" delay={0.1} onClick={() => onChangeNav?.('shipments')} />
-            <AdminKPICard icon="people" label="Total Klien" sublabel="Perusahaan Terdaftar" value={String(kpiData.totalClients)} color="green" delay={0.15} onClick={() => onChangeNav?.('clients')} />
+            {userRole !== 'KEPALA_ARMADA' && (
+              <AdminKPICard icon="people" label="Total Klien" sublabel="Perusahaan Terdaftar" value={String(kpiData.totalClients)} color="green" delay={0.15} onClick={() => onChangeNav?.('clients')} />
+            )}
             <AdminKPICard icon="directions_car" label="Driver Tersedia" sublabel="Standby" value={String(kpiData.availableDrivers)} color="primary" delay={0.2} onClick={() => onChangeNav?.('drivers')} />
           </div>
 
           {/* Recent Shipments */}
-          <div className="adm-recent-shipments opacity-0 bg-white border border-gray-200 rounded-2xl shadow-[0_2px_10px_rgba(0,0,0,0.02)] p-6 md:p-8 flex flex-col gap-6">
+          <div className="adm-recent-shipments bg-white border border-gray-200 rounded-2xl shadow-[0_2px_10px_rgba(0,0,0,0.02)] p-6 md:p-8 flex flex-col gap-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <h3 className="text-lg font-bold text-[#002442]">Pengiriman Terbaru / Recent Shipments</h3>
               <button 
@@ -333,7 +307,7 @@ export default function OverviewSection({ onChangeNav, onNavigateToShipment }) {
           <div className="lg:col-span-1 relative">
             {/* On lg the card is pinned to fill the stretched grid cell (= left column height)
                 so the panel matches "Pengiriman Terbaru" and the log list scrolls inside it. */}
-            <div className="adm-activity-log-card opacity-0 bg-white border border-gray-200 rounded-2xl shadow-[0_2px_15px_rgba(0,0,0,0.03)] p-6 md:p-8 flex flex-col lg:absolute lg:inset-0">
+            <div className="adm-activity-log-card bg-white border border-gray-200 rounded-2xl shadow-[0_2px_15px_rgba(0,0,0,0.03)] p-6 md:p-8 flex flex-col lg:absolute lg:inset-0">
               <div className="flex items-center justify-between mb-2 pb-4 border-b border-gray-100">
                 <h3 className="text-lg font-bold text-[#002442] flex items-center gap-2">
                   <Icon name="history" size={20} className="text-[#fec330]" />

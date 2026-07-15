@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import Icon from '../../components/Icon'
 import { useToast } from '../../contexts/ToastContext'
 import AdminDataTable from './components/AdminDataTable'
 import AdminPagination from './components/AdminPagination'
 import AdminModal from './components/AdminModal'
 import AdminFormField from './components/AdminFormField'
+import SearchableSelect from './components/SearchableSelect'
 import { usersAPI } from '../../lib/api'
 
 // Boxed input style shared by the Klien form fields (matches the Armada form).
@@ -26,9 +28,26 @@ export default function ClientsSection() {
   const [resetLink, setResetLink] = useState('')
   const [resetLinkCopied, setResetLinkCopied] = useState(false)
 
+  // Create Success State
+  const [createSuccess, setCreateSuccess] = useState(false)
+
+  // PIC Modal State
+  const [showPicModal, setShowPicModal] = useState(false)
+  const [showPicMagicLinkSection, setShowPicMagicLinkSection] = useState(false)
+  const [picCreateSuccess, setPicCreateSuccess] = useState(false)
+  const [picCreatedCredentials, setPicCreatedCredentials] = useState(null)
+  const [picCredentialsCopied, setPicCredentialsCopied] = useState(false)
+  const [selectedCompanyId, setSelectedCompanyId] = useState('')
+  const [picMagicLink, setPicMagicLink] = useState('')
+  const [picMagicLinkCopied, setPicMagicLinkCopied] = useState(false)
+  
+  // PIC Form State
+  const [picFormName, setPicFormName] = useState('')
+  const [picFormEmail, setPicFormEmail] = useState('')
+  const [picFormPassword, setPicFormPassword] = useState('')
+
   // Form state (controlled)
   const [formCompanyName, setFormCompanyName] = useState('')
-  const [formPicName, setFormPicName] = useState('')
   const [formPhone, setFormPhone] = useState('')
   const [formEmail, setFormEmail] = useState('')
   const [formCity, setFormCity] = useState('')
@@ -105,19 +124,20 @@ export default function ClientsSection() {
     setIsEditMode(false)
     setEditingClientId(null)
     setFormCompanyName('')
-    setFormPicName('')
     setFormPhone('')
     setFormEmail('')
     setFormCity('')
     setFormAddress('')
     setFormNpwp('')
+    setCreateSuccess(false)
+    setPicMagicLink('')
+    setPicMagicLinkCopied(false)
   }
 
   const handleOpenEdit = (row) => {
     setIsEditMode(true)
     setEditingClientId(row.id)
     setFormCompanyName(row.companyName || '')
-    setFormPicName(row.pics[0].name || '')
     setFormPhone(row.pics[0].phone || '')
     setFormEmail(row.pics[0].email || '')
     setFormCity(row.city || '')
@@ -127,13 +147,13 @@ export default function ClientsSection() {
   }
 
   const handleCreateClient = async () => {
-    if (!formCompanyName.trim() || !formPicName.trim() || !formPhone.trim() || !formEmail.trim() || !formCity.trim() || !formAddress.trim() || !formNpwp.trim()) {
+    if (!formCompanyName.trim() || !formPhone.trim() || !formEmail.trim() || !formCity.trim() || !formAddress.trim() || !formNpwp.trim()) {
       showToast('Harap isi semua field yang wajib diisi.', 'error')
       return
     }
     try {
       const res = await usersAPI.createUser({
-        fullName: formPicName,
+        fullName: 'Admin Perusahaan', // Fallback for backend
         companyName: formCompanyName,
         email: formEmail,
         phoneNumber: formPhone,
@@ -141,34 +161,30 @@ export default function ClientsSection() {
         address: formAddress,
         npwp: formNpwp,
       })
-      setShowCreateModal(false)
-      resetForm()
+      
       fetchClients()
-      // The temp password is shown only once — keep the toast sticky (duration 0)
-      // so the admin can copy it before dismissing. (Will be emailed/WA'd directly
-      // to the client in a future update — see docs/credentials-delivery.md.)
-      if (res?.temporaryPassword) {
-        showToast(
-          `Klien dibuat! Password sementara: ${res.temporaryPassword} — salin & bagikan ke klien sekarang (hanya ditampilkan sekali).`,
-          'success',
-          0,
-        )
-      } else {
-        showToast('Klien baru berhasil ditambahkan!', 'success')
+      
+      try {
+        const linkRes = await usersAPI.generateMagicLink({ companyName: formCompanyName })
+        setPicMagicLink(linkRes.link)
+      } catch (err) {
+        console.error('Failed to auto-generate magic link:', err)
       }
+      
+      setCreateSuccess(true)
     } catch (err) {
-      showToast(err.message || 'Gagal menambah klien.', 'error')
+      showToast(err.message || 'Gagal menambah perusahaan.', 'error')
     }
   }
 
   const handleUpdateClient = async () => {
-    if (!formCompanyName.trim() || !formPicName.trim() || !formPhone.trim() || !formEmail.trim() || !formCity.trim() || !formAddress.trim() || !formNpwp.trim()) {
+    if (!formCompanyName.trim() || !formPhone.trim() || !formEmail.trim() || !formCity.trim() || !formAddress.trim() || !formNpwp.trim()) {
       showToast('Harap isi semua field yang wajib diisi.', 'error')
       return
     }
     try {
       await usersAPI.updateUser(editingClientId, {
-        fullName: formPicName,
+        fullName: 'Admin Perusahaan', // Fallback for backend
         companyName: formCompanyName,
         email: formEmail,
         phoneNumber: formPhone,
@@ -218,6 +234,80 @@ export default function ClientsSection() {
     setResetLinkCopied(true)
     setTimeout(() => setResetLinkCopied(false), 2000)
   }
+
+  const resetPicModal = () => {
+    setPicFormName('')
+    setPicFormEmail('')
+    setPicFormPassword('')
+    setSelectedCompanyId('')
+    setShowPicMagicLinkSection(false)
+    setPicCreateSuccess(false)
+    setPicCreatedCredentials(null)
+    setPicCredentialsCopied(false)
+    setPicMagicLink('')
+    setPicMagicLinkCopied(false)
+  }
+
+  const handlePicModalSubmit = async () => {
+    if (picCreateSuccess || showPicMagicLinkSection) {
+      setShowPicModal(false)
+      resetPicModal()
+      return
+    }
+    
+    if (!picFormName.trim() || !picFormEmail.trim() || !selectedCompanyId) {
+      showToast('Mohon lengkapi Nama, Email, dan Perusahaan', 'error')
+      return
+    }
+    
+    try {
+      const res = await usersAPI.createUser({
+        fullName: picFormName,
+        email: picFormEmail,
+        companyName: selectedCompanyId,
+        password: picFormPassword || undefined
+      })
+      
+      setPicCreatedCredentials({
+        email: picFormEmail,
+        password: res.temporaryPassword || picFormPassword || 'Auto-generated'
+      })
+      setPicCreateSuccess(true)
+      fetchClients()
+    } catch (err) {
+      showToast(err.message || 'Gagal membuat PIC', 'error')
+    }
+  }
+
+  const handleCopyPicCredentials = () => {
+    if (!picCreatedCredentials) return
+    const text = `Email: ${picCreatedCredentials.email}\nPassword: ${picCreatedCredentials.password}`
+    navigator.clipboard.writeText(text).catch(() => {})
+    setPicCredentialsCopied(true)
+    setTimeout(() => setPicCredentialsCopied(false), 2000)
+  }
+
+  const handleGeneratePicLink = async () => {
+    if (!selectedCompanyId) {
+      showToast('Pilih perusahaan terlebih dahulu.', 'error')
+      return
+    }
+    try {
+      const res = await usersAPI.generateMagicLink({ companyName: selectedCompanyId })
+      setPicMagicLink(res.link)
+      setPicMagicLinkCopied(false)
+    } catch (err) {
+      showToast('Gagal membuat magic link', 'error')
+    }
+  }
+
+  const handleCopyPicLink = () => {
+    navigator.clipboard.writeText(picMagicLink).catch(() => {})
+    setPicMagicLinkCopied(true)
+    setTimeout(() => setPicMagicLinkCopied(false), 2000)
+  }
+
+  const companyOptions = CLIENTS.map(c => ({ value: c.companyName, label: c.companyName }))
 
   const filters = [
     { id: 'all', label: 'Semua' },
@@ -321,15 +411,25 @@ export default function ClientsSection() {
           <h2 className="dash-header__title">Manajemen Klien</h2>
           <p className="dash-header__subtitle">Database klien korporat dengan kontak dan riwayat pengiriman.</p>
         </div>
-        <div className="adm-section-actions">
+        <div className="adm-section-actions" style={{ display: 'flex', gap: '0.75rem' }}>
           <button className="adm-create-btn" onClick={() => setShowCreateModal(true)}>
-            <Icon name="group_add" size={18} /> Tambah Klien
+            <Icon name="domain_add" size={18} /> +Daftar Perusahaan
+          </button>
+          <button 
+            className="adm-create-btn" 
+            style={{ background: 'var(--dash-secondary)', color: 'var(--dash-primary)' }} 
+            onClick={() => {
+              resetPicModal()
+              setShowPicModal(true)
+            }}
+          >
+            <Icon name="person_add" size={18} /> Tambah PIC
           </button>
         </div>
       </section>
 
       {/* Premium KPI Cards */}
-      <div className="adm-kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginTop: '1.25rem' }}>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mt-5 adm-kpi-grid-container">
         <div className="adm-kpi-card opacity-0" style={{ background: '#fff', borderRadius: '1rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
           <div className="adm-kpi-card__header">
             <div className="adm-kpi-card__icon" style={{ background: 'color-mix(in srgb, var(--dash-primary) 5%, transparent)', color: 'var(--dash-primary)' }}>
@@ -459,7 +559,7 @@ export default function ClientsSection() {
       )}
 
       {/* Detail Panel */}
-      {selectedClient && (
+      {selectedClient && createPortal(
         <div className="fixed inset-0 z-[100] flex justify-end">
           {/* Backdrop */}
           <div 
@@ -556,90 +656,395 @@ export default function ClientsSection() {
 
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Create Modal */}
       {showCreateModal && (
         <AdminModal
-          title={isEditMode ? "Edit Klien" : "Tambah Klien Baru"}
-          subtitle={isEditMode ? "Ubah data klien korporat." : "Masukkan data klien korporat."}
+          title={createSuccess ? "Pendaftaran Berhasil" : (isEditMode ? "Edit Perusahaan" : "Tambah Daftar Perusahaan")}
+          subtitle={createSuccess ? "Perusahaan baru berhasil didaftarkan." : (isEditMode ? "Ubah data perusahaan." : "Masukkan data perusahaan baru.")}
           onClose={() => { setShowCreateModal(false); resetForm() }}
-          onSubmit={isEditMode ? handleUpdateClient : handleCreateClient}
-          submitLabel={isEditMode ? "Simpan Perubahan" : "Simpan Klien"}
+          onSubmit={createSuccess ? () => { setShowCreateModal(false); resetForm() } : (isEditMode ? handleUpdateClient : handleCreateClient)}
+          submitLabel={createSuccess ? "Selesai" : (isEditMode ? "Simpan Perubahan" : "Simpan Perusahaan")}
         >
-          <div className="adm-form-grid">
-            <AdminFormField label="Nama Perusahaan" required fullWidth>
-              <input
-                type="text"
-                placeholder="Cth: PT Sinar Jaya"
-                value={formCompanyName}
-                onChange={(e) => setFormCompanyName(e.target.value)}
-                required
-                className={INPUT_CLASS}
-              />
-            </AdminFormField>
-            <AdminFormField label="Nama PIC" required>
-              <input
-                type="text"
-                placeholder="Cth: Budi Santoso"
-                value={formPicName}
-                onChange={(e) => setFormPicName(e.target.value)}
-                required
-                className={INPUT_CLASS}
-              />
-            </AdminFormField>
-            <AdminFormField label="No. Telepon" required>
-              <input
-                type="text"
-                placeholder="0812-xxxx-xxxx"
-                value={formPhone}
-                onChange={(e) => setFormPhone(e.target.value)}
-                required
-                className={INPUT_CLASS}
-              />
-            </AdminFormField>
-            <AdminFormField label="Email" required>
-              <input
-                type="email"
-                placeholder="email@perusahaan.co.id"
-                value={formEmail}
-                onChange={(e) => setFormEmail(e.target.value)}
-                required
-                className={INPUT_CLASS}
-              />
-            </AdminFormField>
-            <AdminFormField label="Kota" required>
-              <input
-                type="text"
-                placeholder="Cth: Jakarta"
-                value={formCity}
-                onChange={(e) => setFormCity(e.target.value)}
-                required
-                className={INPUT_CLASS}
-              />
-            </AdminFormField>
-            <AdminFormField label="Alamat" required fullWidth>
-              <input
-                type="text"
-                placeholder="Alamat lengkap perusahaan"
-                value={formAddress}
-                onChange={(e) => setFormAddress(e.target.value)}
-                required
-                className={INPUT_CLASS}
-              />
-            </AdminFormField>
-            <AdminFormField label="NPWP" required>
-              <input
-                type="text"
-                placeholder="01.234.567.8-901.000"
-                value={formNpwp}
-                onChange={(e) => setFormNpwp(e.target.value)}
-                required
-                className={INPUT_CLASS}
-              />
-            </AdminFormField>
-          </div>
+          {createSuccess ? (
+            <div>
+              <div
+                style={{
+                  padding: '1.5rem',
+                  background: 'rgba(22,163,74,0.06)',
+                  border: '1px solid rgba(22,163,74,0.2)',
+                  borderRadius: '12px',
+                  textAlign: 'center',
+                }}
+              >
+                <Icon name="check_circle" size={40} style={{ color: '#16a34a', marginBottom: '0.75rem' }} />
+                <h4 style={{ margin: '0 0 0.5rem', color: 'var(--dash-primary)', fontWeight: 800 }}>
+                  Perusahaan Berhasil Dibuat!
+                </h4>
+                <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '0 0 1rem' }}>
+                  Bagikan magic link ini kepada PIC untuk registrasi mandiri.
+                </p>
+                {picMagicLink ? (
+                  <div>
+                    <div
+                      style={{
+                        padding: '0.75rem',
+                        background: '#fff',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '8px',
+                        fontFamily: 'monospace',
+                        fontSize: '0.78rem',
+                        wordBreak: 'break-all',
+                        textAlign: 'left',
+                        color: '#334155',
+                        marginBottom: '0.75rem',
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      {picMagicLink}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCopyPicLink}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '0.55rem 1.25rem',
+                        background: picMagicLinkCopied ? '#16a34a' : '#f1f5f9',
+                        color: picMagicLinkCopied ? '#fff' : 'var(--dash-primary)',
+                        border: '1px solid ' + (picMagicLinkCopied ? '#16a34a' : '#cbd5e1'),
+                        borderRadius: '8px',
+                        fontWeight: 600,
+                        fontSize: '0.85rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                      }}
+                    >
+                      <Icon name={picMagicLinkCopied ? 'check' : 'content_copy'} size={16} />
+                      {picMagicLinkCopied ? 'Tersalin!' : 'Salin Link'}
+                    </button>
+                  </div>
+                ) : (
+                  <p style={{ fontSize: '0.82rem', color: 'var(--dash-error)' }}>Gagal membuat magic link otomatis. Silakan gunakan opsi reset password.</p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="adm-form-grid">
+              <AdminFormField label="Nama Perusahaan" required fullWidth>
+                <input
+                  type="text"
+                  placeholder="Cth: PT Sinar Jaya"
+                  value={formCompanyName}
+                  onChange={(e) => setFormCompanyName(e.target.value)}
+                  required
+                  className={INPUT_CLASS}
+                />
+              </AdminFormField>
+              <AdminFormField label="No. Telepon Perusahaan" required>
+                <input
+                  type="text"
+                  placeholder="0812-xxxx-xxxx"
+                  value={formPhone}
+                  onChange={(e) => setFormPhone(e.target.value)}
+                  required
+                  className={INPUT_CLASS}
+                />
+              </AdminFormField>
+              <AdminFormField label="Email Perusahaan" required>
+                <input
+                  type="email"
+                  placeholder="email@perusahaan.co.id"
+                  value={formEmail}
+                  onChange={(e) => setFormEmail(e.target.value)}
+                  required
+                  className={INPUT_CLASS}
+                />
+              </AdminFormField>
+              <AdminFormField label="Kota" required>
+                <input
+                  type="text"
+                  placeholder="Cth: Jakarta"
+                  value={formCity}
+                  onChange={(e) => setFormCity(e.target.value)}
+                  required
+                  className={INPUT_CLASS}
+                />
+              </AdminFormField>
+              <AdminFormField label="Alamat" required fullWidth>
+                <input
+                  type="text"
+                  placeholder="Alamat lengkap perusahaan"
+                  value={formAddress}
+                  onChange={(e) => setFormAddress(e.target.value)}
+                  required
+                  className={INPUT_CLASS}
+                />
+              </AdminFormField>
+              <AdminFormField label="NPWP" required>
+                <input
+                  type="text"
+                  placeholder="01.234.567.8-901.000"
+                  value={formNpwp}
+                  onChange={(e) => setFormNpwp(e.target.value)}
+                  required
+                  className={INPUT_CLASS}
+                />
+              </AdminFormField>
+            </div>
+          )}
+        </AdminModal>
+      )}
+
+      {/* PIC Modal */}
+      {showPicModal && (
+        <AdminModal
+          title="Tambah PIC Baru"
+          subtitle={picCreateSuccess ? 'Kredensial PIC baru.' : (showPicMagicLinkSection ? 'Bagikan link pendaftaran kepada klien.' : 'Isi data akun PIC atau gunakan magic link.')}
+          onClose={() => { setShowPicModal(false); resetPicModal() }}
+          onSubmit={handlePicModalSubmit}
+          submitLabel={picCreateSuccess ? 'Selesai' : (showPicMagicLinkSection ? 'Selesai' : 'Buat Akun')}
+        >
+          {picCreateSuccess ? (
+            /* Success Mode: Show credentials */
+            <div>
+              <div
+                style={{
+                  padding: '1.5rem',
+                  background: 'rgba(22,163,74,0.06)',
+                  border: '1px solid rgba(22,163,74,0.2)',
+                  borderRadius: '12px',
+                  textAlign: 'center',
+                }}
+              >
+                <Icon name="check_circle" size={40} style={{ color: '#16a34a', marginBottom: '0.75rem' }} />
+                <h4 style={{ margin: '0 0 0.5rem', color: 'var(--dash-primary)', fontWeight: 800 }}>
+                  PIC Berhasil Dibuat!
+                </h4>
+                <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '0 0 1rem' }}>
+                  Simpan kredensial berikut sebelum menutup.
+                </p>
+                <div
+                  style={{
+                    padding: '0.75rem',
+                    background: '#fff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px',
+                    fontFamily: 'monospace',
+                    fontSize: '0.82rem',
+                    textAlign: 'left',
+                    lineHeight: 1.8,
+                    color: '#334155',
+                  }}
+                >
+                  <div><strong>Email:</strong> {picCreatedCredentials?.email}</div>
+                  <div><strong>Password:</strong> {picCreatedCredentials?.password}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyPicCredentials}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '0.55rem 1.25rem',
+                    marginTop: '1rem',
+                    background: picCredentialsCopied ? '#16a34a' : '#f1f5f9',
+                    color: picCredentialsCopied ? '#fff' : 'var(--dash-primary)',
+                    border: '1px solid ' + (picCredentialsCopied ? '#16a34a' : '#cbd5e1'),
+                    borderRadius: '8px',
+                    fontWeight: 600,
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  <Icon name={picCredentialsCopied ? 'check' : 'content_copy'} size={16} />
+                  {picCredentialsCopied ? 'Tersalin!' : 'Salin Kredensial'}
+                </button>
+              </div>
+            </div>
+          ) : !showPicMagicLinkSection ? (
+            /* Manual Form */
+            <div>
+              <div className="adm-form-grid">
+                <AdminFormField label="Nama Lengkap" required>
+                  <input
+                    type="text"
+                    placeholder="Cth: Rudi Hartono"
+                    value={picFormName}
+                    onChange={(e) => setPicFormName(e.target.value)}
+                    className={INPUT_CLASS}
+                  />
+                </AdminFormField>
+                <AdminFormField label="Email" required>
+                  <input
+                    type="email"
+                    placeholder="nama@perusahaan.com"
+                    value={picFormEmail}
+                    onChange={(e) => setPicFormEmail(e.target.value)}
+                    className={INPUT_CLASS}
+                  />
+                </AdminFormField>
+                <AdminFormField label="Perusahaan" required>
+                  <div style={{ marginTop: '0.25rem' }}>
+                    <SearchableSelect
+                      options={companyOptions}
+                      value={selectedCompanyId}
+                      onChange={setSelectedCompanyId}
+                      placeholder="Pilih Perusahaan..."
+                      searchPlaceholder="Cari perusahaan..."
+                      allLabel="-- Pilih Perusahaan --"
+                    />
+                  </div>
+                </AdminFormField>
+                <AdminFormField label="Password Sementara">
+                  <input
+                    type="text"
+                    placeholder="Kosongkan untuk auto-generate"
+                    value={picFormPassword}
+                    onChange={(e) => setPicFormPassword(e.target.value)}
+                    className={INPUT_CLASS}
+                  />
+                </AdminFormField>
+              </div>
+
+              {/* Divider */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', margin: '1.5rem 0 1rem' }}>
+                <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
+                <span style={{ fontSize: '0.78rem', color: '#94a3b8', fontWeight: 600 }}>atau</span>
+                <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'center' }}>
+                <button
+                  type="button"
+                  onClick={() => { setShowPicMagicLinkSection(true) }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '0.65rem 1.25rem',
+                    background: 'var(--dash-secondary)',
+                    color: 'var(--dash-primary)',
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontWeight: 700,
+                    fontSize: '0.875rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Icon name="link" size={18} /> Gunakan Magic Link
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* Magic Link Section */
+            <div>
+              <div
+                style={{
+                  padding: '1.5rem',
+                  background: 'linear-gradient(135deg, rgba(242,184,36,0.05) 0%, rgba(242,184,36,0.15) 100%)',
+                  border: '1px solid rgba(242,184,36,0.3)',
+                  borderRadius: '16px',
+                  boxShadow: '0 8px 32px rgba(242,184,36,0.05)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '1.25rem' }}>
+                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'var(--dash-secondary)', color: 'var(--dash-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Icon name="link" size={18} />
+                  </div>
+                  <span style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--dash-primary)' }}>
+                    Magic Link Pendaftaran
+                  </span>
+                </div>
+
+                <div style={{ marginBottom: '1rem' }}>
+                  <SearchableSelect
+                    options={companyOptions}
+                    value={selectedCompanyId}
+                    onChange={setSelectedCompanyId}
+                    placeholder="Pilih Perusahaan..."
+                    searchPlaceholder="Cari perusahaan..."
+                    allLabel="-- Pilih Perusahaan --"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleGeneratePicLink}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '0.55rem 1rem',
+                    background: 'var(--dash-primary)',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontWeight: 600,
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                    marginBottom: picMagicLink ? '1rem' : '0',
+                    opacity: !selectedCompanyId ? 0.6 : 1,
+                  }}
+                  disabled={!selectedCompanyId}
+                >
+                  <Icon name="autorenew" size={16} />
+                  {picMagicLink ? 'Regenerate Link' : 'Generate Magic Link'}
+                </button>
+
+                {picMagicLink && (
+                  <div>
+                    <div
+                      style={{
+                        padding: '0.75rem',
+                        background: '#fff',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '8px',
+                        fontFamily: 'monospace',
+                        fontSize: '0.78rem',
+                        wordBreak: 'break-all',
+                        color: '#334155',
+                        marginBottom: '0.75rem',
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      {picMagicLink}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCopyPicLink}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '0.5rem 1rem',
+                        background: picMagicLinkCopied ? '#16a34a' : '#f1f5f9',
+                        color: picMagicLinkCopied ? '#fff' : 'var(--dash-primary)',
+                        border: '1px solid ' + (picMagicLinkCopied ? '#16a34a' : '#cbd5e1'),
+                        borderRadius: '8px',
+                        fontWeight: 600,
+                        fontSize: '0.85rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                      }}
+                    >
+                      <Icon name={picMagicLinkCopied ? 'check' : 'content_copy'} size={16} />
+                      {picMagicLinkCopied ? 'Tersalin!' : 'Salin Link'}
+                    </button>
+                  </div>
+                )}
+                <p style={{ fontSize: '0.75rem', color: '#78716c', margin: '0.75rem 0 0', lineHeight: 1.6 }}>
+                  ℹ️ Link berlaku 1x pakai. Klien dapat mendaftar mandiri setelah membukanya.
+                </p>
+              </div>
+            </div>
+          )}
         </AdminModal>
       )}
 

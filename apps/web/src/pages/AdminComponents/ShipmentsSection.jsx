@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import Icon from '../../components/Icon'
 import { useToast } from '../../contexts/ToastContext'
 import { useAuth } from '../../contexts/AuthContext'
@@ -133,7 +134,7 @@ const DriverVehicleCard = ({ vehicle, selected, onClick }) => {
   )
 }
 
-export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
+export default function ShipmentsSection({ onTrackFull, highlightShipmentId, userRole }) {
   const { showToast } = useToast()
   const { user } = useAuth()
 
@@ -143,6 +144,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
   const [filterService, setFilterService] = useState('all')
   const [searchQuery, setSearchQuery]     = useState('')
   const [currentPage, setCurrentPage]     = useState(1)
+  const [viewMode, setViewMode]           = useState('today') // 'today' | 'history'
   const [SHIPMENTS, setSHIPMENTS]         = useState([])
   const [loading, setLoading]             = useState(true)
 
@@ -166,6 +168,17 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
   const [newDriverVehicleId, setNewDriverVehicleId] = useState('')
   const [tandaiTidakTersedia, setTandaiTidakTersedia] = useState(true)
 
+  // ── Role-specific UI states ─────────────────────────────────
+  const [assignPickupPlantId, setAssignPickupPlantId] = useState('')
+  const [assignPickupDate, setAssignPickupDate]       = useState('')
+
+  const [vehicleCondition, setVehicleCondition]       = useState('Baik')
+  const [lkuNumber, setLkuNumber]                     = useState('')
+  const [pabrikNotes, setPabrikNotes]                 = useState('')
+
+  const [serahTerimaUrl, setSerahTerimaUrl]           = useState('')
+  const [handoverNotes, setHandoverNotes]             = useState('')
+
   // ── SUPERADMIN separate assign modal ────────────────────────
   const [showAssignModal, setShowAssignModal]     = useState(false)
   const [assigningShipment, setAssigningShipment] = useState(null)
@@ -179,6 +192,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
   const [clientOptions, setClientOptions]     = useState([])
   const [formClientId, setFormClientId]               = useState('')
   const [formService, setFormService]                 = useState('Darat')
+  const [formShippingCategory, setFormShippingCategory] = useState('Unit') // KEPALA_ARMADA
   const [formOrigin, setFormOrigin]                   = useState('')
   const [formOriginPoint, setFormOriginPoint]         = useState('')
   const [formDestination, setFormDestination]         = useState('')
@@ -189,9 +203,25 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
   const [formWeight, setFormWeight]                   = useState('')
   const [formPrice, setFormPrice]                     = useState('')
   const [formNotes, setFormNotes]                     = useState('')
+  
+  // Extra fields for KEPALA_ARMADA
+  const [formDriverId, setFormDriverId]               = useState('')
+  const [formPickupPlantId, setFormPickupPlantId]     = useState('')
+  const [formDimensions, setFormDimensions]           = useState('')
+  const [formContainerType, setFormContainerType]     = useState('20 Feet')
+  const [pickupPlants, setPickupPlants]               = useState([])
 
   // ── Derived ───────────────────────────────────────────────────
-  const isRegularAdmin = user?.role !== 'SUPERADMIN'
+  const role = user?.role || 'SUPERADMIN'
+  const isSuperAdmin = role === 'SUPERADMIN'
+  const isRegularAdmin = !isSuperAdmin
+
+  // Calculate restricted minDate for specific roles
+  let restrictedMinDate = null
+  if (['KEPALA_ARMADA', 'PIC_PABRIK', 'PIC_GUDANG'].includes(role)) {
+    restrictedMinDate = new Date()
+    restrictedMinDate.setDate(restrictedMinDate.getDate() - 3) // D-3
+  }
 
   // Vehicles that have an ACTIVE primary driver (available for assignment)
   const assignableVehicles = fleetVehicles.filter(v => v.primaryDriver && v.primaryDriver.status === 'ACTIVE')
@@ -210,11 +240,14 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
   const statusOptions = selectedShipment ? availableStatusOptions(user?.role, selectedShipment.rawStatus) : []
 
   // Whether the Update Status button should be shown
-  const canUpdateStatus = selectedShipment && (
-    isRegularAdmin
-      ? ['PENDING', 'DITUGASKAN', 'TRANSIT'].includes(selectedShipment.rawStatus)
-      : statusOptions.length > 0
-  )
+  const canUpdateStatus = selectedShipment && (() => {
+    if (isSuperAdmin) return statusOptions.length > 0;
+    const rs = selectedShipment.rawStatus;
+    if (role === 'KEPALA_ARMADA') return rs === 'PENDING';
+    if (role === 'PIC_PABRIK') return rs === 'DITUGASKAN' || rs === 'AT_PLANT';
+    if (role === 'PIC_GUDANG') return rs === 'TRANSIT';
+    return ['PENDING', 'DITUGASKAN', 'AT_PLANT', 'TRANSIT'].includes(rs);
+  })();
 
   // ── Data fetching ─────────────────────────────────────────────
   const fetchShipments = useCallback(async ({ silent = false } = {}) => {
@@ -339,6 +372,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
   const resetCreateForm = () => {
     setFormClientId('')
     setFormService('Darat')
+    setFormShippingCategory('Unit')
     setFormOrigin('')
     setFormOriginPoint('')
     setFormDestination('')
@@ -349,10 +383,27 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
     setFormWeight('')
     setFormPrice('')
     setFormNotes('')
+    setFormDriverId('')
+    setFormPickupPlantId('')
+    setFormDimensions('')
+    setFormContainerType('20 Feet')
+  }
+
+  const fetchPickupPlants = async () => {
+    try {
+      const data = await shipmentsAPI.getPickupPlants()
+      setPickupPlants(data.plants || [])
+    } catch (err) {
+      console.error('Failed to fetch pickup plants:', err)
+    }
   }
 
   const openCreateModal = () => {
     fetchClients()
+    if (role === 'KEPALA_ARMADA') {
+      fetchFleet()
+      fetchPickupPlants()
+    }
     resetCreateForm()
     setShowCreateModal(true)
   }
@@ -362,46 +413,75 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
       showToast('Pilih Klien terlebih dahulu.', 'error')
       return
     }
-    if (!formPackageType.trim()) {
-      showToast('Harap isi Deskripsi Barang.', 'error')
-      return
-    }
-    if (!formOrigin.trim()) {
-      showToast('Harap isi Alamat Penjemputan.', 'error')
-      return
-    }
-    if (!formDestination.trim()) {
-      showToast('Harap isi Alamat Pengiriman.', 'error')
-      return
-    }
-    if (!formPickupDate) {
-      showToast('Harap tentukan Tanggal Pickup.', 'error')
-      return
-    }
-    if (!formUnits || Number(formUnits) <= 0) {
-      showToast('Harap isi Units / Pcs dengan nilai lebih dari 0.', 'error')
-      return
-    }
-    if (!formPrice || Number(formPrice) <= 0) {
-      showToast('Harap isi Total Invoice Price dengan nilai lebih dari 0.', 'error')
-      return
+
+    if (role === 'KEPALA_ARMADA') {
+      if (!formDriverId) {
+        showToast('Pilih Driver terlebih dahulu.', 'error')
+        return
+      }
+      if (!formPickupDate) {
+        showToast('Pilih Tanggal Pickup terlebih dahulu.', 'error')
+        return
+      }
+      if (formShippingCategory === 'Unit') {
+        if (!formPickupPlantId) return showToast('Pilih Pickup Plant.', 'error')
+      } else if (formShippingCategory === 'Cargo') {
+        if (!formDimensions && !formWeight) return showToast('Dimensi atau Berat harus diisi.', 'error')
+        if (!formOrigin.trim() || !formDestination.trim()) return showToast('Alamat Penjemputan dan Pengiriman harus diisi.', 'error')
+      } else if (formShippingCategory === 'Container') {
+        if (!formContainerType) return showToast('Pilih Tipe Container.', 'error')
+        if (!formOrigin.trim() || !formDestination.trim()) return showToast('Alamat Penjemputan dan Pengiriman harus diisi.', 'error')
+      }
+    } else {
+      if (!formPackageType.trim()) {
+        showToast('Harap isi Deskripsi Barang.', 'error')
+        return
+      }
+      if (!formOrigin.trim()) {
+        showToast('Harap isi Alamat Penjemputan.', 'error')
+        return
+      }
+      if (!formDestination.trim()) {
+        showToast('Harap isi Alamat Pengiriman.', 'error')
+        return
+      }
+      if (!formPickupDate) {
+        showToast('Harap tentukan Tanggal Pickup.', 'error')
+        return
+      }
+      if (!formUnits || Number(formUnits) <= 0) {
+        showToast('Harap isi Units / Pcs dengan nilai lebih dari 0.', 'error')
+        return
+      }
+      if (!formPrice || Number(formPrice) <= 0) {
+        showToast('Harap isi Total Invoice Price dengan nilai lebih dari 0.', 'error')
+        return
+      }
     }
 
     const finalOrigin      = formOriginPoint.trim()      ? `${formOriginPoint.trim()} - ${formOrigin.trim()}`      : formOrigin.trim()
     const finalDestination = formDestinationPoint.trim() ? `${formDestinationPoint.trim()} - ${formDestination.trim()}` : formDestination.trim()
+    
+    // Auto map packageType and serviceLevel for KEPALA_ARMADA if empty
+    const pType = role === 'KEPALA_ARMADA' ? (formShippingCategory === 'Unit' ? 'Kendaraan' : (formShippingCategory === 'Cargo' ? 'Kargo' : 'Kontainer')) : formPackageType;
 
     try {
       await shipmentsAPI.create({
         clientId:            formClientId,
-        packageType:         formPackageType,
+        packageType:         pType,
         weightKg:            Number(formWeight) || 0,
         units:               formUnits ? Number(formUnits) : null,
         serviceLevel:        formService,
-        originLocation:      finalOrigin,
-        destinationLocation: finalDestination,
+        originLocation:      finalOrigin || '-',
+        destinationLocation: finalDestination || '-',
         specialNotes:        formNotes || null,
         pickupDate:          formPickupDate ? new Date(formPickupDate).toISOString() : null,
         price:               formPrice ? Number(formPrice) : null,
+        shippingCategory:    role === 'KEPALA_ARMADA' ? formShippingCategory : null,
+        driverId:            role === 'KEPALA_ARMADA' ? formDriverId : undefined,
+        pickupPlantId:       role === 'KEPALA_ARMADA' && formShippingCategory === 'Unit' ? formPickupPlantId : undefined,
+        dimensions:          role === 'KEPALA_ARMADA' && formShippingCategory === 'Cargo' ? formDimensions : undefined,
+        containerType:       role === 'KEPALA_ARMADA' && formShippingCategory === 'Container' ? formContainerType : undefined,
       })
       showToast('Pengiriman baru berhasil dibuat!', 'success')
       setShowCreateModal(false)
@@ -472,6 +552,13 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
     setGantiDriverChecked(false)
     setNewDriverVehicleId('')
     setTandaiTidakTersedia(true)
+    setAssignPickupPlantId('')
+    setAssignPickupDate('')
+    setVehicleCondition('Baik')
+    setLkuNumber('')
+    setPabrikNotes('')
+    setSerahTerimaUrl('')
+    setHandoverNotes('')
   }
 
   const openStatusModal = async () => {
@@ -488,8 +575,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
     const { rawStatus, id, driverId, vehicleId } = selectedShipment
 
     if (isRegularAdmin) {
-      // ── PENDING → assign driver+vehicle → DITUGASKAN ────────
-      if (rawStatus === 'PENDING') {
+      if (role === 'KEPALA_ARMADA' && rawStatus === 'PENDING') {
         if (!selectedVehicleId) {
           showToast('Pilih driver & kendaraan terlebih dahulu.', 'error')
           return
@@ -500,71 +586,87 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
           await shipmentsAPI.assign(id, {
             driverId:  vehicle.primaryDriver.id,
             vehicleId: vehicle.id,
+            pickupPlantId: assignPickupPlantId,
+            pickupDate: assignPickupDate
           })
           if (linkShipmentChecked && linkedShipmentId) {
             await shipmentsAPI.assign(linkedShipmentId, {
               driverId:  vehicle.primaryDriver.id,
               vehicleId: vehicle.id,
+              pickupPlantId: assignPickupPlantId,
+              pickupDate: assignPickupDate
             })
           }
           showToast('Driver ditugaskan! Status → Ditugaskan.', 'success')
           setShowStatusModal(false)
           resetModalState()
           fetchShipments({ silent: true })
-          setSelectedShipment(prev => prev ? ({
-            ...prev,
-            rawStatus:  'DITUGASKAN',
-            status:     'assigned',
-            driverId:   vehicle.primaryDriver.id,
-            driverName: vehicle.primaryDriver.fullName,
-            vehicleId:  vehicle.id,
-            vehicleName: `${vehicle.type} • ${vehicle.licensePlate}`,
-            vehiclePrimaryDriverId: vehicle.primaryDriverId,
-          }) : null)
+          setSelectedShipment(prev => prev ? ({ ...prev, rawStatus: 'DITUGASKAN', status: 'assigned' }) : null)
         } catch (err) {
           showToast(err.message || 'Gagal menugaskan driver.', 'error')
         }
         return
       }
 
-      // ── DITUGASKAN → (optionally swap driver) → TRANSIT ─────
-      if (rawStatus === 'DITUGASKAN') {
+      if (role === 'PIC_PABRIK' && (rawStatus === 'DITUGASKAN' || rawStatus === 'AT_PLANT')) {
         try {
-          if (gantiDriverChecked && newDriverVehicleId) {
-            const newVehicle = fleetVehicles.find(v => v.id === newDriverVehicleId)
-            if (!newVehicle?.primaryDriver) {
-              showToast('Driver yang dipilih tidak valid.', 'error')
-              return
-            }
-            if (newVehicle.primaryDriver.status === 'ON_DUTY') {
-              showToast(`${newVehicle.primaryDriver.fullName} sedang bertugas di pengiriman lain.`, 'error')
-              return
-            }
-            if (tandaiTidakTersedia && driverId) {
-              await fleetAPI.updateDriver(driverId, { status: 'UNAVAILABLE' })
-            }
-            await shipmentsAPI.assign(id, {
-              driverId:  newVehicle.primaryDriver.id,
-              vehicleId: vehicleId,
-            })
-          }
-          const ok = await handleStatusUpdate('TRANSIT')
-          if (ok) {
-            setShowStatusModal(false)
-            resetModalState()
-          }
+          await shipmentsAPI.plantCheck(id, {
+            vehicleCondition,
+            lkuNumber,
+            pabrikNotes
+          })
+          showToast('Pengecekan Pabrik Selesai. Status → Transit.', 'success')
+          setShowStatusModal(false)
+          resetModalState()
+          fetchShipments({ silent: true })
+          setSelectedShipment(prev => prev ? ({ ...prev, rawStatus: 'TRANSIT', status: 'in_transit' }) : null)
         } catch (err) {
-          showToast(err.message || 'Gagal mengonfirmasi keberangkatan.', 'error')
+          showToast(err.message || 'Gagal memproses pengecekan pabrik.', 'error')
         }
         return
       }
 
-      // ── TRANSIT → DELIVERED or CANCELLED ────────────────────
-      if (rawStatus === 'TRANSIT') {
-        if (!pendingStatus) {
-          showToast('Pilih status baru terlebih dahulu.', 'error')
-          return
+      if (role === 'PIC_GUDANG' && rawStatus === 'TRANSIT') {
+        try {
+          await shipmentsAPI.handover(id, {
+            serahTerimaUrl,
+            handoverNotes
+          })
+          showToast('Serah Terima Selesai. Status → Terkirim.', 'success')
+          setShowStatusModal(false)
+          resetModalState()
+          fetchShipments({ silent: true })
+          setSelectedShipment(prev => prev ? ({ ...prev, rawStatus: 'DELIVERED', status: 'delivered' }) : null)
+        } catch (err) {
+          showToast(err.message || 'Gagal memproses serah terima.', 'error')
         }
+        return
+      }
+
+      // ── Fallback for OPERATIONS / SUPPORT role ────────────────
+      if (rawStatus === 'PENDING') {
+        // Old assign logic here...
+        if (!selectedVehicleId) return showToast('Pilih driver & kendaraan.', 'error')
+        const vehicle = fleetVehicles.find(v => v.id === selectedVehicleId)
+        try {
+          await shipmentsAPI.assign(id, { driverId: vehicle.primaryDriver.id, vehicleId: vehicle.id })
+          showToast('Driver ditugaskan.', 'success')
+          setShowStatusModal(false)
+          resetModalState()
+          fetchShipments({ silent: true })
+          setSelectedShipment(prev => prev ? ({ ...prev, rawStatus: 'DITUGASKAN', status: 'assigned' }) : null)
+        } catch(err) {}
+        return
+      }
+
+      if (rawStatus === 'DITUGASKAN') {
+        const ok = await handleStatusUpdate('TRANSIT')
+        if (ok) { setShowStatusModal(false); resetModalState() }
+        return
+      }
+
+      if (rawStatus === 'TRANSIT') {
+        if (!pendingStatus) return showToast('Pilih status baru.', 'error')
         const ok = await handleStatusUpdate(pendingStatus)
         if (ok) { setShowStatusModal(false); resetModalState() }
         return
@@ -582,8 +684,13 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
 
   // Modal title / subtitle / submit label
   const getModalTitle = () => {
-    if (!selectedShipment || !isRegularAdmin) return 'Update Status Pengiriman'
-    if (selectedShipment.rawStatus === 'PENDING')    return 'Tugaskan Driver & Kendaraan'
+    if (!selectedShipment || isSuperAdmin) return 'Update Status Pengiriman'
+    if (role === 'KEPALA_ARMADA' && selectedShipment.rawStatus === 'PENDING') return 'Tugaskan Driver & Kendaraan'
+    if (role === 'PIC_PABRIK' && (selectedShipment.rawStatus === 'DITUGASKAN' || selectedShipment.rawStatus === 'AT_PLANT')) return 'Pengecekan Kendaraan (Pabrik)'
+    if (role === 'PIC_GUDANG' && selectedShipment.rawStatus === 'TRANSIT') return 'Serah Terima (Gudang)'
+    
+    // Fallback for OPERATIONS
+    if (selectedShipment.rawStatus === 'PENDING') return 'Tugaskan Driver & Kendaraan'
     if (selectedShipment.rawStatus === 'DITUGASKAN') return 'Konfirmasi Keberangkatan'
     return 'Update Status Pengiriman'
   }
@@ -591,16 +698,27 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
   const getModalSubtitle = () => {
     if (!selectedShipment) return ''
     const sid = selectedShipment.id.startsWith('#') ? selectedShipment.id : `#${selectedShipment.id}`
-    if (!isRegularAdmin) return `${sid} — pilih status baru`
-    if (selectedShipment.rawStatus === 'PENDING')    return `${sid} — pilih driver & armada`
+    if (isSuperAdmin) return `${sid} — pilih status baru`
+    
+    if (role === 'KEPALA_ARMADA' && selectedShipment.rawStatus === 'PENDING') return `${sid} — pilih driver, armada & pabrik`
+    if (role === 'PIC_PABRIK' && (selectedShipment.rawStatus === 'DITUGASKAN' || selectedShipment.rawStatus === 'AT_PLANT')) return `${sid} — lengkapi LKU dan cek kondisi`
+    if (role === 'PIC_GUDANG' && selectedShipment.rawStatus === 'TRANSIT') return `${sid} — upload bukti serah terima`
+
+    // Fallback for OPERATIONS
+    if (selectedShipment.rawStatus === 'PENDING') return `${sid} — pilih driver & armada`
     if (selectedShipment.rawStatus === 'DITUGASKAN') return `${sid} — konfirmasi sebelum berangkat`
-    if (selectedShipment.rawStatus === 'TRANSIT')    return `${sid} — selesaikan atau batalkan`
+    if (selectedShipment.rawStatus === 'TRANSIT') return `${sid} — selesaikan atau batalkan`
     return sid
   }
 
   const getSubmitLabel = () => {
-    if (!selectedShipment || !isRegularAdmin) return 'Konfirmasi'
-    if (selectedShipment.rawStatus === 'PENDING')    return 'Tugaskan'
+    if (!selectedShipment || isSuperAdmin) return 'Konfirmasi'
+    if (role === 'KEPALA_ARMADA' && selectedShipment.rawStatus === 'PENDING') return 'Tugaskan & Simpan'
+    if (role === 'PIC_PABRIK' && (selectedShipment.rawStatus === 'DITUGASKAN' || selectedShipment.rawStatus === 'AT_PLANT')) return 'Selesaikan Pengecekan'
+    if (role === 'PIC_GUDANG' && selectedShipment.rawStatus === 'TRANSIT') return 'Konfirmasi Serah Terima'
+
+    // Fallback
+    if (selectedShipment.rawStatus === 'PENDING') return 'Tugaskan'
     if (selectedShipment.rawStatus === 'DITUGASKAN') return 'Konfirmasi Berangkat'
     return 'Konfirmasi'
   }
@@ -611,7 +729,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
     const { rawStatus } = selectedShipment
 
     if (isRegularAdmin) {
-      // ── PENDING: driver assignment UI ──────────────────────
+      // ── KEPALA_ARMADA (or Fallback PENDING) ─────────────────
       if (rawStatus === 'PENDING') {
         return (
           <div className="flex flex-col gap-5">
@@ -644,6 +762,24 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
                     ))}
                   </div>
                 </div>
+
+                {role === 'KEPALA_ARMADA' && (
+                  <div className="flex flex-col gap-4 mt-2 p-4 bg-gray-50 border border-gray-100 rounded-xl">
+                    <AdminFormField
+                      label="Pabrik Pickup (Optional)"
+                      type="text"
+                      placeholder="Misal: Cikarang Plant A"
+                      value={assignPickupPlantId}
+                      onChange={e => setAssignPickupPlantId(e.target.value)}
+                    />
+                    <AdminDatePicker
+                      label="Tanggal Keberangkatan (Optional)"
+                      value={assignPickupDate}
+                      onChange={setAssignPickupDate}
+                      required={false}
+                    />
+                  </div>
+                )}
 
                 {menungguShipments.length > 0 && (
                   <div className="flex flex-col gap-3 pt-3 border-t border-gray-100">
@@ -691,7 +827,83 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
         )
       }
 
-      // ── DITUGASKAN: reconfirm UI ────────────────────────────
+      // ── PIC_PABRIK Check ──────────────────────────────────────
+      if (role === 'PIC_PABRIK' && (rawStatus === 'DITUGASKAN' || rawStatus === 'AT_PLANT')) {
+        return (
+          <div className="flex flex-col gap-5">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-gray-500">Status saat ini:</span>
+              <AdminStatusBadge status={rawStatus === 'DITUGASKAN' ? 'assigned' : 'at_plant'} type="shipment" />
+            </div>
+            
+            <div className="flex flex-col gap-4 bg-gray-50 p-5 rounded-xl border border-gray-200">
+              <div className="flex flex-col gap-2">
+                <span className="text-sm font-bold text-gray-700">Kondisi Kendaraan</span>
+                <SearchableSelect 
+                   options={[{value: 'Baik', label: 'Baik'}, {value: 'Perlu Perhatian', label: 'Perlu Perhatian'}, {value: 'Rusak Ringan', label: 'Rusak Ringan'}]}
+                   value={vehicleCondition}
+                   onChange={setVehicleCondition}
+                   placeholder="Pilih Kondisi"
+                />
+              </div>
+              
+              <AdminFormField
+                label="Nomor LKU"
+                type="text"
+                placeholder="Masukkan Nomor LKU"
+                value={lkuNumber}
+                onChange={e => setLkuNumber(e.target.value)}
+              />
+              
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-bold text-gray-700">Catatan Pengecekan</label>
+                <textarea
+                  className="w-full bg-white border border-gray-300 rounded-xl px-4 py-3 text-sm focus:border-dash-secondary focus:ring-1 focus:ring-dash-secondary outline-none transition-shadow"
+                  rows={3}
+                  placeholder="Tambahkan catatan jika ada..."
+                  value={pabrikNotes}
+                  onChange={e => setPabrikNotes(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      // ── PIC_GUDANG Handover ───────────────────────────────────
+      if (role === 'PIC_GUDANG' && rawStatus === 'TRANSIT') {
+        return (
+          <div className="flex flex-col gap-5">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-gray-500">Status saat ini:</span>
+              <AdminStatusBadge status="in_transit" type="shipment" />
+            </div>
+            
+            <div className="flex flex-col gap-4 bg-gray-50 p-5 rounded-xl border border-gray-200">
+              <AdminFormField
+                label="URL Bukti Serah Terima"
+                type="text"
+                placeholder="https://... (Link Foto/Dokumen)"
+                value={serahTerimaUrl}
+                onChange={e => setSerahTerimaUrl(e.target.value)}
+              />
+              
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-bold text-gray-700">Catatan Penerimaan</label>
+                <textarea
+                  className="w-full bg-white border border-gray-300 rounded-xl px-4 py-3 text-sm focus:border-dash-secondary focus:ring-1 focus:ring-dash-secondary outline-none transition-shadow"
+                  rows={3}
+                  placeholder="Tambahkan catatan kondisi barang..."
+                  value={handoverNotes}
+                  onChange={e => setHandoverNotes(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      // ── Fallback (OPERATIONS/SUPPORT) DITUGASKAN ──────────────
       if (rawStatus === 'DITUGASKAN') {
         const gantiDriverOptions = assignableVehicles.filter(v => v.primaryDriver?.id !== selectedShipment.driverId)
         return (
@@ -857,7 +1069,13 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
     const matchSearch  = !searchQuery ||
       s.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       s.client.toLowerCase().includes(searchQuery.toLowerCase())
-    return matchStatus && matchClient && matchService && matchSearch
+    
+    let matchViewMode = true
+    if (['KEPALA_ARMADA', 'PIC_PABRIK', 'PIC_GUDANG'].includes(role) && viewMode === 'today') {
+      matchViewMode = s.pickupDate === formatDate(new Date())
+    }
+
+    return matchStatus && matchClient && matchService && matchSearch && matchViewMode
   })
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE))
@@ -924,12 +1142,38 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
           <h2 className="text-2xl md:text-3xl font-black text-dash-primary tracking-tight">Manajemen Pengiriman</h2>
           <p className="text-sm text-gray-500 font-medium">Kelola semua pengiriman dari pickup hingga delivery.</p>
         </div>
-        <button
-          className="flex items-center justify-center gap-2 px-5 py-2.5 bg-dash-secondary hover:brightness-110 text-dash-primary font-bold rounded-xl shadow-sm transition-all hover:shadow-md"
-          onClick={openCreateModal}
-        >
-          <Icon name="add" size={20} /> Buat Pengiriman Baru
-        </button>
+        <div className="flex flex-col sm:flex-row gap-3">
+          {['KEPALA_ARMADA', 'PIC_PABRIK', 'PIC_GUDANG'].includes(role) && (
+            <div className="flex p-1 bg-gray-100 rounded-xl border border-gray-200">
+              <button
+                onClick={() => { setViewMode('today'); setCurrentPage(1); }}
+                className={`flex-1 sm:flex-none px-4 py-2 text-sm font-bold rounded-lg transition-all ${
+                  viewMode === 'today'
+                    ? 'bg-white text-dash-primary shadow-sm'
+                    : 'text-gray-500 hover:text-gray-800'
+                }`}
+              >
+                Hari Ini
+              </button>
+              <button
+                onClick={() => { setViewMode('history'); setCurrentPage(1); }}
+                className={`flex-1 sm:flex-none px-4 py-2 text-sm font-bold rounded-lg transition-all ${
+                  viewMode === 'history'
+                    ? 'bg-white text-dash-primary shadow-sm'
+                    : 'text-gray-500 hover:text-gray-800'
+                }`}
+              >
+                Semua Riwayat
+              </button>
+            </div>
+          )}
+          <button
+            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-dash-secondary hover:brightness-110 text-dash-primary font-bold rounded-xl shadow-sm transition-all hover:shadow-md"
+            onClick={openCreateModal}
+          >
+            <Icon name="add" size={20} /> Buat Pengiriman Baru
+          </button>
+        </div>
       </section>
 
       {/* Toolbar */}
@@ -999,7 +1243,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
         })}
       </div>
 
-      {/* Table */}
+      {/* Table / Card View */}
       <div>
         {loading ? (
           <div className="flex flex-col items-center justify-center p-12 text-gray-400 gap-3 border border-dashed border-gray-300 rounded-2xl bg-gray-50/50">
@@ -1008,7 +1252,47 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
           </div>
         ) : (
           <div className="flex flex-col gap-4">
-            <AdminDataTable columns={columns} data={paginated} onRowClick={setSelectedShipment} />
+            {/* Desktop Table View */}
+            <div className="hidden md:block">
+              <AdminDataTable columns={columns} data={paginated} onRowClick={setSelectedShipment} />
+            </div>
+
+            {/* Mobile Card View (Always visible on mobile) */}
+            <div className="block md:hidden flex flex-col gap-4">
+              {paginated.length > 0 ? (
+                paginated.map(s => (
+                  <div
+                    key={s.id}
+                    onClick={() => setSelectedShipment(s)}
+                    className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm flex flex-col gap-3 cursor-pointer hover:border-dash-secondary transition-colors"
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">{s.id}</span>
+                        <span className="text-sm font-black text-gray-900">{s.client}</span>
+                      </div>
+                      <AdminStatusBadge status={s.status} type="shipment" />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2 text-sm text-gray-600 font-medium">
+                        <Icon name="route" size={16} className="text-gray-400" />
+                        <span className="truncate">{s.originCity} &rarr; {s.destinationCity}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-600 font-medium">
+                        <Icon name="person" size={16} className="text-gray-400" />
+                        <span className="truncate">{s.driverName || 'Belum ditugaskan'}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="flex flex-col items-center justify-center p-8 text-gray-400 gap-3 border border-dashed border-gray-300 rounded-2xl bg-gray-50/50">
+                  <Icon name="search" size={32} />
+                  <p className="text-sm font-medium">Tidak ada data ditemukan.</p>
+                </div>
+              )}
+            </div>
+
             <AdminPagination
               currentPage={currentPage}
               totalPages={totalPages}
@@ -1021,7 +1305,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
       </div>
 
       {/* ── Detail Panel ── */}
-      {selectedShipment && (
+      {selectedShipment && createPortal(
         <>
           <div className="fixed inset-0 bg-dash-primary/20 backdrop-blur-sm z-[100]" onClick={() => setSelectedShipment(null)} />
           <div className="adm-detail-panel opacity-0 fixed right-0 top-0 h-screen w-full sm:w-[500px] bg-white shadow-2xl z-[101] flex flex-col border-l border-gray-200">
@@ -1143,30 +1427,32 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
                   <span className="text-sm font-bold text-gray-900 col-span-2">{selectedShipment.vehicleName || 'Belum ditugaskan'}</span>
                 </div>
 
-                <div className="mt-2">
-                  {selectedShipment.driverName ? (
-                    <button
-                      disabled={notifyInFlight || notifySent}
-                      className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 font-bold rounded-xl shadow-sm transition-all ${
-                        notifyInFlight || notifySent
-                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                          : 'bg-[#25D366] hover:bg-[#20bd5a] text-white'
-                      }`}
-                      onClick={handleNotifyDriver}
-                    >
-                      <Icon name={notifySent ? 'check_circle' : 'chat'} size={18} />
-                      {notifyInFlight
-                        ? 'Mengirim…'
-                        : notifySent
-                          ? 'Notifikasi Terkirim'
-                          : 'Kirim Notifikasi WhatsApp Driver'}
-                    </button>
-                  ) : (
-                    <p className="text-xs text-center text-gray-400 italic">
-                      Tugaskan driver terlebih dahulu untuk mengirim notifikasi.
-                    </p>
-                  )}
-                </div>
+                {(selectedShipment.status === 'PENDING' || selectedShipment.status === 'DITUGASKAN') && (
+                  <div className="mt-2">
+                    {selectedShipment.driverName ? (
+                      <button
+                        disabled={notifyInFlight || notifySent}
+                        className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 font-bold rounded-xl shadow-sm transition-all ${
+                          notifyInFlight || notifySent
+                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                            : 'bg-[#25D366] hover:bg-[#20bd5a] text-white'
+                        }`}
+                        onClick={handleNotifyDriver}
+                      >
+                        <Icon name={notifySent ? 'check_circle' : 'chat'} size={18} />
+                        {notifyInFlight
+                          ? 'Mengirim…'
+                          : notifySent
+                            ? 'Notifikasi Terkirim'
+                            : 'Kirim Notifikasi WhatsApp Driver'}
+                      </button>
+                    ) : (
+                      <p className="text-xs text-center text-gray-400 italic">
+                        Tugaskan driver terlebih dahulu untuk mengirim notifikasi.
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {selectedShipment.notes && (
                   <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-xl">
@@ -1193,7 +1479,8 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
               </div>
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
 
       {/* ── SUPERADMIN Assign Driver Modal ── */}
@@ -1244,95 +1531,219 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId }) {
           submitLabel="Simpan Pengiriman"
         >
           <div className="flex flex-col gap-6">
-            <div className="bg-gray-50/50 p-5 border border-gray-200 rounded-2xl flex flex-col gap-4">
-              <h4 className="text-sm font-bold text-gray-900 border-b border-gray-200 pb-2 flex items-center gap-2">
-                <Icon name="info" size={18} className="text-gray-400" /> Informasi Dasar
-              </h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <AdminFormField label="Klien" required fullWidth>
-                  <select
-                    value={formClientId}
-                    onChange={e => setFormClientId(e.target.value)}
-                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
-                  >
-                    <option value="">-- Pilih Klien --</option>
-                    {clientOptions.map(c => (
-                      <option key={c.id} value={c.id}>{c.label}</option>
-                    ))}
-                  </select>
-                </AdminFormField>
-                <AdminFormField label="Jenis Layanan" required>
-                  <select
-                    value={formService}
-                    onChange={e => setFormService(e.target.value)}
-                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
-                  >
-                    <option value="Darat">Darat</option>
-                    <option value="Laut">Laut</option>
-                    <option value="Udara">Udara</option>
-                  </select>
-                </AdminFormField>
-              </div>
-            </div>
+            {role === 'KEPALA_ARMADA' ? (
+              <div className="flex flex-col gap-4 bg-gray-50/50 p-5 border border-gray-200 rounded-2xl">
+                <h4 className="text-sm font-bold text-gray-900 border-b border-gray-200 pb-2 flex items-center gap-2">
+                  <Icon name="info" size={18} className="text-gray-400" /> Form Pengiriman Armada
+                </h4>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <AdminFormField label="Klien" required fullWidth>
+                    <select
+                      value={formClientId}
+                      onChange={e => setFormClientId(e.target.value)}
+                      className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-white"
+                    >
+                      <option value="">-- Pilih Klien --</option>
+                      {clientOptions.map(c => (
+                        <option key={c.id} value={c.id}>{c.label}</option>
+                      ))}
+                    </select>
+                  </AdminFormField>
+                  <AdminFormField label="Tipe Pengiriman" required>
+                    <select
+                      value={formShippingCategory}
+                      onChange={e => setFormShippingCategory(e.target.value)}
+                      className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-white"
+                    >
+                      <option value="Unit">Unit</option>
+                      <option value="Cargo">Cargo</option>
+                      <option value="Container">Container</option>
+                    </select>
+                  </AdminFormField>
+                </div>
 
-            <div className="bg-gray-50/50 p-5 border border-gray-200 rounded-2xl flex flex-col gap-4">
-              <h4 className="text-sm font-bold text-gray-900 border-b border-gray-200 pb-2 flex items-center gap-2">
-                <Icon name="route" size={18} className="text-gray-400" /> Rute &amp; Lokasi
-              </h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <AdminFormField label="Alamat Penjemputan" required>
-                  <input type="text" placeholder="Cth: Jl. Sudirman No 12" value={formOrigin} onChange={e => setFormOrigin(e.target.value)}
-                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white" />
-                </AdminFormField>
-                <AdminFormField label="Peta Titik Penjemputan">
-                  <input type="text" placeholder="Cth: https://maps.app.goo.gl/..." value={formOriginPoint} onChange={e => setFormOriginPoint(e.target.value)}
-                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white" />
-                </AdminFormField>
-                <AdminFormField label="Alamat Pengiriman" required>
-                  <input type="text" placeholder="Cth: Jl. Pahlawan No 8" value={formDestination} onChange={e => setFormDestination(e.target.value)}
-                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white" />
-                </AdminFormField>
-                <AdminFormField label="Peta Titik Pengiriman">
-                  <input type="text" placeholder="Cth: https://maps.app.goo.gl/..." value={formDestinationPoint} onChange={e => setFormDestinationPoint(e.target.value)}
-                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white" />
-                </AdminFormField>
-                <AdminFormField label="Tanggal Pickup" required>
-                  <AdminDatePicker value={formPickupDate} onChange={setFormPickupDate} placeholder="Pilih Tanggal Pickup" />
-                </AdminFormField>
-              </div>
-            </div>
+                {/* Common Driver field */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <AdminFormField label="Pilih Driver" required>
+                    <select
+                      value={formDriverId}
+                      onChange={e => setFormDriverId(e.target.value)}
+                      className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-white"
+                    >
+                      <option value="">-- Pilih Driver --</option>
+                      {availableDrivers.map(d => (
+                        <option key={d.id} value={d.id}>{d.fullName}</option>
+                      ))}
+                    </select>
+                  </AdminFormField>
+                  <AdminFormField label="Tanggal Pickup" required>
+                    <AdminDatePicker value={formPickupDate} onChange={setFormPickupDate} placeholder="Pilih Tanggal Pickup" minDate={restrictedMinDate} />
+                  </AdminFormField>
+                </div>
 
-            <div className="bg-gray-50/50 p-5 border border-gray-200 rounded-2xl flex flex-col gap-4">
-              <h4 className="text-sm font-bold text-gray-900 border-b border-gray-200 pb-2 flex items-center gap-2">
-                <Icon name="inventory_2" size={18} className="text-gray-400" /> Detail Muatan &amp; Harga
-              </h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <AdminFormField label="Deskripsi Barang" required fullWidth>
-                  <input type="text" placeholder="Cth: Elektronik, Suku Cadang" value={formPackageType} onChange={e => setFormPackageType(e.target.value)}
-                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white" />
-                </AdminFormField>
-                <AdminFormField label="Units / Pcs" required>
-                  <input type="number" min="1" placeholder="0" value={formUnits} onChange={e => setFormUnits(e.target.value)} required
-                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white" />
-                </AdminFormField>
-                <AdminFormField label="Berat (kg)">
-                  <input type="number" min="0" placeholder="0" value={formWeight} onChange={e => setFormWeight(e.target.value)}
-                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white" />
-                </AdminFormField>
+                {/* Unit Fields */}
+                {formShippingCategory === 'Unit' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <AdminFormField label="Pickup Plant" required>
+                      <select
+                        value={formPickupPlantId}
+                        onChange={e => setFormPickupPlantId(e.target.value)}
+                        className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-white"
+                      >
+                        <option value="">-- Pilih Pabrik --</option>
+                        {pickupPlants.map(p => (
+                          <option key={p.id} value={p.id}>{p.manufacturer} - {p.name} {p.code ? `(${p.code})` : ''}</option>
+                        ))}
+                      </select>
+                    </AdminFormField>
+                  </div>
+                )}
+
+                {/* Cargo Fields */}
+                {formShippingCategory === 'Cargo' && (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <AdminFormField label="Alamat Penjemputan" required>
+                        <input type="text" placeholder="Cth: Jl. Sudirman No 12" value={formOrigin} onChange={e => setFormOrigin(e.target.value)}
+                          className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-white" />
+                      </AdminFormField>
+                      <AdminFormField label="Alamat Pengiriman" required>
+                        <input type="text" placeholder="Cth: Jl. Pahlawan No 8" value={formDestination} onChange={e => setFormDestination(e.target.value)}
+                          className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-white" />
+                      </AdminFormField>
+                      <AdminFormField label="Dimensi (PxLxT)">
+                        <input type="text" placeholder="Cth: 200x100x50" value={formDimensions} onChange={e => setFormDimensions(e.target.value)}
+                          className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-white" />
+                      </AdminFormField>
+                      <AdminFormField label="Berat (kg)">
+                        <input type="number" min="0" placeholder="0" value={formWeight} onChange={e => setFormWeight(e.target.value)}
+                          className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-white" />
+                      </AdminFormField>
+                    </div>
+                  </>
+                )}
+
+                {/* Container Fields */}
+                {formShippingCategory === 'Container' && (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <AdminFormField label="Tipe Container" required>
+                        <select
+                          value={formContainerType}
+                          onChange={e => setFormContainerType(e.target.value)}
+                          className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-white"
+                        >
+                          <option value="20 Feet">20 Feet</option>
+                          <option value="40 Feet">40 Feet</option>
+                        </select>
+                      </AdminFormField>
+                      <div className="hidden md:block"></div>
+                      <AdminFormField label="Alamat Penjemputan" required>
+                        <input type="text" placeholder="Cth: Jl. Sudirman No 12" value={formOrigin} onChange={e => setFormOrigin(e.target.value)}
+                          className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-white" />
+                      </AdminFormField>
+                      <AdminFormField label="Alamat Pengiriman" required>
+                        <input type="text" placeholder="Cth: Jl. Pahlawan No 8" value={formDestination} onChange={e => setFormDestination(e.target.value)}
+                          className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-white" />
+                      </AdminFormField>
+                    </div>
+                  </>
+                )}
               </div>
-              <div className="p-5 bg-amber-50/50 border-2 border-amber-200 rounded-2xl my-2">
-                <AdminFormField label="Total Invoice Price (Jumlah Harga Invoice)" required>
-                  <input type="text" placeholder="Masukkan total harga invoice (Cth: 5,000,000)"
-                    value={formPrice ? 'Rp. ' + formatRupiahInput(formPrice) : ''}
-                    onChange={e => setFormPrice(parseRupiahInput(e.target.value))} required
-                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-[#002442] focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-white" />
-                </AdminFormField>
-              </div>
-              <AdminFormField label="Catatan Tambahan" fullWidth>
-                <textarea placeholder="Catatan khusus untuk pengiriman ini..." value={formNotes} onChange={e => setFormNotes(e.target.value)} rows={3}
-                  className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white custom-scrollbar" />
-              </AdminFormField>
-            </div>
+            ) : (
+              <>
+                <div className="bg-gray-50/50 p-5 border border-gray-200 rounded-2xl flex flex-col gap-4">
+                  <h4 className="text-sm font-bold text-gray-900 border-b border-gray-200 pb-2 flex items-center gap-2">
+                    <Icon name="info" size={18} className="text-gray-400" /> Informasi Dasar
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <AdminFormField label="Klien" required fullWidth>
+                      <select
+                        value={formClientId}
+                        onChange={e => setFormClientId(e.target.value)}
+                        className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
+                      >
+                        <option value="">-- Pilih Klien --</option>
+                        {clientOptions.map(c => (
+                          <option key={c.id} value={c.id}>{c.label}</option>
+                        ))}
+                      </select>
+                    </AdminFormField>
+                    <AdminFormField label="Jenis Layanan" required>
+                      <select
+                        value={formService}
+                        onChange={e => setFormService(e.target.value)}
+                        className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
+                      >
+                        <option value="Darat">Darat</option>
+                        <option value="Laut">Laut</option>
+                        <option value="Udara">Udara</option>
+                      </select>
+                    </AdminFormField>
+                  </div>
+                </div>
+
+                <div className="bg-gray-50/50 p-5 border border-gray-200 rounded-2xl flex flex-col gap-4">
+                  <h4 className="text-sm font-bold text-gray-900 border-b border-gray-200 pb-2 flex items-center gap-2">
+                    <Icon name="route" size={18} className="text-gray-400" /> Rute &amp; Lokasi
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <AdminFormField label="Alamat Penjemputan" required>
+                      <input type="text" placeholder="Cth: Jl. Sudirman No 12" value={formOrigin} onChange={e => setFormOrigin(e.target.value)}
+                        className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white" />
+                    </AdminFormField>
+                    <AdminFormField label="Peta Titik Penjemputan">
+                      <input type="text" placeholder="Cth: https://maps.app.goo.gl/..." value={formOriginPoint} onChange={e => setFormOriginPoint(e.target.value)}
+                        className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white" />
+                    </AdminFormField>
+                    <AdminFormField label="Alamat Pengiriman" required>
+                      <input type="text" placeholder="Cth: Jl. Pahlawan No 8" value={formDestination} onChange={e => setFormDestination(e.target.value)}
+                        className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white" />
+                    </AdminFormField>
+                    <AdminFormField label="Peta Titik Pengiriman">
+                      <input type="text" placeholder="Cth: https://maps.app.goo.gl/..." value={formDestinationPoint} onChange={e => setFormDestinationPoint(e.target.value)}
+                        className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white" />
+                    </AdminFormField>
+                    <AdminFormField label="Tanggal Pickup" required>
+                      <AdminDatePicker value={formPickupDate} onChange={setFormPickupDate} placeholder="Pilih Tanggal Pickup" minDate={restrictedMinDate} />
+                    </AdminFormField>
+                  </div>
+                </div>
+
+                <div className="bg-gray-50/50 p-5 border border-gray-200 rounded-2xl flex flex-col gap-4">
+                  <h4 className="text-sm font-bold text-gray-900 border-b border-gray-200 pb-2 flex items-center gap-2">
+                    <Icon name="inventory_2" size={18} className="text-gray-400" /> Detail Muatan &amp; Harga
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <AdminFormField label="Deskripsi Barang" required fullWidth>
+                      <input type="text" placeholder="Cth: Elektronik, Suku Cadang" value={formPackageType} onChange={e => setFormPackageType(e.target.value)}
+                        className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white" />
+                    </AdminFormField>
+                    <AdminFormField label="Units / Pcs" required>
+                      <input type="number" min="1" placeholder="0" value={formUnits} onChange={e => setFormUnits(e.target.value)} required
+                        className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white" />
+                    </AdminFormField>
+                    <AdminFormField label="Berat (kg)">
+                      <input type="number" min="0" placeholder="0" value={formWeight} onChange={e => setFormWeight(e.target.value)}
+                        className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white" />
+                    </AdminFormField>
+                  </div>
+                  <div className="p-5 bg-amber-50/50 border-2 border-amber-200 rounded-2xl my-2">
+                    <AdminFormField label="Total Invoice Price (Jumlah Harga Invoice)" required>
+                      <input type="text" placeholder="Masukkan total harga invoice (Cth: 5,000,000)"
+                        value={formPrice ? 'Rp. ' + formatRupiahInput(formPrice) : ''}
+                        onChange={e => setFormPrice(parseRupiahInput(e.target.value))} required
+                        className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold text-[#002442] focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-white" />
+                    </AdminFormField>
+                  </div>
+                  <AdminFormField label="Catatan Tambahan" fullWidth>
+                    <textarea placeholder="Catatan khusus untuk pengiriman ini..." value={formNotes} onChange={e => setFormNotes(e.target.value)} rows={3}
+                      className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white custom-scrollbar" />
+                  </AdminFormField>
+                </div>
+              </>
+            )}
           </div>
         </AdminModal>
       )}

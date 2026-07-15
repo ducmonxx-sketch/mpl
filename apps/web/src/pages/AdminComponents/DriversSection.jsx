@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import Icon from '../../components/Icon'
 import { useToast } from '../../contexts/ToastContext'
 import AdminDataTable from './components/AdminDataTable'
@@ -41,7 +42,7 @@ const mapDriverStatus = (apiStatus) => {
   return apiStatus.toLowerCase()
 }
 
-export default function DriversSection() {
+export default function DriversSection({ userRole }) {
   const { showToast } = useToast()
 
   // List state
@@ -278,26 +279,30 @@ export default function DriversSection() {
           >
             <Icon name="visibility" size={16} />
           </button>
-          <button
-            className="adm-action-btn"
-            title="Edit"
-            onClick={(e) => {
-              e.stopPropagation()
-              handleOpenEdit(row)
-            }}
-          >
-            <Icon name="edit" size={16} />
-          </button>
-          <button
-            className="adm-action-btn adm-action-btn--danger"
-            title="Hapus"
-            onClick={(e) => {
-              e.stopPropagation()
-              handleDeleteDriver(row.id, row.name)
-            }}
-          >
-            <Icon name="delete" size={16} />
-          </button>
+          {userRole !== 'KEPALA_ARMADA' && (
+            <button
+              className="adm-action-btn"
+              title="Edit"
+              onClick={(e) => {
+                e.stopPropagation()
+                handleOpenEdit(row)
+              }}
+            >
+              <Icon name="edit" size={16} />
+            </button>
+          )}
+          {userRole !== 'KEPALA_ARMADA' && (
+            <button
+              className="adm-action-btn adm-action-btn--danger"
+              title="Hapus"
+              onClick={(e) => {
+                e.stopPropagation()
+                handleDeleteDriver(row.id, row.name)
+              }}
+            >
+              <Icon name="delete" size={16} />
+            </button>
+          )}
         </div>
       ),
     },
@@ -312,14 +317,16 @@ export default function DriversSection() {
           <p className="dash-header__subtitle">Kelola data driver dan informasi SIM.</p>
         </div>
         <div className="adm-section-actions">
-          <button className="adm-create-btn" onClick={handleOpenCreateModal}>
-            <Icon name="add" size={18} /> Tambah Driver
-          </button>
+          {userRole !== 'KEPALA_ARMADA' && (
+            <button className="adm-create-btn" onClick={handleOpenCreateModal}>
+              <Icon name="add" size={18} /> Tambah Driver
+            </button>
+          )}
         </div>
       </section>
 
       {/* Premium KPI Cards */}
-      <div className="adm-kpi-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginTop: '1.25rem' }}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mt-5 adm-kpi-grid-container">
         <div className="adm-kpi-card" style={{ background: '#fff', borderRadius: '1rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
           <div className="adm-kpi-card__header">
             <div className="adm-kpi-card__icon" style={{ background: 'rgba(0,36,66,0.05)', color: 'var(--dash-primary)' }}>
@@ -441,7 +448,7 @@ export default function DriversSection() {
 
 
       {/* Detail Panel */}
-      {selectedDriver && (
+      {selectedDriver && createPortal(
         <div className="fixed inset-0 z-[100] flex justify-end">
           {/* Backdrop */}
           <div 
@@ -550,7 +557,8 @@ export default function DriversSection() {
 
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Create Modal */}

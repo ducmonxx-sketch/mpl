@@ -21,10 +21,8 @@ const AnimatedSection = ({ children }) => {
   useLayoutEffect(() => {
     if (!containerRef.current) return;
 
-    const wrapper = containerRef.current.firstElementChild;
-    const targets = (wrapper && wrapper.children.length > 0) 
-      ? Array.from(wrapper.children) 
-      : containerRef.current;
+    const targets = Array.from(containerRef.current.children);
+    if (targets.length === 0) return;
 
     anime.set(targets, { opacity: 0, translateY: 15 });
 
@@ -36,7 +34,7 @@ const AnimatedSection = ({ children }) => {
       delay: anime.stagger(75),
       duration: 1000
     });
-  }, []) 
+  }, [])
 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%' }}>
