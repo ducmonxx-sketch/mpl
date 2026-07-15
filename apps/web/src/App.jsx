@@ -1,17 +1,20 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
 import HomePage from './pages/HomePage'
-import NotFoundPage from './pages/NotFoundPage'
-import ClientAuthPage from './pages/ClientAuthPage'
-import VerificationPage from './pages/VerificationPage'
-import ClientDashboardPage from './pages/ClientDashboardPage'
-import AdminAuthPage from './pages/AdminAuthPage'
-import AdminDashboardPage from './pages/AdminDashboardPage'
-import MagicLinkPage from './pages/MagicLinkPage'
-import ResetPasswordPage from './pages/ResetPasswordPage'
 import WhatsAppButton from './components/WhatsAppButton'
 import ProtectedRoute from './components/ProtectedRoute'
 import { ToastProvider } from './contexts/ToastContext'
 import { AuthProvider } from './contexts/AuthContext'
+import PageLoader from './components/PageLoader'
+
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage'))
+const ClientAuthPage = lazy(() => import('./pages/ClientAuthPage'))
+const VerificationPage = lazy(() => import('./pages/VerificationPage'))
+const ClientDashboardPage = lazy(() => import('./pages/ClientDashboardPage'))
+const AdminAuthPage = lazy(() => import('./pages/AdminAuthPage'))
+const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'))
+const MagicLinkPage = lazy(() => import('./pages/MagicLinkPage'))
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'))
 
 function AppContent() {
   const location = useLocation()
@@ -20,29 +23,31 @@ function AppContent() {
 
   return (
     <>
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/client" element={<ClientAuthPage />} />
-        <Route path="/client/verification" element={<VerificationPage />} />
-        <Route
-          path="/client/dashboard"
-          element={
-            <ClientDashboardPage />
-          }
-        />
-        <Route path="/admin" element={<AdminAuthPage />} />
-        <Route
-          path="/admin/dashboard"
-          element={
-            <ProtectedRoute requiredType="admin">
-              <AdminDashboardPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route path="/auth/register/:token" element={<MagicLinkPage />} />
-        <Route path="/auth/reset-password/:token" element={<ResetPasswordPage />} />
-        <Route path="*" element={<NotFoundPage />} />
-      </Routes>
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/client" element={<ClientAuthPage />} />
+          <Route path="/client/verification" element={<VerificationPage />} />
+          <Route
+            path="/client/dashboard"
+            element={
+              <ClientDashboardPage />
+            }
+          />
+          <Route path="/admin" element={<AdminAuthPage />} />
+          <Route
+            path="/admin/dashboard"
+            element={
+              <ProtectedRoute requiredType="admin">
+                <AdminDashboardPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/auth/register/:token" element={<MagicLinkPage />} />
+          <Route path="/auth/reset-password/:token" element={<ResetPasswordPage />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </Suspense>
       {!hideWhatsApp && <WhatsAppButton />}
     </>
   )

@@ -26,7 +26,7 @@ export default function AboutSection() {
                     if (entry.isIntersecting && !animatedRef.current) {
                         animatedRef.current = true
 
-                        const tl = anime.timeline({ easing: 'spring(1, 100, 14, 0)', duration: 500 })
+                        const tl = anime.timeline({ easing: 'spring(1, 120, 12, 0)', duration: 400 })
 
                         tl.add({
                             targets: '.about-label',

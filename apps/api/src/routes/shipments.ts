@@ -243,6 +243,20 @@ router.patch("/:id/assign", authenticate, adminOnly, async (req: AuthRequest, re
          })
       }
 
+      if (shipment.driver.phoneNumber) {
+         const waMessage = `Hello ${shipment.driver.fullName},\n\nYou have been assigned a new shipment ${shipment.id}.\nPickup: ${shipment.originLocation}\nDropoff: ${shipment.destinationLocation}\n\nPlease check your dashboard.`
+         await sendWhatsApp(shipment.driver.phoneNumber, waMessage)
+
+         await prisma.adminAuditLog.create({
+           data: {
+             adminId: req.user!.id,
+             actionType: "SEND_WHATSAPP_DRIVER",
+             targetTable: "drivers",
+             targetRecordId: shipment.driver.id,
+             changesSummary: `Sent WhatsApp assignment notification to driver ${shipment.driver.id}`,
+           }
+         })
+      }
     }
 
     res.json({ message: "Driver and vehicle assigned.", shipment })
