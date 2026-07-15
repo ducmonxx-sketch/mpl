@@ -8,7 +8,7 @@
 //   PATCH  /api/users/:id/verify       → admin: verify a pending client
 //   PATCH  /api/users/:id/reject       → admin: reject a pending client
 //   PATCH  /api/users/:id              → admin: update a client account
-//   DELETE /api/users/:id              → admin: delete a client (+ shipments, invoices)
+//   DELETE /api/users/:id              → admin: delete a client (+ shipments)
 
 import { Router, Response } from "express"
 import bcrypt from "bcrypt"
@@ -601,7 +601,7 @@ router.patch("/:id", authenticate, adminOnly, async (req: AuthRequest, res: Resp
 })
 
 // ── DELETE /api/users/:id ─────────────────────────────────────
-// Admin deletes a client. Their invoices and shipments are removed too.
+// Admin deletes a client. Their shipments are removed too.
 router.delete("/:id", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
   try {
     const id = req.params.id
@@ -616,7 +616,6 @@ router.delete("/:id", authenticate, adminOnly, async (req: AuthRequest, res: Res
     }
 
     await prisma.$transaction([
-      prisma.invoice.deleteMany({ where: { clientId: id } }),
       prisma.shipment.deleteMany({ where: { clientId: id } }),
       prisma.user.delete({ where: { id } }),
     ])
@@ -627,7 +626,7 @@ router.delete("/:id", authenticate, adminOnly, async (req: AuthRequest, res: Res
         actionType:     "DELETE_USER",
         targetTable:    "users",
         targetRecordId: id,
-        changesSummary: `Deleted client ${user.email} and related shipments/invoices`,
+        changesSummary: `Deleted client ${user.email} and related shipments`,
       },
     })
 

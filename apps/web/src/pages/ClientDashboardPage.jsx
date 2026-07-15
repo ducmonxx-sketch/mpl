@@ -9,7 +9,6 @@ import ShipmentsSection from './dashboard/ShipmentsSection'
 import TrackingSection from './dashboard/TrackingSection'
 import HistorySection from './dashboard/HistorySection'
 import SettingsSection from './dashboard/SettingsSection'
-import InvoicesSection from './dashboard/InvoicesSection'
 import CreateShipmentModal from '../components/ClientComponents/CreateShipmentModal'
 import ClientSidebar from './ClientComponents/layout/ClientSidebar'
 import ClientTopbar from './ClientComponents/layout/ClientTopbar'
@@ -75,16 +74,6 @@ export default function ClientDashboardPage() {
       createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
       linkTo: 'tracking',
       linkId: 'SHP-9821'
-    },
-    {
-      id: 2,
-      category: 'invoice',
-      title: 'Faktur Baru Terbit',
-      message: 'Faktur INV-2026/05 telah terbit dan menunggu pembayaran.',
-      isRead: false,
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-      linkTo: 'invoices',
-      linkId: null
     },
     {
       id: 3,
@@ -193,7 +182,6 @@ export default function ClientDashboardPage() {
   const renderSection = () => {
     switch (activeNav) {
       case 'dashboard': return <DashboardSection key={refreshKey} />
-      case 'invoices': return <InvoicesSection />
       case 'shipments': return <ShipmentsSection key={refreshKey} onCreateShipment={() => setCreateModalOpen(true)} onTrackFull={navigateToTracking} onChangeNav={setActiveNav} />
       case 'tracking': return <TrackingSection initialSearchQuery={trackingId} />
       case 'history': return <HistorySection key={refreshKey} />

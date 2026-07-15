@@ -76,16 +76,6 @@ async function call(name, method, path, { token, body, expect = [200, 201] } = {
   }
   if (EVENT) await call('PATCH /tracking/events/:id', 'PATCH', `/api/tracking/events/${EVENT}`, { token: ADMIN, body: { status: 'DONE' } })
 
-  // invoices
-  let INV
-  if (SHIP) {
-    const inv = await call('POST /invoices', 'POST', '/api/invoices', { token: ADMIN, body: { shipmentId: SHIP, subtotal: 100000, taxRate: 11, dueDate: '2026-07-01' }, expect: [201] })
-    INV = inv.json.invoice?.id
-  }
-  await call('GET /invoices', 'GET', '/api/invoices', { token: ADMIN })
-  if (INV) await call('PATCH /invoices/:id/send', 'PATCH', `/api/invoices/${INV}/send`, { token: ADMIN })
-  if (INV) await call('PATCH /invoices/:id/paid', 'PATCH', `/api/invoices/${INV}/paid`, { token: ADMIN })
-
   // notifications
   await call('GET /notifications', 'GET', '/api/notifications', { token: CLIENT })
   await call('GET /admin-notifications', 'GET', '/api/admin-notifications', { token: ADMIN })

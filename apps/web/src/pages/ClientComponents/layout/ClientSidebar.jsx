@@ -12,12 +12,6 @@ export const NAV_GROUPS = [
     ]
   },
   {
-    title: 'TAGIHAN',
-    items: [
-      { id: 'invoices', label: 'Faktur', icon: 'receipt' },
-    ]
-  },
-  {
     title: 'PENGATURAN',
     items: [
       { id: 'settings', label: 'Pengaturan', icon: 'settings' },

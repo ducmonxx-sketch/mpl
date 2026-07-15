@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useLayoutEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import anime from 'animejs'
 import { useAuth } from '../contexts/AuthContext'
-import { notificationsAPI, adminNotificationsAPI, fleetAPI, invoicesAPI } from '../lib/api'
+import { notificationsAPI, adminNotificationsAPI, fleetAPI } from '../lib/api'
 import { useToast } from '../contexts/ToastContext'
 
 // Layout Components
@@ -15,7 +15,6 @@ import ShipmentsSection from './AdminComponents/ShipmentsSection'
 import ClientsSection from './AdminComponents/ClientsSection'
 import DriversSection from './AdminComponents/DriversSection'
 import ArmadaSection from './AdminComponents/ArmadaSection'
-import InvoicesSection from './AdminComponents/InvoicesSection'
 import UsersSection from './AdminComponents/UsersSection'
 import AdminProfileSection from './AdminComponents/AdminProfileSection'
 import TrackingSection from './dashboard/TrackingSection'
@@ -97,11 +96,10 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     async function fetchNotifications() {
       try {
-        const [notifData, driversData, vehiclesData, invoicesData] = await Promise.all([
+        const [notifData, driversData, vehiclesData] = await Promise.all([
           adminNotificationsAPI.list().catch(() => ({ notifications: [], unreadCount: 0 })),
           fleetAPI.getDrivers().catch(() => ({ drivers: [] })),
           fleetAPI.getVehicles().catch(() => ({ vehicles: [] })),
-          invoicesAPI.list().catch(() => ({ invoices: [] }))
         ])
 
         const dbNotifs = notifData.notifications || []
@@ -146,26 +144,8 @@ export default function AdminDashboardPage() {
           }
         })
 
-        // 3. Invoice Approaching Due Date Alerts
-        const sevenDaysFromNow = new Date()
-        sevenDaysFromNow.setDate(now.getDate() + 7)
-        const invoiceAlerts = (invoicesData.invoices || []).filter(inv => {
-          const isUnresolved = ['draft', 'sent'].includes(inv.status.toLowerCase())
-          const dueDate = new Date(inv.dueDate)
-          return isUnresolved && dueDate >= now && dueDate <= sevenDaysFromNow
-        }).map(inv => ({
-          id: `approaching-invoice-${inv.id}`,
-          category: 'invoice',
-          title: 'Faktur Jatuh Tempo',
-          message: `${inv.invoiceNumber} jatuh tempo pd ${new Date(inv.dueDate).toLocaleDateString('id-ID')}`,
-          linkTo: 'invoices',
-          linkId: inv.id,
-          isRead: readAlertIds.includes(`approaching-invoice-${inv.id}`),
-          createdAt: inv.dueDate,
-        }))
-
         // Merge alerts and db notifications, sort chronologically
-        const merged = [...driverAlerts, ...vehicleAlerts, ...invoiceAlerts, ...dbNotifs].sort(
+        const merged = [...driverAlerts, ...vehicleAlerts, ...dbNotifs].sort(
           (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         )
 
@@ -261,7 +241,6 @@ export default function AdminDashboardPage() {
       case 'clients': return <ClientsSection />
       case 'drivers': return <DriversSection userRole={displayRole} />
       case 'armada': return <ArmadaSection userRole={displayRole} />
-      case 'invoices': return <InvoicesSection />
       case 'users': return <UsersSection />
       case 'profile': return <AdminProfileSection />
       case 'tracking': return <TrackingSection initialSearchQuery={trackingId} isAdmin={true} userRole={displayRole} />

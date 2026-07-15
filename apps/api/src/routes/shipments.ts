@@ -61,7 +61,6 @@ router.get("/", authenticate, async (req: AuthRequest, res: Response) => {
         vehicle:        { select: { type: true, licensePlate: true, primaryDriverId: true } },
         pickupPlant:    { select: { name: true, code: true, manufacturer: true } },
         createdByAdmin: { select: { fullName: true } },
-        invoice:        { select: { id: true } },
       },
       orderBy: { createdAt: "desc" },
     })
@@ -578,7 +577,7 @@ router.delete("/:id", authenticate, adminOnly, async (req: AuthRequest, res: Res
     const id = String(req.params.id)
     const existing = await prisma.shipment.findUnique({
       where:  { id },
-      select: { status: true, driverId: true, vehicleId: true, invoice: { select: { id: true } } },
+      select: { status: true, driverId: true, vehicleId: true },
     })
     if (!existing) {
       return res.status(404).json({ message: "Pengiriman tidak ditemukan." })
@@ -587,9 +586,6 @@ router.delete("/:id", authenticate, adminOnly, async (req: AuthRequest, res: Res
     const isSuperAdmin = req.user!.role === "SUPERADMIN"
     if (!isSuperAdmin && existing.status !== "STANDBY") {
       return res.status(403).json({ message: "Hanya pengiriman berstatus Standby yang dapat dihapus." })
-    }
-    if (existing.invoice) {
-      return res.status(409).json({ message: "Pengiriman ini memiliki faktur. Hapus faktur terlebih dahulu." })
     }
 
     // Free the pair (Standby/On Duty → Tersedia). Idempotent + status-filtered.

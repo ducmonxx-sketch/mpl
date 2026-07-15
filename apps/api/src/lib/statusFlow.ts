@@ -1,13 +1,13 @@
 // src/lib/statusFlow.ts
 //
-// Directional status state machine for shipments + invoices.
+// Directional status state machine for shipments.
 // Regular admins may only move a record FORWARD along the normal flow; reversing or
 // jumping to an off-flow state requires the super-admin "status:override" permission
 // (used to audit/fix admin mistakes). Same → same is an allowed no-op.
 
 import { roleHas } from "./rbac"
 
-export type StatusKind = "shipment" | "invoice"
+export type StatusKind = "shipment"
 
 // Forward transitions a regular admin may perform. Keys also define the valid statuses.
 const FORWARD: Record<StatusKind, Record<string, string[]>> = {
@@ -22,13 +22,6 @@ const FORWARD: Record<StatusKind, Record<string, string[]>> = {
     DELIVERED:  [],
     FAILED:     [],  // legacy; no longer offered as a forward option
     CANCELLED:  [],
-  },
-  invoice: {
-    DRAFT:     ["SENT", "CANCELLED"],
-    SENT:      ["PAID", "OVERDUE", "CANCELLED"],
-    OVERDUE:   ["PAID", "CANCELLED"],
-    PAID:      [],
-    CANCELLED: [],
   },
 }
 

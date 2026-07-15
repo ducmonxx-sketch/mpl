@@ -27,12 +27,6 @@ export const NAV_GROUPS = [
     ]
   },
   {
-    title: 'FINANSIAL',
-    items: [
-      { id: 'invoices', label: 'Faktur', icon: 'receipt' },
-    ]
-  },
-  {
     title: 'SISTEM',
     items: [
       { id: 'users', label: 'Daftar Admin', icon: 'admin_panel_settings' },
