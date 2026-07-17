@@ -218,6 +218,9 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   const role = user?.role || 'SUPERADMIN'
   const isSuperAdmin = role === 'SUPERADMIN'
   const isRegularAdmin = !isSuperAdmin
+  // Field roles that use the compact page layout (status dropdown, no tabs, centered detail modal,
+  // Dalam Proses/Selesai views). KEPALA_ARMADA + PIC_PABRIK for now (add PIC_GUDANG when its flow lands).
+  const usesFieldLayout = role === 'KEPALA_ARMADA' || role === 'PIC_PABRIK'
 
   // Calculate restricted minDate for specific roles
   let restrictedMinDate = null
@@ -335,8 +338,8 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
         const anime = animeModule.default
         anime({
           targets: '.adm-detail-panel',
-          translateX: role === 'KEPALA_ARMADA' ? [0, 0] : [50, 0],
-          translateY: role === 'KEPALA_ARMADA' ? [20, 0] : [0, 0],
+          translateX: usesFieldLayout ? [0, 0] : [50, 0],
+          translateY: usesFieldLayout ? [20, 0] : [0, 0],
           opacity: [0, 1],
           easing: 'easeOutExpo',
           duration: 400
@@ -1256,6 +1259,27 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     )
   }
 
+  // Detail Muatan section (reused in the detail panel — position depends on role/status)
+  const renderDetailMuatan = () => (
+    <div className="flex flex-col gap-3">
+      <h4 className="flex items-center gap-2 text-sm font-bold text-gray-900 border-b border-gray-100 pb-2">
+        <Icon name="inventory_2" size={18} className="text-gray-400" /> Detail Muatan
+      </h4>
+      <div className="grid grid-cols-3 gap-2">
+        <span className="text-sm text-gray-500 font-medium">Deskripsi</span>
+        <span className="text-sm font-bold text-gray-900 col-span-2">{selectedShipment.cargoDescription}</span>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <span className="text-sm text-gray-500 font-medium">Berat</span>
+        <span className="text-sm font-bold text-gray-900 col-span-2">{selectedShipment.weightKg} kg</span>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <span className="text-sm text-gray-500 font-medium">Units / Pcs</span>
+        <span className="text-sm font-bold text-gray-900 col-span-2">{selectedShipment.units}</span>
+      </div>
+    </div>
+  )
+
   // ── WhatsApp notify ───────────────────────────────────────────
   const handleNotifyDriver = async () => {
     const id = selectedShipment.id
@@ -1291,11 +1315,11 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     
     let matchViewMode = true
     if (['KEPALA_ARMADA', 'PIC_PABRIK', 'PIC_GUDANG'].includes(role)) {
-      if (role === 'KEPALA_ARMADA') {
+      if (usesFieldLayout) {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const pDate = new Date(s.rawPickupDate);
-        
+
         if (viewMode === 'today') {
           // "Dalam Proses": today or future dates
           matchViewMode = pDate >= today;
@@ -1313,12 +1337,15 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     return matchStatus && matchClient && matchService && matchSearch && matchViewMode
   })
 
-  // Sort by date for KEPALA_ARMADA so next day shipments are separated from today
-  if (role === 'KEPALA_ARMADA') {
+  // Field roles: sort by status progression (Standby → Ditugaskan → Di Pabrik → Dalam
+  // Perjalanan → Diterima → Diturunkan → Selesai), then by earliest pickup date within each.
+  if (usesFieldLayout) {
+    const RANK = { STANDBY: 0, DITUGASKAN: 1, AT_PLANT: 2, TRANSIT: 3, DITERIMA: 4, DITURUNKAN: 5, DELIVERED: 6, CANCELLED: 7, PENDING: 8, FAILED: 9 }
     filtered.sort((a, b) => {
-      const da = new Date(a.rawPickupDate).getTime();
-      const db = new Date(b.rawPickupDate).getTime();
-      return viewMode === 'today' ? da - db : db - da; // ASC for Dalam Proses, DESC for Selesai
+      const ra = RANK[a.rawStatus] ?? 99
+      const rb = RANK[b.rawStatus] ?? 99
+      if (ra !== rb) return ra - rb
+      return new Date(a.rawPickupDate).getTime() - new Date(b.rawPickupDate).getTime() // earliest first
     });
   }
 
@@ -1401,7 +1428,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
                     : 'text-gray-500 hover:text-gray-800'
                 }`}
               >
-                {role === 'KEPALA_ARMADA' ? 'Dalam Proses' : 'Hari Ini'}
+                {usesFieldLayout ? 'Dalam Proses' : 'Hari Ini'}
               </button>
               <button
                 onClick={() => { setViewMode('history'); setCurrentPage(1); }}
@@ -1411,16 +1438,19 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
                     : 'text-gray-500 hover:text-gray-800'
                 }`}
               >
-                {role === 'KEPALA_ARMADA' ? 'Selesai' : 'Semua Riwayat'}
+                {usesFieldLayout ? 'Selesai' : 'Semua Riwayat'}
               </button>
             </div>
           )}
-          <button
-            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-dash-secondary hover:brightness-110 text-dash-primary font-bold rounded-xl shadow-sm transition-all hover:shadow-md"
-            onClick={openCreateModal}
-          >
-            <Icon name="add" size={20} /> Buat Pengiriman Baru
-          </button>
+          {/* Creating shipments is Kepala Armada's job only */}
+          {role === 'KEPALA_ARMADA' && (
+            <button
+              className="flex items-center justify-center gap-2 px-5 py-2.5 bg-dash-secondary hover:brightness-110 text-dash-primary font-bold rounded-xl shadow-sm transition-all hover:shadow-md"
+              onClick={openCreateModal}
+            >
+              <Icon name="add" size={20} /> Buat Pengiriman Baru
+            </button>
+          )}
         </div>
       </section>
 
@@ -1446,7 +1476,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
             allLabel="Semua Klien (A-Z)"
             className="w-full sm:w-56"
           />
-          {role !== 'KEPALA_ARMADA' ? (
+          {!usesFieldLayout ? (
             <SearchableSelect
               options={[
                 { value: 'Darat',       label: 'Darat' },
@@ -1469,6 +1499,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
                 { value: 'pending',    label: 'Menunggu' },
                 { value: 'standby',    label: 'Standby' },
                 { value: 'assigned',   label: 'Ditugaskan' },
+                { value: 'at_plant',   label: 'Di Pabrik' },
                 { value: 'in_transit', label: 'Dalam Perjalanan' },
                 { value: 'diterima',   label: 'Diterima' },
                 { value: 'diturunkan', label: 'Diturunkan' },
@@ -1486,7 +1517,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
       </div>
 
       {/* Status filter tabs */}
-      {role !== 'KEPALA_ARMADA' && (
+      {!usesFieldLayout && (
         <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-px">
           {filters.map(f => {
             const baseSet = SHIPMENTS.filter(s =>
@@ -1578,14 +1609,14 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
       {selectedShipment && createPortal(
         <>
           <div className="fixed inset-0 bg-dash-primary/20 backdrop-blur-sm z-[100]" onClick={() => setSelectedShipment(null)} />
-          <div className={`fixed inset-0 z-[101] pointer-events-none ${role === 'KEPALA_ARMADA' ? 'flex items-center justify-center p-4' : ''}`}>
+          <div className={`fixed inset-0 z-[101] pointer-events-none ${usesFieldLayout ? 'flex items-center justify-center p-4' : ''}`}>
             <div className={`adm-detail-panel opacity-0 bg-white shadow-2xl flex flex-col pointer-events-auto ${
-              role === 'KEPALA_ARMADA'
+              usesFieldLayout
                 ? 'w-[90vw] aspect-[9/16] md:w-[700px] md:aspect-auto md:h-fit max-h-[90vh] rounded-2xl overflow-hidden relative'
                 : 'absolute right-0 top-0 h-screen w-full sm:w-[500px] border-l border-gray-200'
             }`}>
               {/* Panel Header */}
-              <div className={`p-6 border-b border-gray-100 bg-gray-50/50 flex flex-col gap-4 ${role === 'KEPALA_ARMADA' ? 'shrink-0' : ''}`}>
+              <div className={`p-6 border-b border-gray-100 bg-gray-50/50 flex flex-col gap-4 ${usesFieldLayout ? 'shrink-0' : ''}`}>
               <div className="flex justify-between items-start">
                 <AdminStatusBadge status={selectedShipment.status} type="shipment" />
                 <button
@@ -1680,25 +1711,6 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
                 </div>
               </div>
 
-              {/* Detail Muatan */}
-              <div className="flex flex-col gap-3">
-                <h4 className="flex items-center gap-2 text-sm font-bold text-gray-900 border-b border-gray-100 pb-2">
-                  <Icon name="inventory_2" size={18} className="text-gray-400" /> Detail Muatan
-                </h4>
-                <div className="grid grid-cols-3 gap-2">
-                  <span className="text-sm text-gray-500 font-medium">Deskripsi</span>
-                  <span className="text-sm font-bold text-gray-900 col-span-2">{selectedShipment.cargoDescription}</span>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <span className="text-sm text-gray-500 font-medium">Berat</span>
-                  <span className="text-sm font-bold text-gray-900 col-span-2">{selectedShipment.weightKg} kg</span>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <span className="text-sm text-gray-500 font-medium">Units / Pcs</span>
-                  <span className="text-sm font-bold text-gray-900 col-span-2">{selectedShipment.units}</span>
-                </div>
-              </div>
-
               {/* Driver & Kendaraan */}
               <div className="flex flex-col gap-3">
                 <h4 className="flex items-center gap-2 text-sm font-bold text-gray-900 border-b border-gray-100 pb-2">
@@ -1758,6 +1770,9 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
                   </div>
                 )}
               </div>
+
+              {/* Detail Muatan — shown at the bottom once departed (hidden at Standby/Ditugaskan/Di Pabrik). All roles. */}
+              {!['STANDBY', 'DITUGASKAN', 'AT_PLANT'].includes(selectedShipment.rawStatus) && renderDetailMuatan()}
 
             </div>
           </div>

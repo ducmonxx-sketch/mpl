@@ -20,7 +20,6 @@ export const NAV_GROUPS = [
     title: 'OPERASIONAL',
     items: [
       { id: 'shipments', label: 'Pengiriman', icon: 'local_shipping' },
-      { id: 'tracking', label: 'Pelacakan', icon: 'location_on' },
       { id: 'armada', label: 'Daftar Kendaraan', icon: 'directions_car' },
       { id: 'drivers', label: 'Driver', icon: 'person' },
       { id: 'clients', label: 'Klien', icon: 'people' },
@@ -58,7 +57,7 @@ export default function AdminSidebar({
          return ['overview', 'armada', 'drivers', 'shipments', 'profile'].includes(item.id);
       }
       if (userRole === 'PIC_PABRIK' || userRole === 'PIC_GUDANG') {
-         return ['overview', 'shipments', 'tracking', 'profile'].includes(item.id);
+         return ['overview', 'shipments', 'profile'].includes(item.id);
       }
       // Default (e.g. OPERATIONS or SUPPORT)
       return item.id !== 'users'; 
