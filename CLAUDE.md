@@ -7,9 +7,10 @@
 
 **Resuming / continuing work?** After context.md, read **[DEV-PLAN.md](DEV-PLAN.md)** — current state, locked decisions, and prioritized next steps.
 
-Before doing any work, read **[RUNBOOK.md](RUNBOOK.md)** in full and follow it:
-sync (§2) → integration audit (§3) → **report findings before editing** → append a
-dated **Session Log** entry (§5) before finishing.
+Before doing any work, read **[RUNBOOK.md](RUNBOOK.md)** — the §1–§5 cookbook + the
+newest §6 Session Log entries (older logs live in `RUNBOOK-ARCHIVE.md`; read only if you
+need history) — and follow it: sync (§2) → integration audit (§3) → **report findings
+before editing** → append a dated **Session Log** entry (§5) before finishing.
 
 **Scope:** admin dashboard only. Do not modify the client-facing side — note client
 implications for follow-up instead. Don't break shared contracts (schema, shared
