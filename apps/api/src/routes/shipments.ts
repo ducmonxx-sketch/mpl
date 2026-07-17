@@ -61,6 +61,7 @@ router.get("/", authenticate, async (req: AuthRequest, res: Response) => {
         vehicle:        { select: { type: true, licensePlate: true, primaryDriverId: true } },
         pickupPlant:    { select: { name: true, code: true, manufacturer: true } },
         createdByAdmin: { select: { fullName: true } },
+        plantCheck:     { include: { lku: true, ksu: true } },
       },
       orderBy: { createdAt: "desc" },
     })
@@ -121,6 +122,7 @@ router.get("/:id", authenticate, async (req: AuthRequest, res: Response) => {
         vehicle:        { select: { type: true, licensePlate: true, primaryDriverId: true } },
         pickupPlant:    { select: { name: true, code: true, manufacturer: true } },
         createdByAdmin: { select: { fullName: true } },
+        plantCheck:     { include: { lku: true, ksu: true } },
         events:         { orderBy: { eventTimestamp: "asc" } },
       },
     })
@@ -372,28 +374,54 @@ router.post("/:id/notify-driver", authenticate, adminOnly, async (req: AuthReque
 })
 
 // ── PATCH /api/shipments/:id/plant-check ────────────────────────
-// PIC Pengurus Pabrik completes LKU and vehicle check
+// PIC Pengurus Pabrik completes the plant check (AT_PLANT → TRANSIT).
+// Body (all optional so the interim stub still advances; the 3-page wizard sends the full set):
+//   dataPengiriman: { tipeMotor, noShipping, jumlah, satuan, keterangan }  (page 1, required in UI)
+//   lku: [{ tipeMotor, noMesin, noRangka, warna, itemDefect }]             (page 2, optional)
+//   ksu: [{ tipeMotor, helm, accu, spion, toolkit, bsBp, kKontak, fuse, platNo, sticker }]  (page 3, required in UI)
+// Persisted to plant_checks (+ lku/ksu children). Feeds the Surat Jalan generator.
 router.patch("/:id/plant-check", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
   try {
-    const { vehicleCondition, lkuNumber, pabrikNotes } = req.body
+    const id = String(req.params.id)
+    const { dataPengiriman, lku = [], ksu = [] } = req.body
+
+    // Persist the structured form when Data Pengiriman is provided (idempotent: replace prior check).
+    if (dataPengiriman) {
+      await prisma.plantCheck.deleteMany({ where: { shipmentId: id } })  // children cascade
+      await prisma.plantCheck.create({
+        data: {
+          shipmentId:       id,
+          tipeMotor:        dataPengiriman.tipeMotor,
+          noShipping:       dataPengiriman.noShipping,
+          jumlah:           Number(dataPengiriman.jumlah) || 0,
+          satuan:           dataPengiriman.satuan,
+          keterangan:       dataPengiriman.keterangan ?? null,
+          checkedByAdminId: req.user!.id,
+          lku: { create: (lku as any[]).map(r => ({
+            tipeMotor: r.tipeMotor ?? null, noMesin: r.noMesin ?? null, noRangka: r.noRangka ?? null,
+            warna: r.warna ?? null, itemDefect: r.itemDefect ?? null,
+          })) },
+          ksu: { create: (ksu as any[]).map(r => ({
+            tipeMotor: r.tipeMotor ?? null, helm: r.helm ?? null, accu: r.accu ?? null, spion: r.spion ?? null,
+            toolkit: r.toolkit ?? null, bsBp: r.bsBp ?? null, kKontak: r.kKontak ?? null, fuse: r.fuse ?? null,
+            platNo: r.platNo ?? null, sticker: r.sticker ?? null,
+          })) },
+        },
+      })
+    }
+
     const shipment = await prisma.shipment.update({
-      where: { id: req.params.id },
-      data: {
-        vehicleCondition,
-        lkuNumber,
-        pabrikNotes,
-        status: "TRANSIT",
-        lastUpdatedByAdminId: req.user!.id,
-      },
+      where: { id },
+      data:  { status: "TRANSIT", lastUpdatedByAdminId: req.user!.id },
     })
-    
+
     await prisma.adminAuditLog.create({
       data: {
         adminId: req.user!.id,
         actionType: "UPDATE_STATUS",
         targetTable: "shipments",
         targetRecordId: shipment.id,
-        changesSummary: `Completed Plant Check with LKU ${lkuNumber}. Status -> TRANSIT`,
+        changesSummary: `Completed Plant Check${dataPengiriman ? ` (${(lku as any[]).length} LKU, ${(ksu as any[]).length} KSU rows)` : ""}. Status -> TRANSIT`,
       }
     })
 

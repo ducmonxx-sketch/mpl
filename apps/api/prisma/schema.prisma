@@ -341,9 +341,70 @@ model Shipment {
   lastUpdatedByAdminId String?
   lastUpdatedByAdmin   Admin?  @relation("ShipmentUpdatedBy", fields: [lastUpdatedByAdminId], references: [id])
 
-  events  ShipmentEvent[]
+  events     ShipmentEvent[]
+  plantCheck PlantCheck?
 
   @@map("shipments")
+}
+
+// ============================================================
+// PLANT CHECK (Pengurus Pabrik — AT_PLANT → TRANSIT form)
+// Mirrors the paper form: Data Pengiriman (1:1) + LKU rows + KSU rows.
+// Feeds the future Surat Jalan generator.
+// ============================================================
+
+model PlantCheck {
+  id         String @id @default(uuid())
+  shipmentId String @unique
+  shipment   Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  // Page 1 — Data Pengiriman (required)
+  tipeMotor  String
+  noShipping String
+  jumlah     Int
+  satuan     String
+  keterangan String?
+
+  checkedByAdminId String?
+  createdAt        DateTime @default(now())
+
+  lku PlantCheckLku[]
+  ksu PlantCheckKsu[]
+
+  @@map("plant_checks")
+}
+
+// Laporan Kondisi Unit — per-unit defect rows (optional)
+model PlantCheckLku {
+  id           String     @id @default(uuid())
+  plantCheckId String
+  plantCheck   PlantCheck @relation(fields: [plantCheckId], references: [id], onDelete: Cascade)
+  tipeMotor    String?
+  noMesin      String?
+  noRangka     String?
+  warna        String?
+  itemDefect   String?
+
+  @@map("plant_check_lku")
+}
+
+// Perlengkapan Motor (KSU) — equipment checklist rows (required). Values are free text ("17", "-").
+model PlantCheckKsu {
+  id           String     @id @default(uuid())
+  plantCheckId String
+  plantCheck   PlantCheck @relation(fields: [plantCheckId], references: [id], onDelete: Cascade)
+  tipeMotor    String?
+  helm         String?
+  accu         String?
+  spion        String?
+  toolkit      String?
+  bsBp         String?
+  kKontak      String?
+  fuse         String?
+  platNo       String?
+  sticker      String?
+
+  @@map("plant_check_ksu")
 }
 
 // ============================================================

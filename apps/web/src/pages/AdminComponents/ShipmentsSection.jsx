@@ -286,6 +286,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
         shippingCategory:      s.shippingCategory || '-',
         originCity:            s.originLocation,
         pickupPlantId:         s.pickupPlantId || null,
+        plantCheck:            s.plantCheck || null,
         destinationCity:       s.destinationLocation,
         pickupDate:            formatDate(s.pickupDate || s.createdAt),
         rawPickupDate:         s.pickupDate || s.createdAt,
@@ -1300,6 +1301,52 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     </div>
   )
 
+  // Plant check (Pengurus Pabrik) — read-only, shown in the detail panel once the check is done
+  const renderPlantCheck = () => {
+    const pc = selectedShipment?.plantCheck
+    if (!pc) return null
+    const row = (label, val) => (
+      <div className="grid grid-cols-3 gap-2">
+        <span className="text-sm text-gray-500 font-medium">{label}</span>
+        <span className="text-sm font-bold text-gray-900 col-span-2">{val || '-'}</span>
+      </div>
+    )
+    return (
+      <div className="flex flex-col gap-3">
+        <h4 className="flex items-center gap-2 text-sm font-bold text-gray-900 border-b border-gray-100 pb-2">
+          <Icon name="fact_check" size={18} className="text-gray-400" /> Pengecekan Pabrik
+        </h4>
+        {row('Tipe Motor', pc.tipeMotor)}
+        {row('No. Shipping', pc.noShipping)}
+        {row('Jumlah', `${pc.jumlah}${pc.satuan ? ' ' + pc.satuan : ''}`)}
+        {pc.keterangan && row('Keterangan', pc.keterangan)}
+
+        {pc.lku?.length > 0 && (
+          <div className="flex flex-col gap-1.5 mt-1">
+            <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">LKU — Kondisi Unit ({pc.lku.length})</span>
+            {pc.lku.map((r, i) => (
+              <div key={i} className="text-xs text-gray-700 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
+                <span className="font-bold">{r.tipeMotor || '-'}</span> · Mesin {r.noMesin || '-'} · Rangka {r.noRangka || '-'} · {r.warna || '-'}
+                {r.itemDefect ? <span className="text-red-600"> · Defect: {r.itemDefect}</span> : null}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {pc.ksu?.length > 0 && (
+          <div className="flex flex-col gap-1.5 mt-1">
+            <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">KSU — Perlengkapan ({pc.ksu.length})</span>
+            {pc.ksu.map((r, i) => (
+              <div key={i} className="text-xs text-gray-700 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
+                <span className="font-bold">{r.tipeMotor || '-'}</span> — Helm {r.helm || '-'}, Accu {r.accu || '-'}, Spion {r.spion || '-'}, Toolkit {r.toolkit || '-'}, BS&amp;BP {r.bsBp || '-'}, K.Kontak {r.kKontak || '-'}, Fuse {r.fuse || '-'}, Plat {r.platNo || '-'}, Sticker {r.sticker || '-'}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   // ── WhatsApp notify ───────────────────────────────────────────
   const handleNotifyDriver = async () => {
     const id = selectedShipment.id
@@ -1810,6 +1857,9 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
                   </div>
                 )}
               </div>
+
+              {/* Pengecekan Pabrik — read-only, once the plant check has been completed */}
+              {renderPlantCheck()}
 
               {/* Detail Muatan — shown at the bottom once departed (hidden at Standby/Ditugaskan/Di Pabrik). All roles. */}
               {!['STANDBY', 'DITUGASKAN', 'AT_PLANT'].includes(selectedShipment.rawStatus) && renderDetailMuatan()}
