@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import Icon from '../../components/Icon'
 import { useToast } from '../../contexts/ToastContext'
@@ -196,9 +196,12 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   const emptyKsuRow = () => ({ tipeMotor: '', helm: '', accu: '', spion: '', toolkit: '', bsBp: '', kKontak: '', fuse: '', platNo: '', sticker: '' })
   const [pabrikPage, setPabrikPage]                   = useState(1)
   const [pcPengiriman, setPcPengiriman]               = useState([emptyPengirimanRow()])
-  const [pcLku, setPcLku]                             = useState([])
+  const [pcLku, setPcLku]                             = useState([emptyLkuRow()])
   const [pcKsu, setPcKsu]                             = useState([emptyKsuRow()])
   const [showPabrikConfirm, setShowPabrikConfirm]     = useState(false)
+  // Auto-scroll the wizard body to the newest row when a dynamic row is added.
+  const pengirimanEndRef  = useRef(null)
+  const prevPengirimanLen = useRef(1)
 
   const [serahTerimaUrl, setSerahTerimaUrl]           = useState('')
   const [handoverNotes, setHandoverNotes]             = useState('')
@@ -284,39 +287,41 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   })();
 
   // ── Data fetching ─────────────────────────────────────────────
+  // Map a raw API shipment → the display shape used across the table + detail modal.
+  const mapShipment = (s) => ({
+    id:                    s.id,
+    clientId:              s.clientId,
+    client:                s.client?.companyName || s.client?.fullName || '-',
+    serviceType:           s.serviceLevel || 'Darat',
+    shippingCategory:      s.shippingCategory || '-',
+    originCity:            s.originLocation,
+    pickupPlantId:         s.pickupPlantId || null,
+    plantCheck:            s.plantCheck || null,
+    destinationCity:       s.destinationLocation,
+    pickupDate:            formatDate(s.pickupDate || s.createdAt),
+    rawPickupDate:         s.pickupDate || s.createdAt,
+    cargoDescription:      s.packageType,
+    weightKg:              s.weightKg,
+    units:                 s.units || '-',
+    dimensions:            s.dimensions || '-',
+    containerType:         s.containerType || '-',
+    pickupPlantName:       s.pickupPlant ? `${s.pickupPlant.manufacturer} - ${s.pickupPlant.name}${s.pickupPlant.code ? ` (${s.pickupPlant.code})` : ''}` : '-',
+    driverId:              s.driverId,
+    driverName:            s.driver?.fullName || null,
+    vehicleId:             s.vehicleId,
+    vehicleName:           s.vehicle ? `${s.vehicle.type} • ${s.vehicle.licensePlate}` : null,
+    vehiclePrimaryDriverId: s.vehicle?.primaryDriverId || null,
+    status:                mapStatus(s.status),
+    rawStatus:             s.status,
+    notes:                 s.specialNotes || '',
+    createdBy:             s.createdByAdmin?.fullName || s.client?.fullName || '-',
+  })
+
   const fetchShipments = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true)
     try {
       const data = await shipmentsAPI.list()
-      const mapped = (data.shipments || data || []).map(s => ({
-        id:                    s.id,
-        clientId:              s.clientId,
-        client:                s.client?.companyName || s.client?.fullName || '-',
-        serviceType:           s.serviceLevel || 'Darat',
-        shippingCategory:      s.shippingCategory || '-',
-        originCity:            s.originLocation,
-        pickupPlantId:         s.pickupPlantId || null,
-        plantCheck:            s.plantCheck || null,
-        destinationCity:       s.destinationLocation,
-        pickupDate:            formatDate(s.pickupDate || s.createdAt),
-        rawPickupDate:         s.pickupDate || s.createdAt,
-        cargoDescription:      s.packageType,
-        weightKg:              s.weightKg,
-        units:                 s.units || '-',
-        dimensions:            s.dimensions || '-',
-        containerType:         s.containerType || '-',
-        pickupPlantName:       s.pickupPlant ? `${s.pickupPlant.manufacturer} - ${s.pickupPlant.name}${s.pickupPlant.code ? ` (${s.pickupPlant.code})` : ''}` : '-',
-        driverId:              s.driverId,
-        driverName:            s.driver?.fullName || null,
-        vehicleId:             s.vehicleId,
-        vehicleName:           s.vehicle ? `${s.vehicle.type} • ${s.vehicle.licensePlate}` : null,
-        vehiclePrimaryDriverId: s.vehicle?.primaryDriverId || null,
-        status:                mapStatus(s.status),
-        rawStatus:             s.status,
-        notes:                 s.specialNotes || '',
-        createdBy:             s.createdByAdmin?.fullName || s.client?.fullName || '-',
-      }))
-      setSHIPMENTS(mapped)
+      setSHIPMENTS((data.shipments || data || []).map(mapShipment))
     } catch (err) {
       console.error('Failed to fetch shipments:', err)
       showToast('Gagal memuat data pengiriman.', 'error')
@@ -630,6 +635,32 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   }
 
   // ── Update Status modal ───────────────────────────────────────
+  // Plant-check wizard draft persistence (per shipment) — survives closing/reopening the modal.
+  const PC_DRAFT_PREFIX = 'mpl:plantCheckDraft:'
+  const loadPlantCheckDraft = (shipmentId) => {
+    try {
+      const raw = localStorage.getItem(PC_DRAFT_PREFIX + shipmentId)
+      const d = raw ? JSON.parse(raw) : null
+      return d && typeof d === 'object' ? d : null
+    } catch { return null }
+  }
+  const savePlantCheckDraft = (shipmentId, draft) => {
+    try { localStorage.setItem(PC_DRAFT_PREFIX + shipmentId, JSON.stringify(draft)) } catch { /* quota / disabled storage — draft is best-effort */ }
+  }
+  const clearPlantCheckDraft = (shipmentId) => {
+    try { localStorage.removeItem(PC_DRAFT_PREFIX + shipmentId) } catch { /* ignore */ }
+  }
+
+  // Clear All: wipe the wizard back to its 0-state and drop the saved draft.
+  const handleClearPlantCheck = () => {
+    setPcPengiriman([emptyPengirimanRow()])
+    setPcLku([emptyLkuRow()])
+    setPcKsu([emptyKsuRow()])
+    setPabrikPage(1)
+    if (selectedShipment?.id) clearPlantCheckDraft(selectedShipment.id)
+    showToast('Form pengecekan dikosongkan.', 'success')
+  }
+
   const resetModalState = () => {
     setPendingStatus(null)
     setSelectedVehicleId('')
@@ -648,7 +679,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     setHandoverNotes('')
     setPabrikPage(1)
     setPcPengiriman([emptyPengirimanRow()])
-    setPcLku([])
+    setPcLku([emptyLkuRow()])
     setPcKsu([emptyKsuRow()])
     setShowPabrikConfirm(false)
   }
@@ -664,15 +695,18 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     if (rawStatus === 'STANDBY') {
       await Promise.all([fetchFleetVehicles(), fetchFleet()])
     }
-    // Plant-check wizard: prefill the first Data Pengiriman row from the shipment where we can.
+    // Plant-check wizard: restore a saved draft for this shipment if one exists,
+    // otherwise start with one blank Data Pengiriman row (no prefill).
     if (rawStatus === 'AT_PLANT') {
-      setPcPengiriman([{
-        tipeMotor:  selectedShipment.cargoDescription || '',
-        noShipping: '',
-        jumlah:     selectedShipment.units && selectedShipment.units !== '-' ? String(selectedShipment.units) : '',
-        satuan:     '',
-        keterangan: '',
-      }])
+      const draft = loadPlantCheckDraft(selectedShipment.id)
+      if (draft) {
+        setPcPengiriman(draft.pengiriman?.length ? draft.pengiriman : [emptyPengirimanRow()])
+        setPcLku(draft.lku?.length ? draft.lku : [emptyLkuRow()])
+        setPcKsu(draft.ksu?.length ? draft.ksu : [emptyKsuRow()])
+        setPabrikPage(draft.page || 1)
+      } else {
+        setPcPengiriman([emptyPengirimanRow()])
+      }
     }
   }
 
@@ -686,6 +720,21 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   const addKsu    = () => setPcKsu(rows => [...rows, emptyKsuRow()])
   const removeKsu = (i) => setPcKsu(rows => rows.filter((_, idx) => idx !== i))
   const updateKsu = (i, field, val) => setPcKsu(rows => rows.map((r, idx) => idx === i ? { ...r, [field]: val } : r))
+
+  // Scroll the wizard body to the newly added Data Pengiriman row.
+  useEffect(() => {
+    if (pcPengiriman.length > prevPengirimanLen.current) {
+      pengirimanEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+    prevPengirimanLen.current = pcPengiriman.length
+  }, [pcPengiriman.length])
+
+  // Auto-save the wizard draft while the plant-check modal is open (per shipment).
+  // Guarded on the open+AT_PLANT state so closing/resetting never overwrites the draft.
+  useEffect(() => {
+    if (!showStatusModal || selectedShipment?.rawStatus !== 'AT_PLANT' || !selectedShipment?.id) return
+    savePlantCheckDraft(selectedShipment.id, { pengiriman: pcPengiriman, lku: pcLku, ksu: pcKsu, page: pabrikPage })
+  }, [showStatusModal, selectedShipment, pcPengiriman, pcLku, pcKsu, pabrikPage])
 
   // Confirm-box action: submit the whole plant-check payload → Dalam Perjalanan
   const doSubmitPlantCheck = async () => {
@@ -701,11 +750,18 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
         ksu,
       })
       showToast('Pengecekan Pabrik Selesai. Status → Dalam Perjalanan.', 'success')
+      clearPlantCheckDraft(selectedShipment.id)
       setShowPabrikConfirm(false)
       setShowStatusModal(false)
       resetModalState()
       fetchShipments({ silent: true })
-      setSelectedShipment(prev => prev ? ({ ...prev, rawStatus: 'TRANSIT', status: 'in_transit' }) : null)
+      // Soft-refresh the still-open detail modal so it shows the saved Pengecekan Pabrik.
+      try {
+        const fresh = await shipmentsAPI.getById(selectedShipment.id)
+        setSelectedShipment(mapShipment(fresh.shipment || fresh))
+      } catch {
+        setSelectedShipment(prev => prev ? ({ ...prev, rawStatus: 'TRANSIT', status: 'in_transit' }) : null)
+      }
     } catch (err) {
       showToast(err.message || 'Gagal memproses pengecekan pabrik.', 'error')
       setShowPabrikConfirm(false)
@@ -799,6 +855,14 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
           return
         }
         if (pabrikPage === 2) {
+          // Auto-assign KSU rows from the motor types entered on Data Pengiriman
+          // (one row per distinct type). Only seed on first arrival so we don't
+          // wipe KSU data if the user steps back and forward again.
+          const motorTypes = [...new Set(pcPengiriman.map(r => r.tipeMotor.trim()).filter(Boolean))]
+          const ksuUntouched = pcKsu.length <= 1 && pcKsu.every(r => !Object.values(r).some(v => String(v).trim()))
+          if (ksuUntouched && motorTypes.length > 0) {
+            setPcKsu(motorTypes.map(t => ({ ...emptyKsuRow(), tipeMotor: t })))
+          }
           setPabrikPage(3) // LKU optional
           return
         }
@@ -1143,14 +1207,20 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
       if (role === 'PIC_PABRIK' && rawStatus === 'AT_PLANT') {
         const inp = "w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-dash-secondary focus:ring-1 focus:ring-dash-secondary outline-none"
         const KSU_FIELDS = [['helm','Helm'],['accu','Accu'],['spion','Spion'],['toolkit','Toolkit'],['bsBp','BS & BP'],['kKontak','K. Kontak'],['fuse','Fuse'],['platNo','Plat No.'],['sticker','Sticker']]
-        // Distinct motor types entered on the Data Pengiriman page → feed KSU's Tipe Motor dropdown.
+        // Distinct motor types entered on the Data Pengiriman page → feed KSU's auto-assigned Tipe Motor.
         const motorTypes = [...new Set(pcPengiriman.map(r => r.tipeMotor.trim()).filter(Boolean))]
+        // Keterangan per motor type (first row wins) → shown beside the KSU Tipe Motor.
+        const ketByMotor = pcPengiriman.reduce((acc, r) => {
+          const t = r.tipeMotor.trim()
+          if (t && !(t in acc)) acc[t] = (r.keterangan || '').trim()
+          return acc
+        }, {})
         // Red-circle remove button, pinned to the top-left corner of a dynamic row.
         const removeBtn = (onClick) => (
           <button
             type="button"
             onClick={onClick}
-            className="absolute -top-2.5 -left-2.5 w-6 h-6 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center shadow-md z-10"
+            className="absolute -top-2.5 -right-2.5 w-6 h-6 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center shadow-md z-10"
             aria-label="Hapus baris"
           >
             <Icon name="close" size={14} />
@@ -1164,6 +1234,16 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
         )
         return (
           <div className="flex flex-col gap-5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-gray-400">Draf tersimpan otomatis</span>
+              <button
+                type="button"
+                onClick={handleClearPlantCheck}
+                className="text-xs font-bold text-white bg-red-600 hover:bg-red-700 border border-red-700 px-3 py-1.5 rounded-lg flex items-center gap-1 transition-colors"
+              >
+                <Icon name="delete" size={14} /> Clear All
+              </button>
+            </div>
             <div className="flex items-center">
               {step(1, 'Pengiriman')}
               <div className="flex-1 h-px bg-gray-200 mx-2" />
@@ -1174,10 +1254,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
 
             {pabrikPage === 1 && (
               <div className="flex flex-col gap-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-bold text-gray-900">Data Pengiriman <span className="text-red-500">*</span></p>
-                  <button type="button" onClick={addPengiriman} className="text-xs font-bold text-dash-primary bg-dash-secondary/20 hover:bg-dash-secondary/30 px-3 py-1.5 rounded-lg flex items-center gap-1"><Icon name="add" size={14} /> Tambah Baris</button>
-                </div>
+                <p className="text-sm font-bold text-gray-900">Data Pengiriman <span className="text-red-500">*</span></p>
                 {pcPengiriman.map((r, i) => (
                   <div key={i} className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex flex-col gap-2 relative">
                     {pcPengiriman.length > 1 && removeBtn(() => removePengiriman(i))}
@@ -1190,21 +1267,23 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
                     <input className={inp} placeholder="Keterangan" value={r.keterangan} onChange={e => updatePengiriman(i, 'keterangan', e.target.value)} />
                   </div>
                 ))}
+                <button type="button" onClick={addPengiriman} className="w-full text-xs font-bold text-dash-primary bg-dash-secondary/20 hover:bg-dash-secondary/30 border border-dash-secondary/50 px-3 py-2.5 rounded-lg flex items-center justify-center gap-1"><Icon name="add" size={14} /> Tambah Baris</button>
+                <div ref={pengirimanEndRef} />
               </div>
             )}
 
             {pabrikPage === 2 && (
               <div className="flex flex-col gap-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-bold text-gray-900">Laporan Kondisi Unit (LKU) <span className="text-gray-400 font-normal text-xs">— opsional</span></p>
-                  <button type="button" onClick={addLku} className="text-xs font-bold text-dash-primary bg-dash-secondary/20 hover:bg-dash-secondary/30 px-3 py-1.5 rounded-lg flex items-center gap-1"><Icon name="add" size={14} /> Tambah Baris</button>
-                </div>
+                <p className="text-sm font-bold text-gray-900">Laporan Kondisi Unit (LKU) <span className="text-gray-400 font-normal text-xs">— opsional</span></p>
                 {pcLku.length === 0 && <p className="text-xs text-gray-400 italic">Belum ada baris. Tambahkan hanya bila ada catatan kondisi / defect unit.</p>}
                 {pcLku.map((r, i) => (
                   <div key={i} className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex flex-col gap-2 relative">
                     {removeBtn(() => removeLku(i))}
                     <div className="grid grid-cols-2 gap-2">
-                      <input className={inp} placeholder="Tipe Motor" value={r.tipeMotor} onChange={e => updateLku(i, 'tipeMotor', e.target.value)} />
+                      <select className={inp} value={r.tipeMotor} onChange={e => updateLku(i, 'tipeMotor', e.target.value)}>
+                        <option value="">— Pilih Tipe Motor —</option>
+                        {motorTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
                       <input className={inp} placeholder="No. Mesin" value={r.noMesin} onChange={e => updateLku(i, 'noMesin', e.target.value)} />
                       <input className={inp} placeholder="No. Rangka" value={r.noRangka} onChange={e => updateLku(i, 'noRangka', e.target.value)} />
                       <input className={inp} placeholder="Warna" value={r.warna} onChange={e => updateLku(i, 'warna', e.target.value)} />
@@ -1212,6 +1291,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
                     <input className={inp} placeholder="Item Defect" value={r.itemDefect} onChange={e => updateLku(i, 'itemDefect', e.target.value)} />
                   </div>
                 ))}
+                <button type="button" onClick={() => setPcLku(rows => [...rows, { ...emptyLkuRow(), tipeMotor: motorTypes[0] || '' }])} className="w-full text-xs font-bold text-dash-primary bg-dash-secondary/20 hover:bg-dash-secondary/30 border border-dash-secondary/50 px-3 py-2.5 rounded-lg flex items-center justify-center gap-1"><Icon name="add" size={14} /> Tambah Baris</button>
               </div>
             )}
 
@@ -1219,15 +1299,14 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
               <div className="flex flex-col gap-3">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-bold text-gray-900">Perlengkapan Motor (KSU) <span className="text-red-500">*</span></p>
-                  <button type="button" onClick={addKsu} className="text-xs font-bold text-dash-primary bg-dash-secondary/20 hover:bg-dash-secondary/30 px-3 py-1.5 rounded-lg flex items-center gap-1"><Icon name="add" size={14} /> Tambah Baris</button>
                 </div>
                 {pcKsu.map((r, i) => (
                   <div key={i} className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex flex-col gap-2 relative">
-                    {pcKsu.length > 1 && removeBtn(() => removeKsu(i))}
-                    <select className={inp} value={r.tipeMotor} onChange={e => updateKsu(i, 'tipeMotor', e.target.value)}>
-                      <option value="">— Pilih Tipe Motor —</option>
-                      {motorTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[0.65rem] font-bold text-[#eab308] uppercase tracking-wide">Tipe Motor</span>
+                      <span className="text-sm font-bold text-gray-900">{r.tipeMotor || '—'}</span>
+                      {ketByMotor[r.tipeMotor] && <span className="text-sm text-dash-primary/70">[{ketByMotor[r.tipeMotor]}]</span>}
+                    </div>
                     <div className="grid grid-cols-3 gap-2">
                       {KSU_FIELDS.map(([f, lbl]) => (
                         <div key={f} className="flex flex-col gap-1">
@@ -1447,7 +1526,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
             <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Data Pengiriman ({pc.pengiriman.length})</span>
             {pc.pengiriman.map((r, i) => (
               <div key={i} className="text-xs text-gray-700 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
-                <span className="font-bold">{r.tipeMotor || '-'}</span> · Shipping {r.noShipping || '-'} · {r.jumlah ?? '-'}{r.satuan ? ' ' + r.satuan : ''}
+                <span className="font-bold">{r.tipeMotor || '-'}</span> · {r.noShipping || '-'} · Jumlah: {r.jumlah ?? '-'} · Satuan: {r.satuan || '-'}
                 {r.keterangan ? <span className="text-gray-500"> · {r.keterangan}</span> : null}
               </div>
             ))}
@@ -1470,12 +1549,100 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
           <div className="flex flex-col gap-1.5 mt-1">
             <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">KSU — Perlengkapan ({pc.ksu.length})</span>
             {pc.ksu.map((r, i) => (
-              <div key={i} className="text-xs text-gray-700 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
-                <span className="font-bold">{r.tipeMotor || '-'}</span> — Helm {r.helm || '-'}, Accu {r.accu || '-'}, Spion {r.spion || '-'}, Toolkit {r.toolkit || '-'}, BS&amp;BP {r.bsBp || '-'}, K.Kontak {r.kKontak || '-'}, Fuse {r.fuse || '-'}, Plat {r.platNo || '-'}, Sticker {r.sticker || '-'}
+              <div key={i} className="text-xs text-gray-700 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 flex flex-col gap-0.5">
+                <span className="font-bold">{r.tipeMotor || '-'}</span>
+                <span>
+                  {[['Helm', r.helm], ['Accu', r.accu], ['Spion', r.spion], ['Toolkit', r.toolkit], ['BS&BP', r.bsBp], ['K.Kontak', r.kKontak], ['Fuse', r.fuse], ['Plat', r.platNo], ['Sticker', r.sticker]].map(([lbl, val], j) => (
+                    <span key={lbl}>{j > 0 ? ' | ' : ''}{lbl}: <span className="font-bold text-gray-900">{val || '-'}</span></span>
+                  ))}
+                </span>
               </div>
             ))}
           </div>
         )}
+      </div>
+    )
+  }
+
+  // Plant-check confirmation summary — segmented review of what was entered in the wizard.
+  const renderPabrikSummary = () => {
+    const pengirimanRows = pcPengiriman.filter(r => r.tipeMotor.trim())
+    const lkuRows = pcLku.filter(r => Object.values(r).some(v => String(v).trim()))
+    const ksuRows = pcKsu.filter(r => Object.values(r).some(v => String(v).trim()))
+    const KSU_FIELDS = [['helm','Helm'],['accu','Accu'],['spion','Spion'],['toolkit','Toolkit'],['bsBp','BS & BP'],['kKontak','K. Kontak'],['fuse','Fuse'],['platNo','Plat No.'],['sticker','Sticker']]
+    const th = "text-left text-[0.6rem] font-bold text-gray-500 uppercase tracking-wide px-2.5 py-1.5"
+    const td = "text-sm text-gray-800 px-2.5 py-1.5 align-top"
+    return (
+      <div className="flex flex-col gap-4">
+        {/* Data Pengiriman */}
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-bold text-dash-primary uppercase tracking-wide">Data Pengiriman ({pengirimanRows.length})</span>
+          <div className="overflow-x-auto border border-gray-200 rounded-xl">
+            <table className="w-full min-w-[480px]">
+              <thead className="bg-gray-50"><tr>
+                <th className={th}>Tipe Motor</th><th className={th}>No. Shipping</th><th className={th}>Jumlah</th><th className={th}>Satuan</th><th className={th}>Keterangan</th>
+              </tr></thead>
+              <tbody className="divide-y divide-gray-100">
+                {pengirimanRows.map((r, i) => (
+                  <tr key={i}>
+                    <td className={`${td} font-bold`}>{r.tipeMotor || '-'}</td>
+                    <td className={td}>{r.noShipping || '-'}</td>
+                    <td className={td}>{r.jumlah || '-'}</td>
+                    <td className={td}>{r.satuan || '-'}</td>
+                    <td className={td}>{r.keterangan || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* LKU */}
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-bold text-dash-primary uppercase tracking-wide">LKU — Kondisi Unit ({lkuRows.length})</span>
+          {lkuRows.length === 0 ? (
+            <p className="text-xs text-gray-400 italic">Tidak ada catatan kondisi unit.</p>
+          ) : (
+            <div className="overflow-x-auto border border-gray-200 rounded-xl">
+              <table className="w-full min-w-[520px]">
+                <thead className="bg-gray-50"><tr>
+                  <th className={th}>Tipe Motor</th><th className={th}>No. Mesin</th><th className={th}>No. Rangka</th><th className={th}>Warna</th><th className={th}>Item Defect</th>
+                </tr></thead>
+                <tbody className="divide-y divide-gray-100">
+                  {lkuRows.map((r, i) => (
+                    <tr key={i}>
+                      <td className={`${td} font-bold`}>{r.tipeMotor || '-'}</td>
+                      <td className={td}>{r.noMesin || '-'}</td>
+                      <td className={td}>{r.noRangka || '-'}</td>
+                      <td className={td}>{r.warna || '-'}</td>
+                      <td className={td}>{r.itemDefect || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* KSU — segmented per motor */}
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-bold text-dash-primary uppercase tracking-wide">KSU — Perlengkapan ({ksuRows.length})</span>
+          <div className="flex flex-col gap-2">
+            {ksuRows.map((r, i) => (
+              <div key={i} className="border border-gray-200 rounded-xl p-3 flex flex-col gap-2">
+                <span className="text-sm font-bold text-gray-900">{r.tipeMotor || '-'}</span>
+                <div className="grid grid-cols-3 gap-x-3 gap-y-1.5">
+                  {KSU_FIELDS.map(([f, lbl]) => (
+                    <div key={f} className="flex flex-col">
+                      <span className="text-[0.6rem] font-bold text-gray-400 uppercase tracking-wide">{lbl}</span>
+                      <span className="text-sm text-gray-800">{r[f] || '-'}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     )
   }
@@ -2290,16 +2457,20 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
       {/* Plant-check confirmation box — sits above the wizard modal (z-[300]) */}
       {showPabrikConfirm && selectedShipment && createPortal(
         <div className="fixed inset-0 z-[300] bg-[#002442]/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowPabrikConfirm(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-150" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-3">
-              <span className="w-10 h-10 rounded-full bg-dash-secondary/20 text-dash-primary flex items-center justify-center"><Icon name="fact_check" size={22} /></span>
-              <h3 className="text-lg font-bold text-dash-primary">Selesaikan Pengecekan?</h3>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[88vh] flex flex-col animate-in fade-in zoom-in-95 duration-150" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start gap-3 p-6 border-b border-gray-100">
+              <span className="w-10 h-10 rounded-full bg-dash-secondary/20 text-dash-primary flex items-center justify-center shrink-0"><Icon name="fact_check" size={22} /></span>
+              <div>
+                <h3 className="text-lg font-bold text-dash-primary">Selesaikan Pengecekan?</h3>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  Ringkasan pengecekan <b>{selectedShipment.id}</b>. Setelah disimpan, status menjadi <b>Dalam Perjalanan</b>.
+                </p>
+              </div>
             </div>
-            <p className="text-sm text-gray-600">
-              Pengecekan pabrik untuk <b>{selectedShipment.id}</b> akan disimpan dan status berubah menjadi <b>Dalam Perjalanan</b>.
-              {' '}({pcLku.filter(r => Object.values(r).some(v => String(v).trim())).length} baris LKU, {pcKsu.filter(r => Object.values(r).some(v => String(v).trim())).length} baris KSU)
-            </p>
-            <div className="flex justify-end gap-3 pt-2">
+            <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+              {renderPabrikSummary()}
+            </div>
+            <div className="flex justify-end gap-3 p-6 border-t border-gray-100 bg-gray-50/50 rounded-b-2xl">
               <button type="button" onClick={() => setShowPabrikConfirm(false)} className="px-5 py-2.5 text-sm font-bold text-gray-600 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl transition-colors">Batal</button>
               <button type="button" onClick={doSubmitPlantCheck} className="px-5 py-2.5 text-sm font-bold text-[#002442] bg-[#fec330] hover:bg-[#eab308] rounded-xl shadow-sm transition-colors flex items-center gap-2"><Icon name="check" size={18} /> Ya, Selesaikan</button>
             </div>
