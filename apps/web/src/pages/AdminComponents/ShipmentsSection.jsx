@@ -28,6 +28,7 @@ const RAW_STATUS_OPTIONS = [
   { value: 'PENDING',     label: 'Menunggu' },
   { value: 'STANDBY',     label: 'Standby' },
   { value: 'DITUGASKAN',  label: 'Ditugaskan' },
+  { value: 'AT_PLANT',    label: 'Di Pabrik' },
   { value: 'TRANSIT',     label: 'Dalam Perjalanan' },
   { value: 'DITERIMA',    label: 'Diterima' },
   { value: 'DITURUNKAN',  label: 'Diturunkan' },
@@ -39,7 +40,8 @@ const RAW_STATUS_OPTIONS = [
 const FORWARD_STATUS = {
   PENDING:    ['STANDBY'],
   STANDBY:    ['DITUGASKAN'],
-  DITUGASKAN: ['TRANSIT'],
+  DITUGASKAN: ['AT_PLANT'],
+  AT_PLANT:   ['TRANSIT'],
   TRANSIT:    ['DITERIMA', 'DELIVERED', 'CANCELLED'],
   DITERIMA:   ['DITURUNKAN', 'CANCELLED'],
   DITURUNKAN: ['DELIVERED'],
@@ -59,6 +61,7 @@ const mapStatus = (s) => {
     PENDING:    'pending',
     STANDBY:    'standby',
     DITUGASKAN: 'assigned',
+    AT_PLANT:   'at_plant',
     TRANSIT:    'in_transit',
     DITERIMA:   'diterima',
     DITURUNKAN: 'diturunkan',
@@ -689,14 +692,22 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
         return
       }
 
-      if (role === 'PIC_PABRIK' && (rawStatus === 'DITUGASKAN' || rawStatus === 'AT_PLANT')) {
+      // Ditugaskan → Di Pabrik: confirm the driver+armada have arrived at the plant.
+      if (role === 'PIC_PABRIK' && rawStatus === 'DITUGASKAN') {
+        const ok = await handleStatusUpdate('AT_PLANT')
+        if (ok) { setShowStatusModal(false); resetModalState() }
+        return
+      }
+
+      // Di Pabrik → Dalam Perjalanan: plant check + LKU (fuller data form is a later step).
+      if (role === 'PIC_PABRIK' && rawStatus === 'AT_PLANT') {
         try {
           await shipmentsAPI.plantCheck(id, {
             vehicleCondition,
             lkuNumber,
             pabrikNotes
           })
-          showToast('Pengecekan Pabrik Selesai. Status → Transit.', 'success')
+          showToast('Pengecekan Pabrik Selesai. Status → Dalam Perjalanan.', 'success')
           setShowStatusModal(false)
           resetModalState()
           fetchShipments({ silent: true })
@@ -768,7 +779,8 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     if (!selectedShipment || isSuperAdmin) return 'Update Status Pengiriman'
     if (role === 'KEPALA_ARMADA' && selectedShipment.rawStatus === 'STANDBY') return 'Konfirmasi Ketersediaan Driver'
     if (role === 'KEPALA_ARMADA' && selectedShipment.rawStatus === 'PENDING') return 'Tugaskan Driver & Kendaraan'
-    if (role === 'PIC_PABRIK' && (selectedShipment.rawStatus === 'DITUGASKAN' || selectedShipment.rawStatus === 'AT_PLANT')) return 'Pengecekan Kendaraan (Pabrik)'
+    if (role === 'PIC_PABRIK' && selectedShipment.rawStatus === 'DITUGASKAN') return 'Konfirmasi Kedatangan di Pabrik'
+    if (role === 'PIC_PABRIK' && selectedShipment.rawStatus === 'AT_PLANT') return 'Pengecekan Kendaraan (Pabrik)'
     if (role === 'PIC_GUDANG' && selectedShipment.rawStatus === 'TRANSIT') return 'Serah Terima (Gudang)'
     
     // Fallback for OPERATIONS
@@ -784,7 +796,8 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
 
     if (role === 'KEPALA_ARMADA' && selectedShipment.rawStatus === 'STANDBY') return `${sid} — konfirmasi driver & armada sebelum ditugaskan`
     if (role === 'KEPALA_ARMADA' && selectedShipment.rawStatus === 'PENDING') return `${sid} — pilih driver, armada & pabrik`
-    if (role === 'PIC_PABRIK' && (selectedShipment.rawStatus === 'DITUGASKAN' || selectedShipment.rawStatus === 'AT_PLANT')) return `${sid} — lengkapi LKU dan cek kondisi`
+    if (role === 'PIC_PABRIK' && selectedShipment.rawStatus === 'DITUGASKAN') return `${sid} — konfirmasi driver & armada tiba di Pabrik`
+    if (role === 'PIC_PABRIK' && selectedShipment.rawStatus === 'AT_PLANT') return `${sid} — lengkapi LKU dan cek kondisi`
     if (role === 'PIC_GUDANG' && selectedShipment.rawStatus === 'TRANSIT') return `${sid} — upload bukti serah terima`
 
     // Fallback for OPERATIONS
@@ -798,7 +811,8 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     if (!selectedShipment || isSuperAdmin) return 'Konfirmasi'
     if (role === 'KEPALA_ARMADA' && selectedShipment.rawStatus === 'STANDBY') return 'Konfirmasi & Tugaskan'
     if (role === 'KEPALA_ARMADA' && selectedShipment.rawStatus === 'PENDING') return 'Tugaskan & Simpan'
-    if (role === 'PIC_PABRIK' && (selectedShipment.rawStatus === 'DITUGASKAN' || selectedShipment.rawStatus === 'AT_PLANT')) return 'Selesaikan Pengecekan'
+    if (role === 'PIC_PABRIK' && selectedShipment.rawStatus === 'DITUGASKAN') return 'Konfirmasi Tiba di Pabrik'
+    if (role === 'PIC_PABRIK' && selectedShipment.rawStatus === 'AT_PLANT') return 'Selesaikan Pengecekan'
     if (role === 'PIC_GUDANG' && selectedShipment.rawStatus === 'TRANSIT') return 'Konfirmasi Serah Terima'
 
     // Fallback
@@ -1007,15 +1021,40 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
         )
       }
 
-      // ── PIC_PABRIK Check ──────────────────────────────────────
-      if (role === 'PIC_PABRIK' && (rawStatus === 'DITUGASKAN' || rawStatus === 'AT_PLANT')) {
+      // ── PIC_PABRIK: confirm arrival (Ditugaskan → Di Pabrik) ──
+      if (role === 'PIC_PABRIK' && rawStatus === 'DITUGASKAN') {
         return (
           <div className="flex flex-col gap-5">
             <div className="flex items-center gap-3">
               <span className="text-sm font-medium text-gray-500">Status saat ini:</span>
-              <AdminStatusBadge status={rawStatus === 'DITUGASKAN' ? 'assigned' : 'at_plant'} type="shipment" />
+              <AdminStatusBadge status="assigned" type="shipment" />
             </div>
-            
+            <div className="p-4 bg-purple-50 border border-purple-200 rounded-xl text-sm text-purple-800">
+              Konfirmasi bahwa driver &amp; armada untuk pengiriman <b>{selectedShipment.id}</b> telah tiba di Pabrik. Status akan berubah menjadi <b>Di Pabrik</b>.
+            </div>
+            <div className="flex flex-col gap-2 bg-gray-50 p-4 rounded-xl border border-gray-200">
+              <div className="grid grid-cols-3 gap-2">
+                <span className="text-sm text-gray-500 font-medium">Driver</span>
+                <span className="text-sm font-bold text-gray-900 col-span-2">{selectedShipment.driverName || '-'}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <span className="text-sm text-gray-500 font-medium">Armada</span>
+                <span className="text-sm font-bold text-gray-900 col-span-2">{selectedShipment.vehicleName || '-'}</span>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      // ── PIC_PABRIK: plant check (Di Pabrik → Dalam Perjalanan) ──
+      if (role === 'PIC_PABRIK' && rawStatus === 'AT_PLANT') {
+        return (
+          <div className="flex flex-col gap-5">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-gray-500">Status saat ini:</span>
+              <AdminStatusBadge status="at_plant" type="shipment" />
+            </div>
+
             <div className="flex flex-col gap-4 bg-gray-50 p-5 rounded-xl border border-gray-200">
               <div className="flex flex-col gap-2">
                 <span className="text-sm font-bold text-gray-700">Kondisi Kendaraan</span>
@@ -1291,6 +1330,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     { id: 'pending',    label: 'Menunggu' },
     { id: 'standby',    label: 'Standby' },
     { id: 'assigned',   label: 'Ditugaskan' },
+    { id: 'at_plant',   label: 'Di Pabrik' },
     { id: 'in_transit', label: 'Dalam Perjalanan' },
     { id: 'diterima',   label: 'Diterima' },
     { id: 'diturunkan', label: 'Diturunkan' },

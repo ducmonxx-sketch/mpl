@@ -14,8 +14,8 @@ const FORWARD: Record<StatusKind, Record<string, string[]>> = {
   shipment: {
     PENDING:    ["STANDBY"],              // admin-created → armada picks up (Menunggu → Standby)
     STANDBY:    ["DITUGASKAN"],           // armada reconfirms driver availability → Ditugaskan
-    DITUGASKAN: ["AT_PLANT", "TRANSIT"], // allow direct to TRANSIT if they skip plant check? Or strict flow? strict is AT_PLANT.
-    AT_PLANT:   ["TRANSIT"],
+    DITUGASKAN: ["AT_PLANT"],            // PIC Pabrik confirms arrival at plant (mandatory step)
+    AT_PLANT:   ["TRANSIT"],             // PIC Pabrik completes the check → departs
     TRANSIT:    ["DITERIMA", "DELIVERED", "CANCELLED"], // Gudang leg: → Diterima; DELIVERED kept for direct handover
     DITERIMA:   ["DITURUNKAN", "CANCELLED"],
     DITURUNKAN: ["DELIVERED"],

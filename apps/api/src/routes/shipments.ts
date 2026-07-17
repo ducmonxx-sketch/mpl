@@ -522,7 +522,7 @@ router.patch("/:id/status", authenticate, adminOnly, async (req: AuthRequest, re
                      ENGAGE:   { driverFrom: ["ACTIVE", "STANDBY"], driverTo: "ON_DUTY", vehFrom: ["AVAILABLE", "STANDBY"], vehTo: "IN_USE"    },
                      RELEASE:  { driverFrom: ["ON_DUTY", "STANDBY"], driverTo: "ACTIVE",  vehFrom: ["IN_USE", "STANDBY"],    vehTo: "AVAILABLE" } } as const
     const m = status === "STANDBY" ? mirror.STANDBY
-            : (status === "DITUGASKAN" || status === "TRANSIT") ? mirror.ENGAGE
+            : (status === "DITUGASKAN" || status === "AT_PLANT" || status === "TRANSIT") ? mirror.ENGAGE
             : (status === "DELIVERED" || status === "CANCELLED") ? mirror.RELEASE
             : null
     if (m) {

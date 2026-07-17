@@ -4,6 +4,7 @@ export default function AdminStatusBadge({ status, type = 'shipment' }) {
       pending:    { label: 'Menunggu',          cls: 'bg-gray-100 text-gray-600 border border-gray-200' },
       standby:    { label: 'Standby',           cls: 'bg-indigo-50 text-indigo-700 border border-indigo-200' },
       assigned:   { label: 'Ditugaskan',        cls: 'bg-blue-50 text-blue-700 border border-blue-200' },
+      at_plant:   { label: 'Di Pabrik',         cls: 'bg-purple-50 text-purple-700 border border-purple-200' },
       processing: { label: 'Diproses',          cls: 'bg-blue-50 text-blue-700 border border-blue-200' },
       in_transit: { label: 'Dalam Perjalanan',  cls: 'bg-amber-50 text-amber-700 border border-amber-200' },
       transit:    { label: 'Dalam Perjalanan',  cls: 'bg-amber-50 text-amber-700 border border-amber-200' },
