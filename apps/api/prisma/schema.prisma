@@ -337,6 +337,11 @@ model Shipment {
   vehicleId String?
   vehicle   Vehicle? @relation(fields: [vehicleId], references: [id])
 
+  // Linked shipments share one driver+vehicle (one physical trip). Same linkGroupId = same trip.
+  // Pre-departure the group is synced (driver mirror + STANDBY→Ditugaskan cascade); after
+  // Ditugaskan each shipment is handled independently (its own plant-check/handover).
+  linkGroupId String?
+
   createdByAdminId String?
   createdByAdmin   Admin?  @relation("ShipmentCreatedBy", fields: [createdByAdminId], references: [id])
 
@@ -346,6 +351,7 @@ model Shipment {
   events     ShipmentEvent[]
   plantCheck PlantCheck?
 
+  @@index([linkGroupId])
   @@map("shipments")
 }
 
