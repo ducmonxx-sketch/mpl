@@ -12,13 +12,29 @@ const OCCUPYING = ["STANDBY", "DITUGASKAN", "AT_PLANT", "TRANSIT", "DITERIMA", "
 
 // Departure guard: only ONE shipment per driver may be in TRANSIT at a time.
 // Returns the id of a conflicting (different) TRANSIT shipment, or null if clear.
-// ponytail: link-group exception (allow same-group co-transit) goes here in the link feature.
-export async function findTransitConflict(driverId: string, shipmentId: string): Promise<string | null> {
+// Linked shipments (same linkGroupId) may co-transit — a sibling is NOT a conflict.
+export async function findTransitConflict(driverId: string, shipmentId: string, linkGroupId?: string | null): Promise<string | null> {
   const conflict = await prisma.shipment.findFirst({
-    where:  { driverId, status: "TRANSIT", id: { not: shipmentId } },
+    where:  {
+      driverId, status: "TRANSIT", id: { not: shipmentId },
+      ...(linkGroupId ? { linkGroupId: { not: linkGroupId } } : {}),
+    },
     select: { id: true },
   })
   return conflict?.id ?? null
+}
+
+// Free a driver + vehicle IF no remaining shipment still occupies them (group-aware).
+// Call AFTER deleting a shipment so the deleted row isn't counted.
+export async function releaseFleetIfUnused(driverId?: string | null, vehicleId?: string | null): Promise<void> {
+  if (driverId) {
+    const other = await prisma.shipment.findFirst({ where: { driverId, status: { in: OCCUPYING as any } }, select: { id: true } })
+    if (!other) await prisma.driver.updateMany({ where: { id: driverId, status: { in: ["STANDBY", "ON_DUTY"] } }, data: { status: "ACTIVE" } })
+  }
+  if (vehicleId) {
+    const other = await prisma.shipment.findFirst({ where: { vehicleId, status: { in: OCCUPYING as any } }, select: { id: true } })
+    if (!other) await prisma.vehicle.updateMany({ where: { id: vehicleId, status: { in: ["STANDBY", "IN_USE"] } }, data: { status: "AVAILABLE" } })
+  }
 }
 
 type MirrorRule = { driverFrom: string[]; driverTo: string; vehFrom: string[]; vehTo: string }

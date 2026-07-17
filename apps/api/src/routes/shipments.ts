@@ -12,7 +12,7 @@ import prisma from "../lib/prisma"
 import { authenticate, adminOnly, AuthRequest } from "../middleware/auth"
 import { sendWhatsApp } from "../services/whatsapp"
 import { canChangeStatus, isReversal, isValidStatus } from "../lib/statusFlow"
-import { findTransitConflict, mirrorFleetStatus } from "../lib/shipmentStatus"
+import { findTransitConflict, mirrorFleetStatus, releaseFleetIfUnused } from "../lib/shipmentStatus"
 
 const router = Router()
 
@@ -172,6 +172,25 @@ router.post("/", authenticate, async (req: AuthRequest, res: Response) => {
     // (awaiting driver-availability reconfirm). Everyone else starts at PENDING (Menunggu).
     const initialStatus = req.user?.role === "KEPALA_ARMADA" ? "STANDBY" : "PENDING"
 
+    // Linked create ("Hubungkan Pengiriman"): join an existing pre-departure trip — reuse its
+    // driver+vehicle and linkGroupId (mint the group from the target shipment id if it has none).
+    let linkGroupId: string | undefined
+    let useDriverId = driverId, useVehicleId = vehicleId
+    if (req.body.linkToShipmentId) {
+      const target = await prisma.shipment.findUnique({
+        where:  { id: String(req.body.linkToShipmentId) },
+        select: { id: true, driverId: true, vehicleId: true, linkGroupId: true, status: true },
+      })
+      if (!target) return res.status(400).json({ message: "Pengiriman untuk dihubungkan tidak ditemukan." })
+      if (target.status !== "STANDBY" && target.status !== "DITUGASKAN") {
+        return res.status(400).json({ message: "Hanya bisa menghubungkan ke pengiriman yang belum berangkat (Standby/Ditugaskan)." })
+      }
+      useDriverId  = target.driverId
+      useVehicleId = target.vehicleId
+      linkGroupId  = target.linkGroupId ?? target.id
+      if (!target.linkGroupId) await prisma.shipment.update({ where: { id: target.id }, data: { linkGroupId } })
+    }
+
     const shipment = await prisma.shipment.create({
       data: {
         id,
@@ -187,25 +206,27 @@ router.post("/", authenticate, async (req: AuthRequest, res: Response) => {
         dimensions,
         containerType,
         pickupPlantId,
-        driverId,
-        vehicleId,
+        driverId:         useDriverId,
+        vehicleId:        useVehicleId,
+        linkGroupId,
         status:           initialStatus,
         clientId,
         createdByAdminId: isAdmin ? req.user!.id : null,
       },
     })
 
-    // Standby shipment → mirror status onto its driver + armada (Tersedia → Standby).
+    // Standby shipment → mirror status onto its driver + armada (Tersedia → Standby). Idempotent
+    // if already reserved (a linked sibling reuses the same, already-STANDBY driver+vehicle).
     if (initialStatus === "STANDBY") {
-      if (driverId) {
+      if (useDriverId) {
         await prisma.driver.updateMany({
-          where: { id: driverId, status: "ACTIVE" },
+          where: { id: useDriverId, status: "ACTIVE" },
           data:  { status: "STANDBY" },
         })
       }
-      if (vehicleId) {
+      if (useVehicleId) {
         await prisma.vehicle.updateMany({
-          where: { id: vehicleId, status: "AVAILABLE" },
+          where: { id: useVehicleId, status: "AVAILABLE" },
           data:  { status: "STANDBY" },
         })
       }
@@ -253,6 +274,14 @@ router.patch("/:id/assign", authenticate, adminOnly, async (req: AuthRequest, re
         driver: true,
       }
     })
+
+    // Linked group: mirror this driver+vehicle onto every sibling (one truck, one trip).
+    if (shipment.linkGroupId) {
+      await prisma.shipment.updateMany({
+        where: { linkGroupId: shipment.linkGroupId, id: { not: shipment.id } },
+        data:  { driverId, vehicleId, lastUpdatedByAdminId: req.user!.id },
+      })
+    }
 
     await prisma.adminAuditLog.create({
       data: {
@@ -374,9 +403,9 @@ router.patch("/:id/plant-check", authenticate, adminOnly, async (req: AuthReques
     const { dataPengiriman = [], lku = [], ksu = [] } = req.body
 
     // Departure guard (same as /status): block if the driver is already on another transit.
-    const cur = await prisma.shipment.findUnique({ where: { id }, select: { driverId: true } })
+    const cur = await prisma.shipment.findUnique({ where: { id }, select: { driverId: true, linkGroupId: true } })
     if (cur?.driverId) {
-      const conflictId = await findTransitConflict(cur.driverId, id)
+      const conflictId = await findTransitConflict(cur.driverId, id, cur.linkGroupId)
       if (conflictId) {
         const driver = await prisma.driver.findUnique({ where: { id: cur.driverId }, select: { fullName: true } })
         return res.status(409).json({ message: `${driver?.fullName ?? "Driver"} sedang bertugas di pengiriman ${conflictId}. Selesaikan pengiriman tersebut terlebih dahulu.` })
@@ -489,7 +518,7 @@ router.patch("/:id/status", authenticate, adminOnly, async (req: AuthRequest, re
 
     const existing = await prisma.shipment.findUnique({
       where:  { id },
-      select: { status: true, driverId: true },
+      select: { status: true, driverId: true, linkGroupId: true },
     })
     if (!existing) {
       return res.status(404).json({ message: "Pengiriman tidak ditemukan." })
@@ -510,7 +539,7 @@ router.patch("/:id/status", authenticate, adminOnly, async (req: AuthRequest, re
 
     // Departure guard: only ONE shipment per driver may be in transit at a time (shared helper).
     if (status === "TRANSIT" && existing.driverId) {
-      const conflictId = await findTransitConflict(existing.driverId, id)
+      const conflictId = await findTransitConflict(existing.driverId, id, existing.linkGroupId)
       if (conflictId) {
         const driver = await prisma.driver.findUnique({ where: { id: existing.driverId }, select: { fullName: true } })
         return res.status(409).json({
@@ -533,6 +562,15 @@ router.patch("/:id/status", authenticate, adminOnly, async (req: AuthRequest, re
 
     // Mirror the new status onto the driver + vehicle (shared helper; group-aware release).
     await mirrorFleetStatus(status, existing.driverId, shipment.vehicleId, id)
+
+    // Linked group: STANDBY→Ditugaskan cascades to all siblings (they depart together).
+    // After Ditugaskan each shipment is handled independently (no further cascade).
+    if (status === "DITUGASKAN" && existing.linkGroupId) {
+      await prisma.shipment.updateMany({
+        where: { linkGroupId: existing.linkGroupId, status: "STANDBY", id: { not: id } },
+        data:  { status: "DITUGASKAN", lastUpdatedByAdminId: req.user!.id },
+      })
+    }
 
     await prisma.adminAuditLog.create({
       data: {
@@ -569,34 +607,50 @@ router.patch("/:id/status", authenticate, adminOnly, async (req: AuthRequest, re
 router.delete("/:id", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
   try {
     const id = String(req.params.id)
+    const scope = String(req.query.scope || "single")  // "single" | "group"
     const existing = await prisma.shipment.findUnique({
       where:  { id },
-      select: { status: true, driverId: true, vehicleId: true },
+      select: { status: true, driverId: true, vehicleId: true, linkGroupId: true },
     })
     if (!existing) {
       return res.status(404).json({ message: "Pengiriman tidak ditemukan." })
     }
 
     const isSuperAdmin = req.user!.role === "SUPERADMIN"
+
+    // "Hapus Semua Pengiriman Terhubung" — delete the whole linked group.
+    if (scope === "group" && existing.linkGroupId) {
+      const members = await prisma.shipment.findMany({
+        where:  { linkGroupId: existing.linkGroupId },
+        select: { id: true, status: true },
+      })
+      if (!isSuperAdmin && members.some(m => m.status !== "STANDBY")) {
+        return res.status(403).json({ message: "Hanya pengiriman berstatus Standby yang dapat dihapus." })
+      }
+      await prisma.shipment.deleteMany({ where: { linkGroupId: existing.linkGroupId } })  // ShipmentEvents cascade
+      await releaseFleetIfUnused(existing.driverId, existing.vehicleId)
+      await prisma.adminAuditLog.create({
+        data: {
+          adminId: req.user!.id, actionType: "UPDATE_SHIPMENT", targetTable: "shipments",
+          targetRecordId: id, changesSummary: `Deleted ${members.length} linked shipments (group)`,
+        },
+      })
+      return res.json({ message: `${members.length} pengiriman terhubung dihapus.` })
+    }
+
+    // "Hapus Pengiriman Ini" — single delete.
     if (!isSuperAdmin && existing.status !== "STANDBY") {
       return res.status(403).json({ message: "Hanya pengiriman berstatus Standby yang dapat dihapus." })
     }
-
-    // Free the pair (Standby/On Duty → Tersedia). Idempotent + status-filtered.
-    if (existing.driverId) {
-      await prisma.driver.updateMany({
-        where: { id: existing.driverId, status: { in: ["STANDBY", "ON_DUTY"] } },
-        data:  { status: "ACTIVE" },
-      })
-    }
-    if (existing.vehicleId) {
-      await prisma.vehicle.updateMany({
-        where: { id: existing.vehicleId, status: { in: ["STANDBY", "IN_USE"] } },
-        data:  { status: "AVAILABLE" },
-      })
-    }
-
     await prisma.shipment.delete({ where: { id } })  // ShipmentEvent cascades
+
+    // A link group of one isn't a group — unlink the lone remaining sibling.
+    if (existing.linkGroupId) {
+      const remaining = await prisma.shipment.findMany({ where: { linkGroupId: existing.linkGroupId }, select: { id: true } })
+      if (remaining.length === 1) await prisma.shipment.update({ where: { id: remaining[0].id }, data: { linkGroupId: null } })
+    }
+    // Free the pair only if no other shipment still occupies them (group-aware).
+    await releaseFleetIfUnused(existing.driverId, existing.vehicleId)
 
     await prisma.adminAuditLog.create({
       data: {
