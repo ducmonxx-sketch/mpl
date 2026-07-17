@@ -291,21 +291,8 @@ router.patch("/:id/assign", authenticate, adminOnly, async (req: AuthRequest, re
            }
          })
       }
-
-      if (shipment.driver.phoneNumber) {
-         const waMessage = `Hello ${shipment.driver.fullName},\n\nYou have been assigned a new shipment ${shipment.id}.\nPickup: ${shipment.originLocation}\nDropoff: ${shipment.destinationLocation}\n\nPlease check your dashboard.`
-         await sendWhatsApp(shipment.driver.phoneNumber, waMessage)
-
-         await prisma.adminAuditLog.create({
-           data: {
-             adminId: req.user!.id,
-             actionType: "SEND_WHATSAPP_DRIVER",
-             targetTable: "drivers",
-             targetRecordId: shipment.driver.id,
-             changesSummary: `Sent WhatsApp assignment notification to driver ${shipment.driver.id}`,
-           }
-         })
-      }
+      // ponytail: auto-WhatsApp-on-assign removed — driver notification is manual via
+      // POST /:id/notify-driver (was double-sending with that button). Re-add here if auto-notify is ever wanted.
     }
 
     res.json({ message: "Driver and vehicle assigned.", shipment })
@@ -510,6 +497,12 @@ router.patch("/:id/status", authenticate, adminOnly, async (req: AuthRequest, re
       return res.status(403).json({
         message: `Hanya Super Admin yang dapat mengubah status dari ${existing.status} ke ${status}.`,
       })
+    }
+
+    // "Di Pabrik" (AT_PLANT) = truck physically arrived at the plant. Only PIC Pabrik may set it
+    // (the DITUGASKAN→AT_PLANT from-state is already enforced by the forward map). SUPERADMIN keeps override.
+    if (status === "AT_PLANT" && req.user!.role !== "PIC_PABRIK" && req.user!.role !== "SUPERADMIN") {
+      return res.status(403).json({ message: "Hanya PIC Pabrik yang dapat menandai status Di Pabrik." })
     }
 
     // Departure guard: a driver may hold several Ditugaskan shipments (all ON_DUTY), but only
