@@ -436,7 +436,7 @@ router.patch("/:id/plant-check", authenticate, adminOnly, async (req: AuthReques
 // PIC Kepala Gudang completes handover
 router.patch("/:id/handover", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
   try {
-    const { serahTerimaUrl, handoverNotes } = req.body
+    const { serahTerimaUrl, handoverNotes, catatanPlantPengirim, catatanGudangPenerima } = req.body
     const existing = await prisma.shipment.findUnique({
       where:  { id: req.params.id },
       select: { driverId: true, vehicleId: true },
@@ -444,8 +444,10 @@ router.patch("/:id/handover", authenticate, adminOnly, async (req: AuthRequest, 
     const shipment = await prisma.shipment.update({
       where: { id: req.params.id },
       data: {
-        serahTerimaUrl,
-        handoverNotes,
+        serahTerimaUrl:        serahTerimaUrl ?? undefined,
+        handoverNotes:         handoverNotes ?? undefined,
+        catatanPlantPengirim:  catatanPlantPengirim ?? null,
+        catatanGudangPenerima: catatanGudangPenerima ?? null,
         status: "DELIVERED",
         completionDate: new Date(),
         currentProgressPercent: 100,

@@ -77,7 +77,7 @@ const mapStatus = (s) => {
 const STATUS_SORT_RANK = {
   KEPALA_ARMADA: { STANDBY: 0, DITUGASKAN: 1, AT_PLANT: 2, TRANSIT: 3, DITERIMA: 4, DITURUNKAN: 5, DELIVERED: 6, CANCELLED: 7, PENDING: 8 },
   PIC_PABRIK:    { DITUGASKAN: 0, AT_PLANT: 1, STANDBY: 2, TRANSIT: 3, DITERIMA: 4, DITURUNKAN: 5, DELIVERED: 6, CANCELLED: 7, PENDING: 8 },
-  KEPALA_GUDANG: { TRANSIT: 0, DITERIMA: 1, DITURUNKAN: 2, STANDBY: 3, DITUGASKAN: 4, AT_PLANT: 5, DELIVERED: 6, CANCELLED: 7, PENDING: 8 },
+  PIC_GUDANG:    { TRANSIT: 0, DITERIMA: 1, DITURUNKAN: 2, DELIVERED: 3, STANDBY: 4, DITUGASKAN: 5, AT_PLANT: 6, CANCELLED: 7, PENDING: 8 },
   DEFAULT:       { PENDING: 0, STANDBY: 1, DITUGASKAN: 2, AT_PLANT: 3, TRANSIT: 4, DITERIMA: 5, DITURUNKAN: 6, DELIVERED: 7, CANCELLED: 8 },
 }
 
@@ -205,6 +205,10 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
 
   const [serahTerimaUrl, setSerahTerimaUrl]           = useState('')
   const [handoverNotes, setHandoverNotes]             = useState('')
+  // PIC_GUDANG serah-terima (Diturunkan → Selesai): two catatan columns + confirm box
+  const [catatanPlantPengirim, setCatatanPlantPengirim]   = useState('')
+  const [catatanGudangPenerima, setCatatanGudangPenerima] = useState('')
+  const [showGudangConfirm, setShowGudangConfirm]         = useState(false)
 
   // ── SUPERADMIN separate assign modal ────────────────────────
   const [showAssignModal, setShowAssignModal]     = useState(false)
@@ -242,8 +246,8 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   const isSuperAdmin = role === 'SUPERADMIN'
   const isRegularAdmin = !isSuperAdmin
   // Field roles that use the compact page layout (status dropdown, no tabs, centered detail modal,
-  // Dalam Proses/Selesai views). KEPALA_ARMADA + PIC_PABRIK for now (add PIC_GUDANG when its flow lands).
-  const usesFieldLayout = role === 'KEPALA_ARMADA' || role === 'PIC_PABRIK'
+  // Dalam Proses/Selesai views).
+  const usesFieldLayout = role === 'KEPALA_ARMADA' || role === 'PIC_PABRIK' || role === 'PIC_GUDANG'
 
   // Calculate restricted minDate for specific roles
   let restrictedMinDate = null
@@ -282,7 +286,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     const rs = selectedShipment.rawStatus;
     if (role === 'KEPALA_ARMADA') return rs === 'STANDBY';
     if (role === 'PIC_PABRIK') return rs === 'DITUGASKAN' || rs === 'AT_PLANT';
-    if (role === 'PIC_GUDANG') return rs === 'TRANSIT';
+    if (role === 'PIC_GUDANG') return ['TRANSIT', 'DITERIMA', 'DITURUNKAN'].includes(rs);
     return ['PENDING', 'STANDBY', 'DITUGASKAN', 'AT_PLANT', 'TRANSIT'].includes(rs);
   })();
 
@@ -677,6 +681,9 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     setPabrikNotes('')
     setSerahTerimaUrl('')
     setHandoverNotes('')
+    setCatatanPlantPengirim('')
+    setCatatanGudangPenerima('')
+    setShowGudangConfirm(false)
     setPabrikPage(1)
     setPcPengiriman([emptyPengirimanRow()])
     setPcLku([emptyLkuRow()])
@@ -765,6 +772,28 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     } catch (err) {
       showToast(err.message || 'Gagal memproses pengecekan pabrik.', 'error')
       setShowPabrikConfirm(false)
+    }
+  }
+
+  // Confirm-box action: PIC_GUDANG serah-terima → Selesai (DELIVERED)
+  const doSubmitHandover = async () => {
+    try {
+      await shipmentsAPI.handover(selectedShipment.id, { catatanPlantPengirim, catatanGudangPenerima })
+      showToast('Serah Terima Selesai. Status → Selesai.', 'success')
+      setShowGudangConfirm(false)
+      setShowStatusModal(false)
+      resetModalState()
+      fetchShipments({ silent: true })
+      // Soft-refresh the still-open detail modal so it shows the completed handover.
+      try {
+        const fresh = await shipmentsAPI.getById(selectedShipment.id)
+        setSelectedShipment(mapShipment(fresh.shipment || fresh))
+      } catch {
+        setSelectedShipment(prev => prev ? ({ ...prev, rawStatus: 'DELIVERED', status: 'delivered' }) : null)
+      }
+    } catch (err) {
+      showToast(err.message || 'Gagal memproses serah terima.', 'error')
+      setShowGudangConfirm(false)
     }
   }
 
@@ -875,20 +904,21 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
         return
       }
 
+      // ── PIC_GUDANG gudang leg ──────────────────────────────────
+      // Dalam Perjalanan → Diterima → Diturunkan: simple one-tap confirmations.
       if (role === 'PIC_GUDANG' && rawStatus === 'TRANSIT') {
-        try {
-          await shipmentsAPI.handover(id, {
-            serahTerimaUrl,
-            handoverNotes
-          })
-          showToast('Serah Terima Selesai. Status → Terkirim.', 'success')
-          setShowStatusModal(false)
-          resetModalState()
-          fetchShipments({ silent: true })
-          setSelectedShipment(prev => prev ? ({ ...prev, rawStatus: 'DELIVERED', status: 'delivered' }) : null)
-        } catch (err) {
-          showToast(err.message || 'Gagal memproses serah terima.', 'error')
-        }
+        const ok = await handleStatusUpdate('DITERIMA')
+        if (ok) { setShowStatusModal(false); resetModalState() }
+        return
+      }
+      if (role === 'PIC_GUDANG' && rawStatus === 'DITERIMA') {
+        const ok = await handleStatusUpdate('DITURUNKAN')
+        if (ok) { setShowStatusModal(false); resetModalState() }
+        return
+      }
+      // Diturunkan → Selesai: catatan serah-terima form, then a confirmation box.
+      if (role === 'PIC_GUDANG' && rawStatus === 'DITURUNKAN') {
+        setShowGudangConfirm(true) // actual submit happens on confirm
         return
       }
 
@@ -938,8 +968,10 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     if (role === 'KEPALA_ARMADA' && selectedShipment.rawStatus === 'PENDING') return 'Tugaskan Driver & Kendaraan'
     if (role === 'PIC_PABRIK' && selectedShipment.rawStatus === 'DITUGASKAN') return 'Konfirmasi Kedatangan di Pabrik'
     if (role === 'PIC_PABRIK' && selectedShipment.rawStatus === 'AT_PLANT') return 'Pengecekan Kendaraan (Pabrik)'
-    if (role === 'PIC_GUDANG' && selectedShipment.rawStatus === 'TRANSIT') return 'Serah Terima (Gudang)'
-    
+    if (role === 'PIC_GUDANG' && selectedShipment.rawStatus === 'TRANSIT') return 'Konfirmasi Penerimaan'
+    if (role === 'PIC_GUDANG' && selectedShipment.rawStatus === 'DITERIMA') return 'Konfirmasi Penurunan Muatan'
+    if (role === 'PIC_GUDANG' && selectedShipment.rawStatus === 'DITURUNKAN') return 'Serah Terima (Gudang)'
+
     // Fallback for OPERATIONS
     if (selectedShipment.rawStatus === 'PENDING') return 'Tugaskan Driver & Kendaraan'
     if (selectedShipment.rawStatus === 'DITUGASKAN') return 'Konfirmasi Keberangkatan'
@@ -955,7 +987,9 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     if (role === 'KEPALA_ARMADA' && selectedShipment.rawStatus === 'PENDING') return `${sid} — pilih driver, armada & pabrik`
     if (role === 'PIC_PABRIK' && selectedShipment.rawStatus === 'DITUGASKAN') return `${sid} — konfirmasi driver & armada tiba di Pabrik`
     if (role === 'PIC_PABRIK' && selectedShipment.rawStatus === 'AT_PLANT') return `${sid} — Langkah ${pabrikPage}/3`
-    if (role === 'PIC_GUDANG' && selectedShipment.rawStatus === 'TRANSIT') return `${sid} — upload bukti serah terima`
+    if (role === 'PIC_GUDANG' && selectedShipment.rawStatus === 'TRANSIT') return `${sid} — konfirmasi barang diterima di gudang`
+    if (role === 'PIC_GUDANG' && selectedShipment.rawStatus === 'DITERIMA') return `${sid} — konfirmasi muatan diturunkan`
+    if (role === 'PIC_GUDANG' && selectedShipment.rawStatus === 'DITURUNKAN') return `${sid} — catatan serah terima perlengkapan`
 
     // Fallback for OPERATIONS
     if (selectedShipment.rawStatus === 'PENDING') return `${sid} — pilih driver & armada`
@@ -970,7 +1004,9 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     if (role === 'KEPALA_ARMADA' && selectedShipment.rawStatus === 'PENDING') return 'Tugaskan & Simpan'
     if (role === 'PIC_PABRIK' && selectedShipment.rawStatus === 'DITUGASKAN') return 'Konfirmasi Tiba di Pabrik'
     if (role === 'PIC_PABRIK' && selectedShipment.rawStatus === 'AT_PLANT') return pabrikPage < 3 ? 'Lanjut' : 'Selesaikan Pengecekan'
-    if (role === 'PIC_GUDANG' && selectedShipment.rawStatus === 'TRANSIT') return 'Konfirmasi Serah Terima'
+    if (role === 'PIC_GUDANG' && selectedShipment.rawStatus === 'TRANSIT') return 'Konfirmasi Diterima'
+    if (role === 'PIC_GUDANG' && selectedShipment.rawStatus === 'DITERIMA') return 'Konfirmasi Diturunkan'
+    if (role === 'PIC_GUDANG' && selectedShipment.rawStatus === 'DITURUNKAN') return 'Selesaikan Pengiriman'
 
     // Fallback
     if (selectedShipment.rawStatus === 'PENDING') return 'Tugaskan'
@@ -1323,7 +1359,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
         )
       }
 
-      // ── PIC_GUDANG Handover ───────────────────────────────────
+      // ── PIC_GUDANG: Dalam Perjalanan → Diterima (simple confirmation) ──
       if (role === 'PIC_GUDANG' && rawStatus === 'TRANSIT') {
         return (
           <div className="flex flex-col gap-5">
@@ -1331,25 +1367,48 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
               <span className="text-sm font-medium text-gray-500">Status saat ini:</span>
               <AdminStatusBadge status="in_transit" type="shipment" />
             </div>
-            
-            <div className="flex flex-col gap-4 bg-gray-50 p-5 rounded-xl border border-gray-200">
-              <AdminFormField
-                label="URL Bukti Serah Terima"
-                type="text"
-                placeholder="https://... (Link Foto/Dokumen)"
-                value={serahTerimaUrl}
-                onChange={e => setSerahTerimaUrl(e.target.value)}
-              />
-              
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-bold text-gray-700">Catatan Penerimaan</label>
-                <textarea
-                  className="w-full bg-white border border-gray-300 rounded-xl px-4 py-3 text-sm focus:border-dash-secondary focus:ring-1 focus:ring-dash-secondary outline-none transition-shadow"
-                  rows={3}
-                  placeholder="Tambahkan catatan kondisi barang..."
-                  value={handoverNotes}
-                  onChange={e => setHandoverNotes(e.target.value)}
-                />
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-800">
+              Konfirmasi bahwa pengiriman <b>{selectedShipment.id}</b> telah <b>diterima</b> di gudang. Status akan berubah menjadi <b>Diterima</b>.
+            </div>
+          </div>
+        )
+      }
+
+      // ── PIC_GUDANG: Diterima → Diturunkan (simple confirmation) ──
+      if (role === 'PIC_GUDANG' && rawStatus === 'DITERIMA') {
+        return (
+          <div className="flex flex-col gap-5">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-gray-500">Status saat ini:</span>
+              <AdminStatusBadge status={mapStatus('DITERIMA')} type="shipment" />
+            </div>
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-800">
+              Konfirmasi bahwa muatan pengiriman <b>{selectedShipment.id}</b> telah <b>diturunkan</b>. Status akan berubah menjadi <b>Diturunkan</b>.
+            </div>
+          </div>
+        )
+      }
+
+      // ── PIC_GUDANG: Diturunkan → Selesai (catatan serah terima) ──
+      if (role === 'PIC_GUDANG' && rawStatus === 'DITURUNKAN') {
+        const ta = "w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-dash-secondary focus:ring-1 focus:ring-dash-secondary outline-none transition-shadow custom-scrollbar"
+        return (
+          <div className="flex flex-col gap-5">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-gray-500">Status saat ini:</span>
+              <AdminStatusBadge status={mapStatus('DITURUNKAN')} type="shipment" />
+            </div>
+            <div className="flex flex-col gap-3">
+              <p className="text-sm font-bold text-gray-900 text-center border-b border-gray-100 pb-2">Catatan Serah Terima Perlengkapan Motor</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Plant Pengirim</label>
+                  <textarea className={ta} rows={5} placeholder="Catatan dari plant pengirim..." value={catatanPlantPengirim} onChange={e => setCatatanPlantPengirim(e.target.value)} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Gudang Penerima</label>
+                  <textarea className={ta} rows={5} placeholder="Catatan dari gudang penerima..." value={catatanGudangPenerima} onChange={e => setCatatanGudangPenerima(e.target.value)} />
+                </div>
               </div>
             </div>
           </div>
@@ -2026,14 +2085,6 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
                     Update Status
                   </button>
                 )}
-                {onTrackFull && (
-                  <button
-                    className="px-3 py-1.5 bg-dash-secondary/15 hover:bg-dash-secondary/25 text-[#795900] rounded-lg text-xs font-bold transition-colors"
-                    onClick={() => onTrackFull(selectedShipment.id)}
-                  >
-                    Lacak Penuh
-                  </button>
-                )}
                 {canDeleteShipment && (
                   <button
                     className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
@@ -2473,6 +2524,38 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
             <div className="flex justify-end gap-3 p-6 border-t border-gray-100 bg-gray-50/50 rounded-b-2xl">
               <button type="button" onClick={() => setShowPabrikConfirm(false)} className="px-5 py-2.5 text-sm font-bold text-gray-600 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl transition-colors">Batal</button>
               <button type="button" onClick={doSubmitPlantCheck} className="px-5 py-2.5 text-sm font-bold text-[#002442] bg-[#fec330] hover:bg-[#eab308] rounded-xl shadow-sm transition-colors flex items-center gap-2"><Icon name="check" size={18} /> Ya, Selesaikan</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Serah-terima confirmation box (PIC_GUDANG: Diturunkan → Selesai) — z-[300] */}
+      {showGudangConfirm && selectedShipment && createPortal(
+        <div className="fixed inset-0 z-[300] bg-[#002442]/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowGudangConfirm(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col animate-in fade-in zoom-in-95 duration-150" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start gap-3 p-6 border-b border-gray-100">
+              <span className="w-10 h-10 rounded-full bg-dash-secondary/20 text-dash-primary flex items-center justify-center shrink-0"><Icon name="fact_check" size={22} /></span>
+              <div>
+                <h3 className="text-lg font-bold text-dash-primary">Selesaikan Pengiriman?</h3>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  Catatan serah terima <b>{selectedShipment.id}</b> akan disimpan dan status berubah menjadi <b>Selesai</b>.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col gap-3 p-6">
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Plant Pengirim</span>
+                <p className="text-sm text-gray-800 whitespace-pre-wrap">{catatanPlantPengirim.trim() || '-'}</p>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Gudang Penerima</span>
+                <p className="text-sm text-gray-800 whitespace-pre-wrap">{catatanGudangPenerima.trim() || '-'}</p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 p-6 border-t border-gray-100 bg-gray-50/50 rounded-b-2xl">
+              <button type="button" onClick={() => setShowGudangConfirm(false)} className="px-5 py-2.5 text-sm font-bold text-gray-600 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl transition-colors">Batal</button>
+              <button type="button" onClick={doSubmitHandover} className="px-5 py-2.5 text-sm font-bold text-[#002442] bg-[#fec330] hover:bg-[#eab308] rounded-xl shadow-sm transition-colors flex items-center gap-2"><Icon name="check" size={18} /> Ya, Selesaikan</button>
             </div>
           </div>
         </div>,
