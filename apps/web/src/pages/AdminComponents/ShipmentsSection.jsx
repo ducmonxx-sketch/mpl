@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import Icon from '../../components/Icon'
 import { useToast } from '../../contexts/ToastContext'
 import { useAuth } from '../../contexts/AuthContext'
-import { shipmentsAPI, usersAPI, fleetAPI } from '../../lib/api'
+import { shipmentsAPI, usersAPI, fleetAPI, authAPI } from '../../lib/api'
 import AdminDataTable from './components/AdminDataTable'
 import AdminStatusBadge from './components/AdminStatusBadge'
 import AdminPagination from './components/AdminPagination'
@@ -70,6 +70,15 @@ const mapStatus = (s) => {
     CANCELLED:  'cancelled',
   }
   return map[s] || s.toLowerCase()
+}
+
+// Table sort: each role prioritises the statuses it acts on first. Rows then sort by
+// origin (Asal) then earliest created date within a status. Falls back to DEFAULT.
+const STATUS_SORT_RANK = {
+  KEPALA_ARMADA: { STANDBY: 0, DITUGASKAN: 1, AT_PLANT: 2, TRANSIT: 3, DITERIMA: 4, DITURUNKAN: 5, DELIVERED: 6, CANCELLED: 7, PENDING: 8 },
+  PIC_PABRIK:    { DITUGASKAN: 0, AT_PLANT: 1, STANDBY: 2, TRANSIT: 3, DITERIMA: 4, DITURUNKAN: 5, DELIVERED: 6, CANCELLED: 7, PENDING: 8 },
+  KEPALA_GUDANG: { TRANSIT: 0, DITERIMA: 1, DITURUNKAN: 2, STANDBY: 3, DITUGASKAN: 4, AT_PLANT: 5, DELIVERED: 6, CANCELLED: 7, PENDING: 8 },
+  DEFAULT:       { PENDING: 0, STANDBY: 1, DITUGASKAN: 2, AT_PLANT: 3, TRANSIT: 4, DITERIMA: 5, DITURUNKAN: 6, DELIVERED: 7, CANCELLED: 8 },
 }
 
 const formatDate = (raw) => {
@@ -145,6 +154,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   const [filter, setFilter]               = useState('all')
   const [filterClient, setFilterClient]   = useState('all')
   const [filterService, setFilterService] = useState('all')
+  const [filterPlant, setFilterPlant]     = useState('all') // PIC Pabrik: Lokasi Plant (defaults to bound plant)
   const [searchQuery, setSearchQuery]     = useState('')
   const [currentPage, setCurrentPage]     = useState(1)
   const [viewMode, setViewMode]           = useState('today') // 'today' | 'history'
@@ -275,6 +285,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
         serviceType:           s.serviceLevel || 'Darat',
         shippingCategory:      s.shippingCategory || '-',
         originCity:            s.originLocation,
+        pickupPlantId:         s.pickupPlantId || null,
         destinationCity:       s.destinationLocation,
         pickupDate:            formatDate(s.pickupDate || s.createdAt),
         rawPickupDate:         s.pickupDate || s.createdAt,
@@ -308,6 +319,15 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     const interval = setInterval(() => fetchShipments({ silent: true }), 8000)
     return () => clearInterval(interval)
   }, [fetchShipments])
+
+  // PIC Pabrik: load plant list for the filter + default it to the account's bound plant (soft, changeable).
+  useEffect(() => {
+    if (role !== 'PIC_PABRIK') return
+    fetchPickupPlants()
+    authAPI.getAdminMe()
+      .then(res => { if (res?.admin?.pickupPlantId) setFilterPlant(res.admin.pickupPlantId) })
+      .catch(() => {})
+  }, [role])
 
   useEffect(() => {
     if (highlightShipmentId && SHIPMENTS.length > 0) {
@@ -1332,19 +1352,23 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
       }
     }
 
+    // PIC Pabrik: Lokasi Plant filter (soft default = bound plant; 'all' = every plant).
+    const matchPlant = filterPlant === 'all' || s.pickupPlantId === filterPlant
+
     // Kepala Armada sees the full lifecycle of their shipments, split by the
     // Dalam Proses / Selesai view mode above (no status restriction).
-    return matchStatus && matchClient && matchService && matchSearch && matchViewMode
+    return matchStatus && matchClient && matchService && matchSearch && matchViewMode && matchPlant
   })
 
-  // Field roles: sort by status progression (Standby → Ditugaskan → Di Pabrik → Dalam
-  // Perjalanan → Diterima → Diturunkan → Selesai), then by earliest pickup date within each.
-  if (usesFieldLayout) {
-    const RANK = { STANDBY: 0, DITUGASKAN: 1, AT_PLANT: 2, TRANSIT: 3, DITERIMA: 4, DITURUNKAN: 5, DELIVERED: 6, CANCELLED: 7, PENDING: 8, FAILED: 9 }
+  // All roles: sort by status (order unique per role) → origin (Asal) → earliest date.
+  {
+    const RANK = STATUS_SORT_RANK[role] || STATUS_SORT_RANK.DEFAULT
     filtered.sort((a, b) => {
       const ra = RANK[a.rawStatus] ?? 99
       const rb = RANK[b.rawStatus] ?? 99
       if (ra !== rb) return ra - rb
+      const byAsal = (a.originCity || '').localeCompare(b.originCity || '')
+      if (byAsal !== 0) return byAsal
       return new Date(a.rawPickupDate).getTime() - new Date(b.rawPickupDate).getTime() // earliest first
     });
   }
@@ -1373,8 +1397,13 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
       render: (v) => <span className="adm-table__cell-main">{v}</span>,
     },
     { key: 'client', label: 'Klien' },
-    { key: 'shippingCategory', label: 'Tipe Pengiriman', render: (v) => v || '-' },
-    { key: 'destinationCity', label: 'Tujuan' },
+    // PIC Pabrik: Unit-only + always "Gudang MPL" → show the varying Lokasi Plant (Asal) instead of Tipe/Tujuan.
+    ...(role === 'PIC_PABRIK'
+      ? [{ key: 'originCity', label: 'Lokasi Plant', render: (v) => v || '-' }]
+      : [
+          { key: 'shippingCategory', label: 'Tipe Pengiriman', render: (v) => v || '-' },
+          { key: 'destinationCity', label: 'Tujuan' },
+        ]),
     {
       key: 'status',
       label: 'Status',
@@ -1511,6 +1540,17 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
               searchPlaceholder="Cari status..."
               allLabel="Semua Status"
               className="w-full sm:w-48"
+            />
+          )}
+          {role === 'PIC_PABRIK' && (
+            <SearchableSelect
+              options={pickupPlants.map(p => ({ value: p.id, label: `${p.manufacturer} - ${p.name}${p.code ? ` (${p.code})` : ''}` }))}
+              value={filterPlant}
+              onChange={v => { setFilterPlant(v); setCurrentPage(1) }}
+              placeholder="Semua Lokasi Plant"
+              searchPlaceholder="Cari plant..."
+              allLabel="Semua Lokasi Plant"
+              className="w-full sm:w-64"
             />
           )}
         </div>

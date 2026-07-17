@@ -280,10 +280,12 @@ export default function OverviewSection({ onChangeNav, onNavigateToShipment, use
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
             <AdminKPICard icon="local_shipping" label="Pengiriman Aktif" sublabel="Dalam Perjalanan" value={String(kpiData.activeShipments)} trend={`${kpiData.unassignedDrivers} menunggu`} color="primary" delay={0.05} onClick={() => onChangeNav?.('tracking')} />
             <AdminKPICard icon="receipt" label="Total Pengiriman" sublabel="Semua Transaksi" value={String(kpiData.total || 0)} color="gold" delay={0.1} onClick={() => onChangeNav?.('shipments')} />
-            {userRole !== 'KEPALA_ARMADA' && (
+            {!['KEPALA_ARMADA', 'PIC_PABRIK'].includes(userRole) && (
               <AdminKPICard icon="people" label="Total Klien" sublabel="Perusahaan Terdaftar" value={String(kpiData.totalClients)} color="green" delay={0.15} onClick={() => onChangeNav?.('clients')} />
             )}
-            <AdminKPICard icon="directions_car" label="Driver Tersedia" sublabel="Standby" value={String(kpiData.availableDrivers)} color="primary" delay={0.2} onClick={() => onChangeNav?.('drivers')} />
+            {userRole !== 'PIC_PABRIK' && (
+              <AdminKPICard icon="directions_car" label="Driver Tersedia" sublabel="Standby" value={String(kpiData.availableDrivers)} color="primary" delay={0.2} onClick={() => onChangeNav?.('drivers')} />
+            )}
           </div>
 
           {/* Recent Shipments */}

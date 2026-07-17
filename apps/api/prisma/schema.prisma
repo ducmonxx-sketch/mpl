@@ -122,6 +122,10 @@ model Admin {
   avatarKey    String?   // storage key for profile picture (see lib/storage)
   createdAt    DateTime  @default(now())
 
+  // PIC_PABRIK: the plant this account is bound to (default Lokasi Plant filter). Nullable / other roles.
+  pickupPlantId String?
+  pickupPlant   PickupPlant? @relation(fields: [pickupPlantId], references: [id])
+
   verifiedUsers     User[]          @relation("VerifiedByAdmin")
   managedDrivers    Driver[]        @relation("DriverManagedBy")
   managedVehicles   Vehicle[]       @relation("VehicleManagedBy")
@@ -284,6 +288,7 @@ model PickupPlant {
   createdAt    DateTime     @default(now())
 
   shipments    Shipment[]
+  admins       Admin[]      // PIC_PABRIK accounts bound to this plant
 
   @@map("pickup_plants")
 }

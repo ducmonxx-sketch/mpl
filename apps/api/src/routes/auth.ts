@@ -147,7 +147,8 @@ router.get("/admin/me", authenticate, adminOnly, async (req: AuthRequest, res: R
   try {
     const admin = await prisma.admin.findUnique({
       where:  { id: req.user!.id },
-      select: { id: true, fullName: true, email: true, role: true, avatarKey: true, createdAt: true },
+      select: { id: true, fullName: true, email: true, role: true, avatarKey: true, createdAt: true,
+                pickupPlantId: true, pickupPlant: { select: { name: true } } },
     })
     if (!admin) return res.status(404).json({ message: "Admin not found." })
 

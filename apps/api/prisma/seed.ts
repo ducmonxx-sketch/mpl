@@ -151,14 +151,34 @@ async function main() {
     { name: "Pondok Ungu", code: null, manufacturer: "YAMAHA" as const },
     { name: "Tambun", code: null, manufacturer: "SUZUKI" as const },
   ]
+  const plants: { id: string; name: string; code: string | null; manufacturer: string }[] = []
   for (const p of plantSeed) {
-    await prisma.pickupPlant.upsert({
+    const plant = await prisma.pickupPlant.upsert({
       where: { name: p.name },
       update: {},
       create: p,
     })
+    plants.push(plant)
   }
   console.log(`✅ ${plantSeed.length} pickup plants`)
+
+  // ── PIC Pabrik accounts bound to a plant (default Lokasi Plant filter; soft/changeable) ──
+  const pabrikPassword = await bcrypt.hash("admin1234", 10)
+  for (let i = 0; i < 3; i++) {
+    const plant = plants[i]
+    await prisma.admin.upsert({
+      where:  { email: `pabrik${i + 1}@mpl.com` },
+      update: { role: "PIC_PABRIK", passwordHash: pabrikPassword, pickupPlantId: plant.id },
+      create: {
+        fullName:      `PIC Pabrik ${plant.name}`,
+        email:         `pabrik${i + 1}@mpl.com`,
+        passwordHash:  pabrikPassword,
+        role:          "PIC_PABRIK",
+        pickupPlantId: plant.id,
+      },
+    })
+  }
+  console.log(`✅ 3 PIC Pabrik accounts bound to: ${plants.slice(0, 3).map(p => p.name).join(', ')}`)
 
   // ════════════════════════════════════════════════════════════
   // VEHICLES (3): all clean (AVAILABLE, valid docs). Each paired 1:1 to a driver.
@@ -190,10 +210,55 @@ async function main() {
   console.log(`✅ paired ${vehicles.length} vehicles to drivers (${drivers.length - vehicles.length} drivers spare)`)
 
   // ════════════════════════════════════════════════════════════
-  // SHIPMENTS — intentionally NONE. Create them from the dashboard for testing.
+  // MOCK SHIPMENTS (50) — all UNIT type. Asal is drawn from the pickup-plant list (all 7 plants
+  // cycled), Tujuan is always "Gudang MPL" — mirrors the Kepala Armada Unit create flow.
+  // Statuses + pickup dates are spread so the per-role table sort (status → Asal → earliest date)
+  // is exercised. Reuses the 3 paired driver+vehicle sets; driver/vehicle statuses are NOT synced.
+  // NOTE: Cargo/Container flows are not defined yet — these mocks are Unit only.
   // ════════════════════════════════════════════════════════════
+  await prisma.shipment.deleteMany({})  // fresh mock set each seed (events cascade)
+  // Exact status distribution (total 50)
+  const MOCK_DIST = [
+    { status: "STANDBY", n: 10 },
+    { status: "DITUGASKAN", n: 10 },
+    { status: "AT_PLANT", n: 20 },
+    { status: "DITERIMA", n: 5 },
+    { status: "DITURUNKAN", n: 3 },
+    { status: "DELIVERED", n: 2 },
+  ]
+  const mockStatuses = MOCK_DIST.flatMap(d => Array(d.n).fill(d.status))
+  const plantLabel = (p: typeof plants[number]) => `${p.manufacturer} - ${p.name}${p.code ? ` (${p.code})` : ""}`
+  for (let i = 0; i < mockStatuses.length; i++) {
+    const plant  = plants[i % plants.length]
+    const status = mockStatuses[i]
+    const dv     = i % vehicles.length
+    // pickup spread from ~5 days ago to ~+8 days (some past → "Selesai", most future → "Dalam Proses")
+    const pickupOffset = (i % 14) - 5
+    await prisma.shipment.upsert({
+      where:  { id: `#MPL-${String(i + 1).padStart(5, "0")}-JKT` },
+      update: {},
+      create: {
+        id:                  `#MPL-${String(i + 1).padStart(5, "0")}-JKT`,
+        packageType:         "Kendaraan",
+        weightKg:            500,
+        units:               10,
+        serviceLevel:        "Darat",
+        shippingCategory:    "Unit",
+        originLocation:      plantLabel(plant),   // Asal = selected plant (fixed dropdown value)
+        destinationLocation: "Gudang MPL",
+        status:              status,
+        pickupDate:          daysFromNow(pickupOffset),
+        pickupPlantId:       plant.id,
+        clientId:            clients[i % clients.length].id,
+        driverId:            drivers[dv].id,
+        vehicleId:           vehicles[dv].id,
+        createdByAdminId:    admin.id,
+      },
+    })
+  }
+  console.log(`✅ ${mockStatuses.length} mock UNIT shipments (Asal from all ${plants.length} plants; status distribution ${MOCK_DIST.map(d => d.status + ':' + d.n).join(', ')})`)
 
-  console.log("\n🌱 Seed complete. No shipments seeded — create them from the dashboard.")
+  console.log("\n🌱 Seed complete.")
 }
 
 main()
