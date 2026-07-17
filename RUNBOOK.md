@@ -241,6 +241,23 @@ For each: file + line (`path:line`), what's wrong, blast radius (admin-only vs s
 
 ## 6. Session Log
 
+### 2026-07-18 — Plant-check wizard (relational, dynamic) + Kepala Gudang leg (Diterima→Diturunkan→Selesai) + pushed to main
+- **Branch:** worked on `tier1-infra`; committed `e6860b2` (plant-check dynamic rows), `d3d5010` (wizard UX polish), `09a7265` (gudang leg). **Pushed to `main`** (fast-forward `9f38e98→09a7265`, verified `origin/main` was an ancestor — no force) **and** synced `origin/tier1-infra`. ⚠️ `main` now carries the full tier1-infra pipeline work (12 commits ahead of the old main) — flag to the friend who also pushes `main`.
+- **Resync:** prisma generate ✓ / migrate dev ✓ (2 new migrations) / no reseed needed (seed doesn't create plant-checks/handovers). ⚠️ `migrate dev --skip-generate` errored (arg parse) → ran plain `migrate dev`; had to `prisma generate` again before the new `catatan*` fields typechecked.
+- **Plant-check made relational + dynamic (PIC_PABRIK, AT_PLANT→TRANSIT):**
+  - Schema: dropped the scalar plant-check columns; new child table **`plant_check_pengiriman`** (multi-row Data Pengiriman) alongside existing `lku`/`ksu` (`migration plant_check_pengiriman_rows`). `/plant-check` accepts `dataPengiriman` as an **array**; both GET includes hydrate `pengiriman`.
+  - Wizard (`ShipmentsSection.jsx`): Data Pengiriman now dynamic add/remove (no prefill); KSU **Tipe Motor auto-assigned** (one row per distinct motor type, no dropdown/add/remove) with Data-Pengiriman `keterangan` shown in `[brackets]`; LKU starts with a default row + Tipe Motor **dropdown** synced from Data Pengiriman; Tambah Baris moved to bottom (thin outline); red-circle remove top-right; auto-scroll to new row.
+  - **Draft autosave** per shipment in `localStorage` (`mpl:plantCheckDraft:<id>`), restored on reopen, cleared on submit; **Clear All** button (filled red). Confirmation box is now a **segmented summary** (Data Pengiriman + LKU tables, KSU cards). Detail panel **soft-refreshes via `getById`** after submit (shared `mapShipment` extracted) so Pengecekan Pabrik shows immediately.
+- **Kepala Gudang leg (PIC_GUDANG):**
+  - Dashboard: hid Total Klien + Driver Tersedia for PIC_GUDANG. Detail modal: **removed Lacak Penuh** for all roles. Pengiriman page now uses the compact field layout for PIC_GUDANG; **fixed a dead `KEPALA_GUDANG` sort key** (real role is `PIC_GUDANG`, was silently falling back to DEFAULT) → order Dalam Perjalanan→Diterima→Diturunkan→Selesai→Standby→Ditugaskan→Di Pabrik.
+  - Update-Status flow: TRANSIT→Diterima and Diterima→Diturunkan are **one-tap confirmations** (via `/status`); Diturunkan→Selesai shows a **"Catatan Serah Terima Perlengkapan Motor"** form (Plant Pengirim / Gudang Penerima columns) → confirmation box echoing both notes → `/handover`→DELIVERED, then soft-refresh.
+  - Backend: new `Shipment.catatanPlantPengirim` / `catatanGudangPenerima` (`migration gudang_serah_terima_notes`); `/handover` persists them.
+- **Verified:** web `vite build` ✓ (every step); API `tsc` clean for new code (only pre-existing query-param `string|string[]` + unrelated `driver`-include errors remain); API server restarted on **:3001**, `/health` 200.
+- **New env vars:** none. **New migrations:** `plant_check_pengiriman_rows`, `gudang_serah_terima_notes` (run `prisma migrate deploy` on other envs).
+- **Client-side follow-ups:** 🔵 none new (all admin-scope). Prior notes still stand (auto-WA double-fire, client Faktur removed, TrackingSection ETA).
+- **Deferred:** Surat Jalan print-to-PDF (pulls plant-check + serah-terima); prune now-unused `serahTerimaUrl`/`handoverNotes` state + `onTrackFull` wiring; show serah-terima catatan in the read-only detail panel; **context.md refresh** (now that pabrik+gudang flows are done).
+- **Server/branch state left:** API server **running** on :3001 (tsx watch, hidden window). On `tier1-infra`, all committed + pushed; `main` and `tier1-infra` both at `09a7265`.
+
 ### 2026-07-16 — Merge friend's parallel Kepala Armada work + adopt diterima/diturunkan vocab + remove invoices entirely
 - **Synced:** `git fetch origin main` — friend's agent had pushed **"Refine Kepala_Armada role"** + a landing-page refresh (`9f38e98`), overlapping the exact role we overhauled. Merged `origin/main` into `tier1-infra` (`141a132`), then removed invoices (`e6b43df`). Not pushed.
 - **Collision (two-agent repo):** friend independently built overlapping Kepala Armada work in the same files (`ShipmentsSection.jsx`, `shipments.ts`, `AdminModal.jsx`) **+ a duplicate migration** (`20260715090316_add_kepala_armada_roles`, byte-identical to our `…040528`). Presented a full merge map to the user before touching anything (option A).
