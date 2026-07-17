@@ -191,10 +191,11 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   const [pabrikNotes, setPabrikNotes]                 = useState('')
 
   // Plant-check wizard (AT_PLANT → Dalam Perjalanan): 3 pages + confirmation box
+  const emptyPengirimanRow = () => ({ tipeMotor: '', noShipping: '', jumlah: '', satuan: '', keterangan: '' })
   const emptyLkuRow = () => ({ tipeMotor: '', noMesin: '', noRangka: '', warna: '', itemDefect: '' })
   const emptyKsuRow = () => ({ tipeMotor: '', helm: '', accu: '', spion: '', toolkit: '', bsBp: '', kKontak: '', fuse: '', platNo: '', sticker: '' })
   const [pabrikPage, setPabrikPage]                   = useState(1)
-  const [pcData, setPcData]                           = useState({ tipeMotor: '', noShipping: '', jumlah: '', satuan: '', keterangan: '' })
+  const [pcPengiriman, setPcPengiriman]               = useState([emptyPengirimanRow()])
   const [pcLku, setPcLku]                             = useState([])
   const [pcKsu, setPcKsu]                             = useState([emptyKsuRow()])
   const [showPabrikConfirm, setShowPabrikConfirm]     = useState(false)
@@ -646,7 +647,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     setSerahTerimaUrl('')
     setHandoverNotes('')
     setPabrikPage(1)
-    setPcData({ tipeMotor: '', noShipping: '', jumlah: '', satuan: '', keterangan: '' })
+    setPcPengiriman([emptyPengirimanRow()])
     setPcLku([])
     setPcKsu([emptyKsuRow()])
     setShowPabrikConfirm(false)
@@ -663,19 +664,22 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     if (rawStatus === 'STANDBY') {
       await Promise.all([fetchFleetVehicles(), fetchFleet()])
     }
-    // Plant-check wizard: prefill Data Pengiriman from the shipment where we can.
+    // Plant-check wizard: prefill the first Data Pengiriman row from the shipment where we can.
     if (rawStatus === 'AT_PLANT') {
-      setPcData({
+      setPcPengiriman([{
         tipeMotor:  selectedShipment.cargoDescription || '',
         noShipping: '',
         jumlah:     selectedShipment.units && selectedShipment.units !== '-' ? String(selectedShipment.units) : '',
         satuan:     '',
         keterangan: '',
-      })
+      }])
     }
   }
 
-  // Plant-check wizard row helpers (LKU / KSU add·update·remove)
+  // Plant-check wizard row helpers (Pengiriman / LKU / KSU add·update·remove)
+  const addPengiriman    = () => setPcPengiriman(rows => [...rows, emptyPengirimanRow()])
+  const removePengiriman = (i) => setPcPengiriman(rows => rows.filter((_, idx) => idx !== i))
+  const updatePengiriman = (i, field, val) => setPcPengiriman(rows => rows.map((r, idx) => idx === i ? { ...r, [field]: val } : r))
   const addLku    = () => setPcLku(rows => [...rows, emptyLkuRow()])
   const removeLku = (i) => setPcLku(rows => rows.filter((_, idx) => idx !== i))
   const updateLku = (i, field, val) => setPcLku(rows => rows.map((r, idx) => idx === i ? { ...r, [field]: val } : r))
@@ -686,10 +690,13 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   // Confirm-box action: submit the whole plant-check payload → Dalam Perjalanan
   const doSubmitPlantCheck = async () => {
     try {
+      const dataPengiriman = pcPengiriman
+        .filter(r => r.tipeMotor.trim())
+        .map(r => ({ ...r, jumlah: Number(r.jumlah) || 0 }))
       const lku = pcLku.filter(r => Object.values(r).some(v => String(v).trim()))
       const ksu = pcKsu.filter(r => Object.values(r).some(v => String(v).trim()))
       await shipmentsAPI.plantCheck(selectedShipment.id, {
-        dataPengiriman: { ...pcData, jumlah: Number(pcData.jumlah) || 0 },
+        dataPengiriman,
         lku,
         ksu,
       })
@@ -780,8 +787,13 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
       // Di Pabrik → Dalam Perjalanan: 3-page wizard. Submit button = Next (p1/p2) or open confirm (p3).
       if (role === 'PIC_PABRIK' && rawStatus === 'AT_PLANT') {
         if (pabrikPage === 1) {
-          if (!pcData.tipeMotor.trim() || !pcData.noShipping.trim() || !String(pcData.jumlah).trim() || !pcData.satuan.trim()) {
-            return showToast('Lengkapi Data Pengiriman (Tipe Motor, No. Shipping, Jumlah, Satuan).', 'error')
+          const filled = pcPengiriman.filter(r => r.tipeMotor.trim())
+          if (filled.length === 0) {
+            return showToast('Tambahkan minimal satu Data Pengiriman.', 'error')
+          }
+          const incomplete = filled.some(r => !r.noShipping.trim() || !String(r.jumlah).trim() || !r.satuan.trim())
+          if (incomplete) {
+            return showToast('Lengkapi setiap baris Data Pengiriman (Tipe Motor, No. Shipping, Jumlah, Satuan).', 'error')
           }
           setPabrikPage(2)
           return
@@ -1131,6 +1143,19 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
       if (role === 'PIC_PABRIK' && rawStatus === 'AT_PLANT') {
         const inp = "w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-dash-secondary focus:ring-1 focus:ring-dash-secondary outline-none"
         const KSU_FIELDS = [['helm','Helm'],['accu','Accu'],['spion','Spion'],['toolkit','Toolkit'],['bsBp','BS & BP'],['kKontak','K. Kontak'],['fuse','Fuse'],['platNo','Plat No.'],['sticker','Sticker']]
+        // Distinct motor types entered on the Data Pengiriman page → feed KSU's Tipe Motor dropdown.
+        const motorTypes = [...new Set(pcPengiriman.map(r => r.tipeMotor.trim()).filter(Boolean))]
+        // Red-circle remove button, pinned to the top-left corner of a dynamic row.
+        const removeBtn = (onClick) => (
+          <button
+            type="button"
+            onClick={onClick}
+            className="absolute -top-2.5 -left-2.5 w-6 h-6 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center shadow-md z-10"
+            aria-label="Hapus baris"
+          >
+            <Icon name="close" size={14} />
+          </button>
+        )
         const step = (n, label) => (
           <div className="flex items-center gap-1.5">
             <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[0.65rem] font-bold ${pabrikPage === n ? 'bg-dash-secondary text-dash-primary' : pabrikPage > n ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>{n}</span>
@@ -1148,15 +1173,23 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
             </div>
 
             {pabrikPage === 1 && (
-              <div className="flex flex-col gap-4">
-                <p className="text-sm font-bold text-gray-900">Data Pengiriman <span className="text-red-500">*</span></p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <AdminFormField label="Tipe Motor" required><input className={inp} value={pcData.tipeMotor} onChange={e => setPcData(d => ({ ...d, tipeMotor: e.target.value }))} /></AdminFormField>
-                  <AdminFormField label="No. Shipping" required><input className={inp} value={pcData.noShipping} onChange={e => setPcData(d => ({ ...d, noShipping: e.target.value }))} /></AdminFormField>
-                  <AdminFormField label="Jumlah" required><input type="number" min="0" className={inp} value={pcData.jumlah} onChange={e => setPcData(d => ({ ...d, jumlah: e.target.value }))} /></AdminFormField>
-                  <AdminFormField label="Satuan" required><input className={inp} value={pcData.satuan} onChange={e => setPcData(d => ({ ...d, satuan: e.target.value }))} /></AdminFormField>
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-bold text-gray-900">Data Pengiriman <span className="text-red-500">*</span></p>
+                  <button type="button" onClick={addPengiriman} className="text-xs font-bold text-dash-primary bg-dash-secondary/20 hover:bg-dash-secondary/30 px-3 py-1.5 rounded-lg flex items-center gap-1"><Icon name="add" size={14} /> Tambah Baris</button>
                 </div>
-                <AdminFormField label="Keterangan"><input className={inp} value={pcData.keterangan} onChange={e => setPcData(d => ({ ...d, keterangan: e.target.value }))} /></AdminFormField>
+                {pcPengiriman.map((r, i) => (
+                  <div key={i} className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex flex-col gap-2 relative">
+                    {pcPengiriman.length > 1 && removeBtn(() => removePengiriman(i))}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      <input className={inp} placeholder="Tipe Motor *" value={r.tipeMotor} onChange={e => updatePengiriman(i, 'tipeMotor', e.target.value)} />
+                      <input className={inp} placeholder="No. Shipping *" value={r.noShipping} onChange={e => updatePengiriman(i, 'noShipping', e.target.value)} />
+                      <input type="number" min="0" className={inp} placeholder="Jumlah *" value={r.jumlah} onChange={e => updatePengiriman(i, 'jumlah', e.target.value)} />
+                      <input className={inp} placeholder="Satuan *" value={r.satuan} onChange={e => updatePengiriman(i, 'satuan', e.target.value)} />
+                    </div>
+                    <input className={inp} placeholder="Keterangan" value={r.keterangan} onChange={e => updatePengiriman(i, 'keterangan', e.target.value)} />
+                  </div>
+                ))}
               </div>
             )}
 
@@ -1169,8 +1202,8 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
                 {pcLku.length === 0 && <p className="text-xs text-gray-400 italic">Belum ada baris. Tambahkan hanya bila ada catatan kondisi / defect unit.</p>}
                 {pcLku.map((r, i) => (
                   <div key={i} className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex flex-col gap-2 relative">
-                    <button type="button" onClick={() => removeLku(i)} className="absolute top-2 right-2 text-gray-400 hover:text-red-500"><Icon name="close" size={16} /></button>
-                    <div className="grid grid-cols-2 gap-2 pr-6">
+                    {removeBtn(() => removeLku(i))}
+                    <div className="grid grid-cols-2 gap-2">
                       <input className={inp} placeholder="Tipe Motor" value={r.tipeMotor} onChange={e => updateLku(i, 'tipeMotor', e.target.value)} />
                       <input className={inp} placeholder="No. Mesin" value={r.noMesin} onChange={e => updateLku(i, 'noMesin', e.target.value)} />
                       <input className={inp} placeholder="No. Rangka" value={r.noRangka} onChange={e => updateLku(i, 'noRangka', e.target.value)} />
@@ -1179,7 +1212,6 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
                     <input className={inp} placeholder="Item Defect" value={r.itemDefect} onChange={e => updateLku(i, 'itemDefect', e.target.value)} />
                   </div>
                 ))}
-                <button type="button" onClick={() => setPabrikPage(1)} className="text-xs font-bold text-gray-500 hover:text-gray-800 self-start">← Kembali</button>
               </div>
             )}
 
@@ -1191,8 +1223,11 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
                 </div>
                 {pcKsu.map((r, i) => (
                   <div key={i} className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex flex-col gap-2 relative">
-                    {pcKsu.length > 1 && <button type="button" onClick={() => removeKsu(i)} className="absolute top-2 right-2 text-gray-400 hover:text-red-500"><Icon name="close" size={16} /></button>}
-                    <input className={`${inp} pr-6`} placeholder="Tipe Motor" value={r.tipeMotor} onChange={e => updateKsu(i, 'tipeMotor', e.target.value)} />
+                    {pcKsu.length > 1 && removeBtn(() => removeKsu(i))}
+                    <select className={inp} value={r.tipeMotor} onChange={e => updateKsu(i, 'tipeMotor', e.target.value)}>
+                      <option value="">— Pilih Tipe Motor —</option>
+                      {motorTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
                     <div className="grid grid-cols-3 gap-2">
                       {KSU_FIELDS.map(([f, lbl]) => (
                         <div key={f} className="flex flex-col gap-1">
@@ -1203,7 +1238,6 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
                     </div>
                   </div>
                 ))}
-                <button type="button" onClick={() => setPabrikPage(2)} className="text-xs font-bold text-gray-500 hover:text-gray-800 self-start">← Kembali</button>
               </div>
             )}
           </div>
@@ -1402,21 +1436,23 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   const renderPlantCheck = () => {
     const pc = selectedShipment?.plantCheck
     if (!pc) return null
-    const row = (label, val) => (
-      <div className="grid grid-cols-3 gap-2">
-        <span className="text-sm text-gray-500 font-medium">{label}</span>
-        <span className="text-sm font-bold text-gray-900 col-span-2">{val || '-'}</span>
-      </div>
-    )
     return (
       <div className="flex flex-col gap-3">
         <h4 className="flex items-center gap-2 text-sm font-bold text-gray-900 border-b border-gray-100 pb-2">
           <Icon name="fact_check" size={18} className="text-gray-400" /> Pengecekan Pabrik
         </h4>
-        {row('Tipe Motor', pc.tipeMotor)}
-        {row('No. Shipping', pc.noShipping)}
-        {row('Jumlah', `${pc.jumlah}${pc.satuan ? ' ' + pc.satuan : ''}`)}
-        {pc.keterangan && row('Keterangan', pc.keterangan)}
+
+        {pc.pengiriman?.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Data Pengiriman ({pc.pengiriman.length})</span>
+            {pc.pengiriman.map((r, i) => (
+              <div key={i} className="text-xs text-gray-700 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
+                <span className="font-bold">{r.tipeMotor || '-'}</span> · Shipping {r.noShipping || '-'} · {r.jumlah ?? '-'}{r.satuan ? ' ' + r.satuan : ''}
+                {r.keterangan ? <span className="text-gray-500"> · {r.keterangan}</span> : null}
+              </div>
+            ))}
+          </div>
+        )}
 
         {pc.lku?.length > 0 && (
           <div className="flex flex-col gap-1.5 mt-1">
@@ -2235,6 +2271,17 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
           onClose={() => { setShowStatusModal(false); resetModalState() }}
           onSubmit={handleConfirmStatus}
           submitLabel={getSubmitLabel()}
+          footerLeft={
+            role === 'PIC_PABRIK' && selectedShipment.rawStatus === 'AT_PLANT' && pabrikPage > 1 ? (
+              <button
+                type="button"
+                onClick={() => setPabrikPage(p => p - 1)}
+                className="px-6 py-2.5 text-sm font-bold text-gray-600 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl transition-colors flex items-center gap-2"
+              >
+                <Icon name="arrow_back" size={18} /> Kembali
+              </button>
+            ) : null
+          }
         >
           {renderModalContent()}
         </AdminModal>

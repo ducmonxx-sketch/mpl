@@ -358,20 +358,28 @@ model PlantCheck {
   shipmentId String @unique
   shipment   Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
 
-  // Page 1 — Data Pengiriman (required)
-  tipeMotor  String
-  noShipping String
-  jumlah     Int
-  satuan     String
-  keterangan String?
-
   checkedByAdminId String?
   createdAt        DateTime @default(now())
 
-  lku PlantCheckLku[]
-  ksu PlantCheckKsu[]
+  pengiriman PlantCheckPengiriman[]
+  lku        PlantCheckLku[]
+  ksu        PlantCheckKsu[]
 
   @@map("plant_checks")
+}
+
+// Data Pengiriman — one row per motor type (required, ≥1)
+model PlantCheckPengiriman {
+  id           String     @id @default(uuid())
+  plantCheckId String
+  plantCheck   PlantCheck @relation(fields: [plantCheckId], references: [id], onDelete: Cascade)
+  tipeMotor    String
+  noShipping   String?
+  jumlah       Int?
+  satuan       String?
+  keterangan   String?
+
+  @@map("plant_check_pengiriman")
 }
 
 // Laporan Kondisi Unit — per-unit defect rows (optional)

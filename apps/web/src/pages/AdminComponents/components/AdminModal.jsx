@@ -1,7 +1,7 @@
 import { createPortal } from 'react-dom'
 import Icon from '../../../components/Icon'
 
-export default function AdminModal({ title, subtitle, onClose, onSubmit, submitLabel = 'Simpan', children }) {
+export default function AdminModal({ title, subtitle, onClose, onSubmit, submitLabel = 'Simpan', children, footerLeft = null }) {
   // Portal to <body> so the overlay always escapes any ancestor stacking context
   // (transforms/filters on the dashboard layout would otherwise trap `fixed` + z-index
   // and the backdrop blur). Mirrors the detail-panel pattern in ShipmentsSection.
@@ -32,10 +32,12 @@ export default function AdminModal({ title, subtitle, onClose, onSubmit, submitL
           {children}
         </div>
 
-        <div className="flex justify-end gap-3 p-6 md:p-8 border-t border-gray-100 bg-gray-50/50 rounded-b-2xl">
-          <button 
-            type="button" 
-            className="px-6 py-2.5 text-sm font-bold text-gray-600 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl transition-colors" 
+        <div className="flex justify-between items-center gap-3 p-6 md:p-8 border-t border-gray-100 bg-gray-50/50 rounded-b-2xl">
+          <div>{footerLeft}</div>
+          <div className="flex justify-end gap-3">
+          <button
+            type="button"
+            className="px-6 py-2.5 text-sm font-bold text-gray-600 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl transition-colors"
             onClick={onClose}
           >
             Batal
@@ -47,6 +49,7 @@ export default function AdminModal({ title, subtitle, onClose, onSubmit, submitL
             <Icon name="save" size={18} />
             {submitLabel}
           </button>
+          </div>
         </div>
       </form>
     </div>,
