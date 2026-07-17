@@ -190,6 +190,15 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   const [lkuNumber, setLkuNumber]                     = useState('')
   const [pabrikNotes, setPabrikNotes]                 = useState('')
 
+  // Plant-check wizard (AT_PLANT → Dalam Perjalanan): 3 pages + confirmation box
+  const emptyLkuRow = () => ({ tipeMotor: '', noMesin: '', noRangka: '', warna: '', itemDefect: '' })
+  const emptyKsuRow = () => ({ tipeMotor: '', helm: '', accu: '', spion: '', toolkit: '', bsBp: '', kKontak: '', fuse: '', platNo: '', sticker: '' })
+  const [pabrikPage, setPabrikPage]                   = useState(1)
+  const [pcData, setPcData]                           = useState({ tipeMotor: '', noShipping: '', jumlah: '', satuan: '', keterangan: '' })
+  const [pcLku, setPcLku]                             = useState([])
+  const [pcKsu, setPcKsu]                             = useState([emptyKsuRow()])
+  const [showPabrikConfirm, setShowPabrikConfirm]     = useState(false)
+
   const [serahTerimaUrl, setSerahTerimaUrl]           = useState('')
   const [handoverNotes, setHandoverNotes]             = useState('')
 
@@ -636,6 +645,11 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     setPabrikNotes('')
     setSerahTerimaUrl('')
     setHandoverNotes('')
+    setPabrikPage(1)
+    setPcData({ tipeMotor: '', noShipping: '', jumlah: '', satuan: '', keterangan: '' })
+    setPcLku([])
+    setPcKsu([emptyKsuRow()])
+    setShowPabrikConfirm(false)
   }
 
   const openStatusModal = async () => {
@@ -648,6 +662,46 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     // STANDBY reconfirm needs the current vehicle card (fleetVehicles) + the substitute driver list (availableDrivers)
     if (rawStatus === 'STANDBY') {
       await Promise.all([fetchFleetVehicles(), fetchFleet()])
+    }
+    // Plant-check wizard: prefill Data Pengiriman from the shipment where we can.
+    if (rawStatus === 'AT_PLANT') {
+      setPcData({
+        tipeMotor:  selectedShipment.cargoDescription || '',
+        noShipping: '',
+        jumlah:     selectedShipment.units && selectedShipment.units !== '-' ? String(selectedShipment.units) : '',
+        satuan:     '',
+        keterangan: '',
+      })
+    }
+  }
+
+  // Plant-check wizard row helpers (LKU / KSU add·update·remove)
+  const addLku    = () => setPcLku(rows => [...rows, emptyLkuRow()])
+  const removeLku = (i) => setPcLku(rows => rows.filter((_, idx) => idx !== i))
+  const updateLku = (i, field, val) => setPcLku(rows => rows.map((r, idx) => idx === i ? { ...r, [field]: val } : r))
+  const addKsu    = () => setPcKsu(rows => [...rows, emptyKsuRow()])
+  const removeKsu = (i) => setPcKsu(rows => rows.filter((_, idx) => idx !== i))
+  const updateKsu = (i, field, val) => setPcKsu(rows => rows.map((r, idx) => idx === i ? { ...r, [field]: val } : r))
+
+  // Confirm-box action: submit the whole plant-check payload → Dalam Perjalanan
+  const doSubmitPlantCheck = async () => {
+    try {
+      const lku = pcLku.filter(r => Object.values(r).some(v => String(v).trim()))
+      const ksu = pcKsu.filter(r => Object.values(r).some(v => String(v).trim()))
+      await shipmentsAPI.plantCheck(selectedShipment.id, {
+        dataPengiriman: { ...pcData, jumlah: Number(pcData.jumlah) || 0 },
+        lku,
+        ksu,
+      })
+      showToast('Pengecekan Pabrik Selesai. Status → Dalam Perjalanan.', 'success')
+      setShowPabrikConfirm(false)
+      setShowStatusModal(false)
+      resetModalState()
+      fetchShipments({ silent: true })
+      setSelectedShipment(prev => prev ? ({ ...prev, rawStatus: 'TRANSIT', status: 'in_transit' }) : null)
+    } catch (err) {
+      showToast(err.message || 'Gagal memproses pengecekan pabrik.', 'error')
+      setShowPabrikConfirm(false)
     }
   }
 
@@ -723,22 +777,25 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
         return
       }
 
-      // Di Pabrik → Dalam Perjalanan: plant check + LKU (fuller data form is a later step).
+      // Di Pabrik → Dalam Perjalanan: 3-page wizard. Submit button = Next (p1/p2) or open confirm (p3).
       if (role === 'PIC_PABRIK' && rawStatus === 'AT_PLANT') {
-        try {
-          await shipmentsAPI.plantCheck(id, {
-            vehicleCondition,
-            lkuNumber,
-            pabrikNotes
-          })
-          showToast('Pengecekan Pabrik Selesai. Status → Dalam Perjalanan.', 'success')
-          setShowStatusModal(false)
-          resetModalState()
-          fetchShipments({ silent: true })
-          setSelectedShipment(prev => prev ? ({ ...prev, rawStatus: 'TRANSIT', status: 'in_transit' }) : null)
-        } catch (err) {
-          showToast(err.message || 'Gagal memproses pengecekan pabrik.', 'error')
+        if (pabrikPage === 1) {
+          if (!pcData.tipeMotor.trim() || !pcData.noShipping.trim() || !String(pcData.jumlah).trim() || !pcData.satuan.trim()) {
+            return showToast('Lengkapi Data Pengiriman (Tipe Motor, No. Shipping, Jumlah, Satuan).', 'error')
+          }
+          setPabrikPage(2)
+          return
         }
+        if (pabrikPage === 2) {
+          setPabrikPage(3) // LKU optional
+          return
+        }
+        // page 3 (KSU, required)
+        const ksuFilled = pcKsu.filter(r => Object.values(r).some(v => String(v).trim()))
+        if (ksuFilled.length === 0) {
+          return showToast('Isi minimal satu baris Perlengkapan Motor (KSU).', 'error')
+        }
+        setShowPabrikConfirm(true) // open confirmation box; actual submit on confirm
         return
       }
 
@@ -821,7 +878,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     if (role === 'KEPALA_ARMADA' && selectedShipment.rawStatus === 'STANDBY') return `${sid} — konfirmasi driver & armada sebelum ditugaskan`
     if (role === 'KEPALA_ARMADA' && selectedShipment.rawStatus === 'PENDING') return `${sid} — pilih driver, armada & pabrik`
     if (role === 'PIC_PABRIK' && selectedShipment.rawStatus === 'DITUGASKAN') return `${sid} — konfirmasi driver & armada tiba di Pabrik`
-    if (role === 'PIC_PABRIK' && selectedShipment.rawStatus === 'AT_PLANT') return `${sid} — lengkapi LKU dan cek kondisi`
+    if (role === 'PIC_PABRIK' && selectedShipment.rawStatus === 'AT_PLANT') return `${sid} — Langkah ${pabrikPage}/3`
     if (role === 'PIC_GUDANG' && selectedShipment.rawStatus === 'TRANSIT') return `${sid} — upload bukti serah terima`
 
     // Fallback for OPERATIONS
@@ -836,7 +893,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     if (role === 'KEPALA_ARMADA' && selectedShipment.rawStatus === 'STANDBY') return 'Konfirmasi & Tugaskan'
     if (role === 'KEPALA_ARMADA' && selectedShipment.rawStatus === 'PENDING') return 'Tugaskan & Simpan'
     if (role === 'PIC_PABRIK' && selectedShipment.rawStatus === 'DITUGASKAN') return 'Konfirmasi Tiba di Pabrik'
-    if (role === 'PIC_PABRIK' && selectedShipment.rawStatus === 'AT_PLANT') return 'Selesaikan Pengecekan'
+    if (role === 'PIC_PABRIK' && selectedShipment.rawStatus === 'AT_PLANT') return pabrikPage < 3 ? 'Lanjut' : 'Selesaikan Pengecekan'
     if (role === 'PIC_GUDANG' && selectedShipment.rawStatus === 'TRANSIT') return 'Konfirmasi Serah Terima'
 
     // Fallback
@@ -1070,45 +1127,85 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
         )
       }
 
-      // ── PIC_PABRIK: plant check (Di Pabrik → Dalam Perjalanan) ──
+      // ── PIC_PABRIK: plant-check wizard (Di Pabrik → Dalam Perjalanan) ──
       if (role === 'PIC_PABRIK' && rawStatus === 'AT_PLANT') {
+        const inp = "w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-dash-secondary focus:ring-1 focus:ring-dash-secondary outline-none"
+        const KSU_FIELDS = [['helm','Helm'],['accu','Accu'],['spion','Spion'],['toolkit','Toolkit'],['bsBp','BS & BP'],['kKontak','K. Kontak'],['fuse','Fuse'],['platNo','Plat No.'],['sticker','Sticker']]
+        const step = (n, label) => (
+          <div className="flex items-center gap-1.5">
+            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[0.65rem] font-bold ${pabrikPage === n ? 'bg-dash-secondary text-dash-primary' : pabrikPage > n ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>{n}</span>
+            <span className={`text-xs font-bold ${pabrikPage === n ? 'text-dash-primary' : 'text-gray-400'}`}>{label}</span>
+          </div>
+        )
         return (
           <div className="flex flex-col gap-5">
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-medium text-gray-500">Status saat ini:</span>
-              <AdminStatusBadge status="at_plant" type="shipment" />
+            <div className="flex items-center">
+              {step(1, 'Pengiriman')}
+              <div className="flex-1 h-px bg-gray-200 mx-2" />
+              {step(2, 'LKU')}
+              <div className="flex-1 h-px bg-gray-200 mx-2" />
+              {step(3, 'KSU')}
             </div>
 
-            <div className="flex flex-col gap-4 bg-gray-50 p-5 rounded-xl border border-gray-200">
-              <div className="flex flex-col gap-2">
-                <span className="text-sm font-bold text-gray-700">Kondisi Kendaraan</span>
-                <SearchableSelect 
-                   options={[{value: 'Baik', label: 'Baik'}, {value: 'Perlu Perhatian', label: 'Perlu Perhatian'}, {value: 'Rusak Ringan', label: 'Rusak Ringan'}]}
-                   value={vehicleCondition}
-                   onChange={setVehicleCondition}
-                   placeholder="Pilih Kondisi"
-                />
+            {pabrikPage === 1 && (
+              <div className="flex flex-col gap-4">
+                <p className="text-sm font-bold text-gray-900">Data Pengiriman <span className="text-red-500">*</span></p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <AdminFormField label="Tipe Motor" required><input className={inp} value={pcData.tipeMotor} onChange={e => setPcData(d => ({ ...d, tipeMotor: e.target.value }))} /></AdminFormField>
+                  <AdminFormField label="No. Shipping" required><input className={inp} value={pcData.noShipping} onChange={e => setPcData(d => ({ ...d, noShipping: e.target.value }))} /></AdminFormField>
+                  <AdminFormField label="Jumlah" required><input type="number" min="0" className={inp} value={pcData.jumlah} onChange={e => setPcData(d => ({ ...d, jumlah: e.target.value }))} /></AdminFormField>
+                  <AdminFormField label="Satuan" required><input className={inp} value={pcData.satuan} onChange={e => setPcData(d => ({ ...d, satuan: e.target.value }))} /></AdminFormField>
+                </div>
+                <AdminFormField label="Keterangan"><input className={inp} value={pcData.keterangan} onChange={e => setPcData(d => ({ ...d, keterangan: e.target.value }))} /></AdminFormField>
               </div>
-              
-              <AdminFormField
-                label="Nomor LKU"
-                type="text"
-                placeholder="Masukkan Nomor LKU"
-                value={lkuNumber}
-                onChange={e => setLkuNumber(e.target.value)}
-              />
-              
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-bold text-gray-700">Catatan Pengecekan</label>
-                <textarea
-                  className="w-full bg-white border border-gray-300 rounded-xl px-4 py-3 text-sm focus:border-dash-secondary focus:ring-1 focus:ring-dash-secondary outline-none transition-shadow"
-                  rows={3}
-                  placeholder="Tambahkan catatan jika ada..."
-                  value={pabrikNotes}
-                  onChange={e => setPabrikNotes(e.target.value)}
-                />
+            )}
+
+            {pabrikPage === 2 && (
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-bold text-gray-900">Laporan Kondisi Unit (LKU) <span className="text-gray-400 font-normal text-xs">— opsional</span></p>
+                  <button type="button" onClick={addLku} className="text-xs font-bold text-dash-primary bg-dash-secondary/20 hover:bg-dash-secondary/30 px-3 py-1.5 rounded-lg flex items-center gap-1"><Icon name="add" size={14} /> Tambah Baris</button>
+                </div>
+                {pcLku.length === 0 && <p className="text-xs text-gray-400 italic">Belum ada baris. Tambahkan hanya bila ada catatan kondisi / defect unit.</p>}
+                {pcLku.map((r, i) => (
+                  <div key={i} className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex flex-col gap-2 relative">
+                    <button type="button" onClick={() => removeLku(i)} className="absolute top-2 right-2 text-gray-400 hover:text-red-500"><Icon name="close" size={16} /></button>
+                    <div className="grid grid-cols-2 gap-2 pr-6">
+                      <input className={inp} placeholder="Tipe Motor" value={r.tipeMotor} onChange={e => updateLku(i, 'tipeMotor', e.target.value)} />
+                      <input className={inp} placeholder="No. Mesin" value={r.noMesin} onChange={e => updateLku(i, 'noMesin', e.target.value)} />
+                      <input className={inp} placeholder="No. Rangka" value={r.noRangka} onChange={e => updateLku(i, 'noRangka', e.target.value)} />
+                      <input className={inp} placeholder="Warna" value={r.warna} onChange={e => updateLku(i, 'warna', e.target.value)} />
+                    </div>
+                    <input className={inp} placeholder="Item Defect" value={r.itemDefect} onChange={e => updateLku(i, 'itemDefect', e.target.value)} />
+                  </div>
+                ))}
+                <button type="button" onClick={() => setPabrikPage(1)} className="text-xs font-bold text-gray-500 hover:text-gray-800 self-start">← Kembali</button>
               </div>
-            </div>
+            )}
+
+            {pabrikPage === 3 && (
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-bold text-gray-900">Perlengkapan Motor (KSU) <span className="text-red-500">*</span></p>
+                  <button type="button" onClick={addKsu} className="text-xs font-bold text-dash-primary bg-dash-secondary/20 hover:bg-dash-secondary/30 px-3 py-1.5 rounded-lg flex items-center gap-1"><Icon name="add" size={14} /> Tambah Baris</button>
+                </div>
+                {pcKsu.map((r, i) => (
+                  <div key={i} className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex flex-col gap-2 relative">
+                    {pcKsu.length > 1 && <button type="button" onClick={() => removeKsu(i)} className="absolute top-2 right-2 text-gray-400 hover:text-red-500"><Icon name="close" size={16} /></button>}
+                    <input className={`${inp} pr-6`} placeholder="Tipe Motor" value={r.tipeMotor} onChange={e => updateKsu(i, 'tipeMotor', e.target.value)} />
+                    <div className="grid grid-cols-3 gap-2">
+                      {KSU_FIELDS.map(([f, lbl]) => (
+                        <div key={f} className="flex flex-col gap-1">
+                          <label className="text-[0.65rem] font-bold text-gray-500">{lbl}</label>
+                          <input className={inp} value={r[f]} onChange={e => updateKsu(i, f, e.target.value)} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                <button type="button" onClick={() => setPabrikPage(2)} className="text-xs font-bold text-gray-500 hover:text-gray-800 self-start">← Kembali</button>
+              </div>
+            )}
           </div>
         )
       }
@@ -2141,6 +2238,27 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
         >
           {renderModalContent()}
         </AdminModal>
+      )}
+
+      {/* Plant-check confirmation box — sits above the wizard modal (z-[300]) */}
+      {showPabrikConfirm && selectedShipment && createPortal(
+        <div className="fixed inset-0 z-[300] bg-[#002442]/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowPabrikConfirm(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-150" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3">
+              <span className="w-10 h-10 rounded-full bg-dash-secondary/20 text-dash-primary flex items-center justify-center"><Icon name="fact_check" size={22} /></span>
+              <h3 className="text-lg font-bold text-dash-primary">Selesaikan Pengecekan?</h3>
+            </div>
+            <p className="text-sm text-gray-600">
+              Pengecekan pabrik untuk <b>{selectedShipment.id}</b> akan disimpan dan status berubah menjadi <b>Dalam Perjalanan</b>.
+              {' '}({pcLku.filter(r => Object.values(r).some(v => String(v).trim())).length} baris LKU, {pcKsu.filter(r => Object.values(r).some(v => String(v).trim())).length} baris KSU)
+            </p>
+            <div className="flex justify-end gap-3 pt-2">
+              <button type="button" onClick={() => setShowPabrikConfirm(false)} className="px-5 py-2.5 text-sm font-bold text-gray-600 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl transition-colors">Batal</button>
+              <button type="button" onClick={doSubmitPlantCheck} className="px-5 py-2.5 text-sm font-bold text-[#002442] bg-[#fec330] hover:bg-[#eab308] rounded-xl shadow-sm transition-colors flex items-center gap-2"><Icon name="check" size={18} /> Ya, Selesaikan</button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   )
