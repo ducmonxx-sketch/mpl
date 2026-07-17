@@ -12,6 +12,7 @@ import prisma from "../lib/prisma"
 import { authenticate, adminOnly, AuthRequest } from "../middleware/auth"
 import { sendWhatsApp } from "../services/whatsapp"
 import { canChangeStatus, isReversal, isValidStatus } from "../lib/statusFlow"
+import { findTransitConflict, mirrorFleetStatus } from "../lib/shipmentStatus"
 
 const router = Router()
 
@@ -372,6 +373,16 @@ router.patch("/:id/plant-check", authenticate, adminOnly, async (req: AuthReques
     const id = String(req.params.id)
     const { dataPengiriman = [], lku = [], ksu = [] } = req.body
 
+    // Departure guard (same as /status): block if the driver is already on another transit.
+    const cur = await prisma.shipment.findUnique({ where: { id }, select: { driverId: true } })
+    if (cur?.driverId) {
+      const conflictId = await findTransitConflict(cur.driverId, id)
+      if (conflictId) {
+        const driver = await prisma.driver.findUnique({ where: { id: cur.driverId }, select: { fullName: true } })
+        return res.status(409).json({ message: `${driver?.fullName ?? "Driver"} sedang bertugas di pengiriman ${conflictId}. Selesaikan pengiriman tersebut terlebih dahulu.` })
+      }
+    }
+
     // Persist the structured form when Data Pengiriman rows are provided (idempotent: replace prior check).
     if ((dataPengiriman as any[]).length > 0) {
       await prisma.plantCheck.deleteMany({ where: { shipmentId: id } })  // children cascade
@@ -401,6 +412,8 @@ router.patch("/:id/plant-check", authenticate, adminOnly, async (req: AuthReques
       where: { id },
       data:  { status: "TRANSIT", lastUpdatedByAdminId: req.user!.id },
     })
+    // Same fleet mirror as /status (was skipped here before — driver/vehicle now engaged on departure).
+    await mirrorFleetStatus("TRANSIT", cur?.driverId, shipment.vehicleId, id)
 
     await prisma.adminAuditLog.create({
       data: {
@@ -442,19 +455,9 @@ router.patch("/:id/handover", authenticate, adminOnly, async (req: AuthRequest, 
       },
     })
 
-    // Completing a shipment frees its driver + vehicle (mirrors the /status release).
-    if (existing?.vehicleId) {
-      await prisma.vehicle.updateMany({
-        where: { id: existing.vehicleId, status: "IN_USE" },
-        data:  { status: "AVAILABLE" },
-      })
-    }
-    if (existing?.driverId) {
-      await prisma.driver.updateMany({
-        where: { id: existing.driverId, status: "ON_DUTY" },
-        data:  { status: "ACTIVE" },
-      })
-    }
+    // Free the driver + vehicle via the shared mirror — group-aware, so it won't free them
+    // while a linked sibling shipment is still active.
+    await mirrorFleetStatus("DELIVERED", existing?.driverId, existing?.vehicleId, String(req.params.id))
 
     await prisma.adminAuditLog.create({
       data: {
@@ -505,21 +508,13 @@ router.patch("/:id/status", authenticate, adminOnly, async (req: AuthRequest, re
       return res.status(403).json({ message: "Hanya PIC Pabrik yang dapat menandai status Di Pabrik." })
     }
 
-    // Departure guard: a driver may hold several Ditugaskan shipments (all ON_DUTY), but only
-    // ONE may be in transit at a time. Block the TRANSIT move if the driver already has a
-    // DIFFERENT shipment in transit. (ON_DUTY alone no longer signals a conflict — it starts at Ditugaskan.)
+    // Departure guard: only ONE shipment per driver may be in transit at a time (shared helper).
     if (status === "TRANSIT" && existing.driverId) {
-      const conflict = await prisma.shipment.findFirst({
-        where:  { driverId: existing.driverId, status: "TRANSIT", id: { not: id } },
-        select: { id: true },
-      })
-      if (conflict) {
-        const driver = await prisma.driver.findUnique({
-          where:  { id: existing.driverId },
-          select: { fullName: true },
-        })
+      const conflictId = await findTransitConflict(existing.driverId, id)
+      if (conflictId) {
+        const driver = await prisma.driver.findUnique({ where: { id: existing.driverId }, select: { fullName: true } })
         return res.status(409).json({
-          message: `${driver?.fullName ?? "Driver"} sedang bertugas di pengiriman ${conflict.id}. Selesaikan pengiriman tersebut terlebih dahulu.`,
+          message: `${driver?.fullName ?? "Driver"} sedang bertugas di pengiriman ${conflictId}. Selesaikan pengiriman tersebut terlebih dahulu.`,
         })
       }
     }
@@ -536,32 +531,8 @@ router.patch("/:id/status", authenticate, adminOnly, async (req: AuthRequest, re
       },
     })
 
-    // Mirror the shipment status onto its driver + vehicle (armada), 1-to-1.
-    //  Standby              → driver STANDBY,  vehicle STANDBY
-    //  Ditugaskan / Transit → driver ON_DUTY,  vehicle IN_USE (Digunakan)
-    //  Delivered / Cancelled→ driver ACTIVE,   vehicle AVAILABLE (released)
-    // Status-filtered so UNAVAILABLE drivers and MAINTENANCE vehicles are never overridden.
-    const mirror = { STANDBY:  { driverFrom: ["ACTIVE"],            driverTo: "STANDBY", vehFrom: ["AVAILABLE"],          vehTo: "STANDBY"   },
-                     ENGAGE:   { driverFrom: ["ACTIVE", "STANDBY"], driverTo: "ON_DUTY", vehFrom: ["AVAILABLE", "STANDBY"], vehTo: "IN_USE"    },
-                     RELEASE:  { driverFrom: ["ON_DUTY", "STANDBY"], driverTo: "ACTIVE",  vehFrom: ["IN_USE", "STANDBY"],    vehTo: "AVAILABLE" } } as const
-    const m = status === "STANDBY" ? mirror.STANDBY
-            : (status === "DITUGASKAN" || status === "AT_PLANT" || status === "TRANSIT") ? mirror.ENGAGE
-            : (status === "DELIVERED" || status === "CANCELLED") ? mirror.RELEASE
-            : null
-    if (m) {
-      if (existing.driverId) {
-        await prisma.driver.updateMany({
-          where: { id: existing.driverId, status: { in: m.driverFrom as any } },
-          data:  { status: m.driverTo as any },
-        })
-      }
-      if (shipment.vehicleId) {
-        await prisma.vehicle.updateMany({
-          where: { id: shipment.vehicleId, status: { in: m.vehFrom as any } },
-          data:  { status: m.vehTo as any },
-        })
-      }
-    }
+    // Mirror the new status onto the driver + vehicle (shared helper; group-aware release).
+    await mirrorFleetStatus(status, existing.driverId, shipment.vehicleId, id)
 
     await prisma.adminAuditLog.create({
       data: {
