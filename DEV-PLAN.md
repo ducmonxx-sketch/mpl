@@ -3,18 +3,20 @@
 > **Resuming?** Read this first, then [RUNBOOK.md](RUNBOOK.md) (sync + audit) and [CLAUDE.md](CLAUDE.md) (scope).
 > Last updated: **2026-07-18**. Newest work at the top; RUNBOOK §6 has per-session detail.
 
-## 🚧 IN PROGRESS (2026-07-18) — Pipeline hardening + Link shipments ("Hubungkan Pengiriman")
+## ✅ DONE (2026-07-18) — Pipeline hardening + Link shipments ("Hubungkan Pengiriman")
 - **#1 DONE** (`8ed685f`): `AT_PLANT` gated to **PIC_PABRIK** (from DITUGASKAN; SUPERADMIN keeps override); **auto-WhatsApp-on-assign removed** (manual `/notify-driver` only).
 - **#2 DONE** (`a4a6ad7`): extracted **`lib/shipmentStatus.ts`** — shared departure guard + fleet mirror; `/status`, `/plant-check`, `/handover` all route through it. `/plant-check` now enforces the guard + engages the mirror on TRANSIT (previously neither); **release is group-aware** (frees driver/vehicle only when no other active shipment uses them — fixes premature free + groundwork for links).
 
-**#3 Link shipments — LOCKED SPEC (building):** one driver+vehicle (one physical trip) carries multiple **independent** shipments. Schema: `Shipment.linkGroupId String?` + index — **migration `add_shipment_link_group` done (3a ✅)**.
-- **Create-linked** via a **"Hubungkan Pengiriman"** button → a create-form modal whose driver is picked from a **radio list of STANDBY drivers** (Ganti-Driver-style cards). The new shipment takes that driver + their vehicle + the driver's `linkGroupId` (mint a group id if the target's standby shipment has none). "Buat Pengiriman Baru" stays strict 1:1. Linked create **skips** the "driver must be Tersedia" rule.
-- **Pre-departure the group is synced:** (a) Ganti Driver/substitute on any member **mirrors the new driver to ALL members** (vehicle unchanged; old driver → UNAVAILABLE once via the checkbox); (b) STANDBY→Ditugaskan on any member **cascades all members** to Ditugaskan.
+**#3 Link shipments — DONE** (3a `85d6d32` · 3b `a67bef6` · 3c `3259f6c`): one driver+vehicle (one physical trip) carries multiple **independent** shipments. Schema: `Shipment.linkGroupId String?` + index (migration `add_shipment_link_group`).
+- **Create-linked** via the **"Hubungkan Pengiriman"** button → reuses the create-form modal in *link mode*: the driver field becomes a picker of live pre-departure trips; submit sends `linkToShipmentId` and the backend copies that trip's driver+vehicle+`linkGroupId` (minting a group id from the target if none). "Buat Pengiriman Baru" stays strict 1:1.
+- **Pre-departure the group is synced:** (a) `/assign` on any member **mirrors driver+vehicle to ALL siblings**; (b) STANDBY→Ditugaskan on any member **cascades all members** to Ditugaskan.
 - **After Ditugaskan: fully independent** — each shipment gets its own plant-check (PIC Pabrik) + handover (PIC Gudang); no status cascade.
-- **Guard/release** (`lib/shipmentStatus.ts`): departure guard **exempts same-`linkGroupId`** (siblings may co-transit); release already group-aware.
-- **Delete:** a linked shipment shows two buttons — **"Hapus Pengiriman Ini"** (leaves siblings; clears a lone sibling's `linkGroupId`) and **"Hapus Semua Pengiriman Terhubung"** (whole group). Non-linked keeps single delete.
-- **UI:** "Tertaut" badge + sibling reference.
-- **Steps:** 3a schema ✅ · 3b backend (create-linked, driver-mirror, cascade, guard exemption) · 3c frontend (Hubungkan modal + badge + two-button delete).
+- **Guard/release** (`lib/shipmentStatus.ts`): departure guard **exempts same-`linkGroupId`** (siblings co-transit); release group-aware.
+- **Delete:** a linked shipment shows **"Hapus Pengiriman Ini"** (`scope=single`; unlinks a lone remaining sibling) + **"Hapus Semua Terhubung"** (`scope=group`). Standalone keeps single "Hapus".
+- **UI:** "Tertaut" badge + clickable sibling ids in the detail panel.
+- **Divergences from the locked spec (small, flag if unwanted):** (1) the link target is a **`<select>` of trips**, not Ganti-Driver-style radio cards — reuses the create-form idiom; each option is a trip labelled by driver+armada. (2) Bindable trips include **STANDBY *and* DITUGASKAN** (both are valid backend targets), not STANDBY-only.
+- **Verified:** typecheck 37 (no new); linked-pair backend smoke **6/6** (create-linked, assign-mirror, cascade, co-transit, two-mode delete); `vite build` clean.
+- **Not yet exercised in the live UI** (backend + build proven, browser click-through pending): the Hubungkan modal end-to-end, Tertaut badge/siblings render, two-button delete from the panel.
 
 ## ✅ DONE (2026-07-15) — Pipeline roles migration + plant-check/handover bug fixes
 Pulled `main` (friend's agent had added the 3 pipeline roles + AT_PLANT status in `schema.prisma` with **no migration**). Reconciled DB to schema and fixed two bugs in the friend's pipeline routes.

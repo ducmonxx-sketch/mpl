@@ -241,6 +241,21 @@ For each: file + line (`path:line`), what's wrong, blast radius (admin-only vs s
 
 ## 6. Session Log
 
+### 2026-07-18 (cont.) — Pipeline hardening (#1/#2) + Link shipments "Hubungkan Pengiriman" (#3a/b/c) full-stack
+- **Branch:** `tier1-infra`; 6 new commits, **not pushed** (push question still open with the user). Commits: `8ed685f` (#1), `a4a6ad7` (#2), `73f1d1b` (docs/context refresh), `85d6d32` (#3a schema), `a67bef6` (#3b backend), `3259f6c` (#3c frontend).
+- **#1 — AT_PLANT gate + drop auto-WA:** `/status` rejects `AT_PLANT` unless caller is PIC_PABRIK (or SUPERADMIN override); from-DITUGASKAN already enforced by the forward map. Removed the auto-WhatsApp block on `/assign` (manual `/notify-driver` stays).
+- **#2 — shared guard/mirror helper:** extracted `lib/shipmentStatus.ts` (`findTransitConflict`, `mirrorFleetStatus`, `releaseFleetIfUnused`); `/status`, `/plant-check`, `/handover` route through it. `/plant-check` now enforces the departure guard + engages the TRANSIT mirror (previously did neither). **Release is group-aware** (frees driver/vehicle only when no other OCCUPYING shipment uses them) — fixes premature free *and* is the link prerequisite.
+- **#3 — Link shipments ("Hubungkan Pengiriman"), full-stack:**
+  - Schema `Shipment.linkGroupId String?` + `@@index` (migration `add_shipment_link_group`). **Regenerating the Prisma client is required after this** — `migrate dev` did NOT regenerate; typecheck showed 62 phantom "linkGroupId does not exist" errors until `npx prisma generate`.
+  - Backend: `POST /shipments` accepts `linkToShipmentId` → new shipment joins that trip's group (copies driver+vehicle, mints group id from target if none); `/assign` mirrors driver+vehicle to siblings; `/status` STANDBY→DITUGASKAN cascades to siblings; departure guard exempts same `linkGroupId`; `DELETE ?scope=group|single` (single unlinks a lone remaining sibling).
+  - Frontend (`ShipmentsSection.jsx` + `api.js`): "Hubungkan Pengiriman" button reuses the create modal in *link mode* (driver field → trip `<select>`); "Tertaut" badge + clickable sibling ids in the detail panel; two-button delete; `remove(id, scope)` + `mapShipment` carries `linkGroupId`.
+  - **Spec divergences (small):** trip picker is a `<select>`, not Ganti-Driver radio cards; bindable trips include STANDBY **and** DITUGASKAN.
+- **Verified:** API typecheck **37 (baseline, no new)**; **linked-pair backend smoke 6/6** (create-linked, assign-mirror, cascade, co-transit guard exemption, single-unlink, group-delete); web `vite build` clean. **Not yet clicked through in a live browser** (Hubungkan modal / badge / two-button delete render).
+- **New env vars:** none. **New migration:** `add_shipment_link_group` (run `prisma migrate deploy` elsewhere; then `prisma generate`).
+- **Client-side follow-ups:** 🔵 none new — `linkGroupId` is admin-created only and nullable; client `mapShipment`/detail ignore it harmlessly. Prior notes stand (TrackingSection ETA on hold).
+- **DB state:** dev DB was `migrate reset --force` + reseeded this session, then **polluted by the smoke** (a few `#MPL-000xx` linked test rows walked to TRANSIT). Reseed before manual testing if a clean set is wanted.
+- **Server/branch state left:** API server **stopped** (was restarted for the smoke, then killed). 6 commits unpushed on `tier1-infra`. **Open question:** push these to `origin/tier1-infra` (and/or `main`)? Awaiting user OK.
+
 ### 2026-07-18 — Plant-check wizard (relational, dynamic) + Kepala Gudang leg (Diterima→Diturunkan→Selesai) + pushed to main
 - **Branch:** worked on `tier1-infra`; committed `e6860b2` (plant-check dynamic rows), `d3d5010` (wizard UX polish), `09a7265` (gudang leg). **Pushed to `main`** (fast-forward `9f38e98→09a7265`, verified `origin/main` was an ancestor — no force) **and** synced `origin/tier1-infra`. ⚠️ `main` now carries the full tier1-infra pipeline work (12 commits ahead of the old main) — flag to the friend who also pushes `main`.
 - **Resync:** prisma generate ✓ / migrate dev ✓ (2 new migrations) / no reseed needed (seed doesn't create plant-checks/handovers). ⚠️ `migrate dev --skip-generate` errored (arg parse) → ran plain `migrate dev`; had to `prisma generate` again before the new `catatan*` fields typechecked.
