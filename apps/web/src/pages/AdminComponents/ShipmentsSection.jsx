@@ -279,13 +279,15 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     ? SHIPMENTS.filter(s => s.rawStatus === 'PENDING' && s.id !== selectedShipment.id)
     : []
 
-  // Existing pre-departure trips a new shipment can be linked into (Hubungkan Pengiriman).
-  // One entry per trip (deduped by group) — any member resolves to the same driver+vehicle on the backend.
+  // Existing STANDBY trips a new shipment can be linked into (Hubungkan Pengiriman).
+  // One entry per physical trip = per driver+armada pairing: a pairing that appears on
+  // several shipments (incl. an existing link group, which shares one driver+armada) is
+  // the same truck, shown once. Any member resolves to the same trip on the backend.
   const linkableTrips = (() => {
     const seen = new Set()
     return SHIPMENTS.filter(s => {
-      if (!s.driverId || (s.rawStatus !== 'STANDBY' && s.rawStatus !== 'DITUGASKAN')) return false
-      const key = s.linkGroupId || s.id
+      if (!s.driverId || s.rawStatus !== 'STANDBY') return false
+      const key = `${s.driverId}::${s.vehicleId}`
       if (seen.has(key)) return false
       seen.add(key)
       return true
@@ -2396,7 +2398,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
                         <option value="">-- Pilih Trip --</option>
                         {linkableTrips.map(t => (
                           <option key={t.id} value={t.id}>
-                            {t.driverName || 'Driver'} — {t.vehicleName || 'Armada'} ({t.status === 'standby' ? 'Standby' : 'Ditugaskan'})
+                            {t.driverName || 'Driver'} — {t.vehicleName || 'Armada'} (Standby)
                           </option>
                         ))}
                       </select>

@@ -182,8 +182,8 @@ router.post("/", authenticate, async (req: AuthRequest, res: Response) => {
         select: { id: true, driverId: true, vehicleId: true, linkGroupId: true, status: true },
       })
       if (!target) return res.status(400).json({ message: "Pengiriman untuk dihubungkan tidak ditemukan." })
-      if (target.status !== "STANDBY" && target.status !== "DITUGASKAN") {
-        return res.status(400).json({ message: "Hanya bisa menghubungkan ke pengiriman yang belum berangkat (Standby/Ditugaskan)." })
+      if (target.status !== "STANDBY") {
+        return res.status(400).json({ message: "Hanya bisa menghubungkan ke pengiriman yang masih Standby." })
       }
       useDriverId  = target.driverId
       useVehicleId = target.vehicleId
@@ -215,8 +215,9 @@ router.post("/", authenticate, async (req: AuthRequest, res: Response) => {
       },
     })
 
-    // Standby shipment → mirror status onto its driver + armada (Tersedia → Standby). Idempotent
-    // if already reserved (a linked sibling reuses the same, already-STANDBY driver+vehicle).
+    // Standby shipment → mirror status onto its driver + armada (Tersedia → Standby). No-op when
+    // the pairing is already reserved (a linked sibling reuses the target trip's already-Standby
+    // driver+vehicle — the guards below only touch ACTIVE/AVAILABLE).
     if (initialStatus === "STANDBY") {
       if (useDriverId) {
         await prisma.driver.updateMany({
