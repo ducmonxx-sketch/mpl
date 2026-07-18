@@ -1,7 +1,8 @@
 // src/routes/auditLogs.ts
 //
 //   GET /api/audit-logs  → admin activity feed (SUPERADMIN only)
-//     ?scope=normal|all   (default "all") — "normal" = OPERATIONS + SUPPORT only
+//     ?scope=normal|all   (default "all") — "normal" = every non-SUPERADMIN role
+//       (OPERATIONS, SUPPORT + the pipeline roles KEPALA_ARMADA / PIC_PABRIK / PIC_GUDANG)
 //     ?adminId=<id>        — filter to a single admin (for a future per-admin profile log)
 //     ?limit=<n>&offset=<n> — pagination (limit default 20, max 100)
 //
@@ -17,7 +18,9 @@ import { requirePermission } from "../lib/rbac"
 
 const router = Router()
 
-const NORMAL_ROLES = ["OPERATIONS", "SUPPORT"]
+// "normal" = every admin role except SUPERADMIN (the feed is the superadmin's oversight of
+// everyone else's actions). Pipeline roles included so their pipeline actions surface.
+const NORMAL_ROLES = ["OPERATIONS", "SUPPORT", "KEPALA_ARMADA", "PIC_PABRIK", "PIC_GUDANG"]
 const DEFAULT_LIMIT = 20
 const MAX_LIMIT = 100
 
