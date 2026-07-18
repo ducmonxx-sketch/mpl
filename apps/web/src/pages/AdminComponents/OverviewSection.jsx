@@ -8,6 +8,16 @@ import { useAuth } from '../../contexts/AuthContext'
 
 const ACTIVITY_LIMIT = 12
 
+// Readable labels for the admin roles shown in the activity feed.
+const ADMIN_ROLE_LABELS = {
+  SUPERADMIN: 'Super Admin',
+  OPERATIONS: 'Operasional',
+  SUPPORT: 'Support',
+  KEPALA_ARMADA: 'Kepala Armada',
+  PIC_PABRIK: 'PIC Pabrik',
+  PIC_GUDANG: 'PIC Gudang',
+}
+
 // Map an AdminAuditLog actionType to a timeline icon + colors. Order matters:
 // specific cases (create/delete/verify/send/reset) before the generic update/assign.
 const ACTIVITY_VISUALS = [
@@ -278,7 +288,7 @@ export default function OverviewSection({ onChangeNav, onNavigateToShipment, use
           
           {/* KPI Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
-            <AdminKPICard icon="local_shipping" label="Pengiriman Aktif" sublabel="Dalam Perjalanan" value={String(kpiData.activeShipments)} trend={`${kpiData.unassignedDrivers} menunggu`} color="primary" delay={0.05} onClick={() => onChangeNav?.('tracking')} />
+            <AdminKPICard icon="local_shipping" label="Pengiriman Aktif" sublabel="Dalam Perjalanan" value={String(kpiData.activeShipments)} trend={`${kpiData.unassignedDrivers} menunggu`} color="primary" delay={0.05} onClick={() => onChangeNav?.('shipments')} />
             <AdminKPICard icon="receipt" label="Total Pengiriman" sublabel="Semua Transaksi" value={String(kpiData.total || 0)} color="gold" delay={0.1} onClick={() => onChangeNav?.('shipments')} />
             {!['KEPALA_ARMADA', 'PIC_PABRIK', 'PIC_GUDANG'].includes(userRole) && (
               <AdminKPICard icon="people" label="Total Klien" sublabel="Perusahaan Terdaftar" value={String(kpiData.totalClients)} color="green" delay={0.15} onClick={() => onChangeNav?.('clients')} />
@@ -324,7 +334,7 @@ export default function OverviewSection({ onChangeNav, onNavigateToShipment, use
                 </div>
               </div>
 
-              <p className="text-xs text-gray-400 mt-2 mb-3">Aktivitas admin operasional &amp; support.</p>
+              <p className="text-xs text-gray-400 mt-2 mb-3">Aktivitas seluruh admin (selain Super Admin).</p>
 
               {/* Filter by admin name */}
               <div className="relative mb-5">
@@ -370,7 +380,7 @@ export default function OverviewSection({ onChangeNav, onNavigateToShipment, use
                               <span className="font-bold text-[#002442]">{log.admin?.fullName || 'Sistem'}</span> {formatAuditSummary(log.changesSummary) || humanizeAction(log.actionType)}
                             </p>
                             <span className="text-[11px] font-bold text-gray-400 mt-1 uppercase tracking-wider">
-                              {relativeTime(log.timestamp)}{log.admin?.role ? ` · ${log.admin.role}` : ''}
+                              {relativeTime(log.timestamp)}{log.admin?.role ? ` · ${ADMIN_ROLE_LABELS[log.admin.role] || log.admin.role}` : ''}
                             </span>
                           </div>
                         </div>
