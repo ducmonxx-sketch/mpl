@@ -269,9 +269,10 @@ export const shipmentsAPI = {
   getPickupPlants: () =>
     api.get('/api/shipments/pickup-plants'),
 
-  /** Admin: delete a shipment (regular admins: Standby only; SUPERADMIN: any) */
-  remove: (id) =>
-    api.delete(`/api/shipments/${encodeURIComponent(id)}`),
+  /** Admin: delete a shipment (regular admins: Standby only; SUPERADMIN: any).
+   *  scope='group' deletes every linked member of the trip; default deletes just this one. */
+  remove: (id, scope) =>
+    api.delete(`/api/shipments/${encodeURIComponent(id)}${scope ? `?scope=${encodeURIComponent(scope)}` : ''}`),
 }
 
 // ─── Tracking API ───────────────────────────────────────────

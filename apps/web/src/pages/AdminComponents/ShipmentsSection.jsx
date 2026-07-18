@@ -220,6 +220,8 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
 
   // ── Create modal ─────────────────────────────────────────────
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [linkMode, setLinkMode]               = useState(false) // create modal opened via "Hubungkan Pengiriman"
+  const [linkTargetId, setLinkTargetId]       = useState('')    // existing trip the new shipment binds to
   const [clientOptions, setClientOptions]     = useState([])
   const [formClientId, setFormClientId]               = useState('')
   const [formService, setFormService]                 = useState('Darat')
@@ -277,6 +279,24 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     ? SHIPMENTS.filter(s => s.rawStatus === 'PENDING' && s.id !== selectedShipment.id)
     : []
 
+  // Existing pre-departure trips a new shipment can be linked into (Hubungkan Pengiriman).
+  // One entry per trip (deduped by group) — any member resolves to the same driver+vehicle on the backend.
+  const linkableTrips = (() => {
+    const seen = new Set()
+    return SHIPMENTS.filter(s => {
+      if (!s.driverId || (s.rawStatus !== 'STANDBY' && s.rawStatus !== 'DITUGASKAN')) return false
+      const key = s.linkGroupId || s.id
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  })()
+
+  // Siblings of the open shipment (same trip, excluding itself)
+  const linkedSiblings = selectedShipment?.linkGroupId
+    ? SHIPMENTS.filter(s => s.linkGroupId === selectedShipment.linkGroupId && s.id !== selectedShipment.id)
+    : []
+
   // Status options for SUPERADMIN status picker
   const statusOptions = selectedShipment ? availableStatusOptions(user?.role, selectedShipment.rawStatus) : []
 
@@ -315,6 +335,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     vehicleId:             s.vehicleId,
     vehicleName:           s.vehicle ? `${s.vehicle.type} • ${s.vehicle.licensePlate}` : null,
     vehiclePrimaryDriverId: s.vehicle?.primaryDriverId || null,
+    linkGroupId:           s.linkGroupId || null,
     status:                mapStatus(s.status),
     rawStatus:             s.status,
     notes:                 s.specialNotes || '',
@@ -444,6 +465,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     setFormPickupPlantId('')
     setFormDimensions('')
     setFormContainerType('20 Feet')
+    setLinkTargetId('')
   }
 
   const fetchPickupPlants = async () => {
@@ -455,13 +477,14 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     }
   }
 
-  const openCreateModal = () => {
+  const openCreateModal = (link = false) => {
     fetchClients()
     if (role === 'KEPALA_ARMADA') {
       fetchFleet()
       fetchPickupPlants()
     }
     resetCreateForm()
+    setLinkMode(link === true)
     setShowCreateModal(true)
   }
 
@@ -472,7 +495,12 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     }
 
     if (role === 'KEPALA_ARMADA') {
-      if (!formDriverId) {
+      if (linkMode) {
+        if (!linkTargetId) {
+          showToast('Pilih trip driver untuk dihubungkan.', 'error')
+          return
+        }
+      } else if (!formDriverId) {
         showToast('Pilih Driver terlebih dahulu.', 'error')
         return
       }
@@ -555,8 +583,10 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
         specialNotes:        formNotes || null,
         pickupDate:          formPickupDate ? new Date(formPickupDate).toISOString() : null,
         shippingCategory:    role === 'KEPALA_ARMADA' ? formShippingCategory : null,
-        driverId:            role === 'KEPALA_ARMADA' ? formDriverId : undefined,
-        vehicleId:           armadaVehicleId,
+        // Link mode: driver+armada come from the target trip (backend copies them), so send only linkToShipmentId.
+        linkToShipmentId:    linkMode ? linkTargetId : undefined,
+        driverId:            linkMode ? undefined : (role === 'KEPALA_ARMADA' ? formDriverId : undefined),
+        vehicleId:           linkMode ? undefined : armadaVehicleId,
         pickupPlantId,
         dimensions:          role === 'KEPALA_ARMADA' ? dimensions : undefined,
         containerType:       role === 'KEPALA_ARMADA' ? containerType : undefined,
@@ -625,12 +655,16 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   // Regular admins may delete only Standby shipments; SUPERADMIN may delete any status.
   const canDeleteShipment = selectedShipment && (isSuperAdmin || selectedShipment.rawStatus === 'STANDBY')
 
-  const handleDeleteShipment = async () => {
+  const handleDeleteShipment = async (scope = 'single') => {
     if (!selectedShipment) return
-    if (!window.confirm(`Hapus pengiriman ${selectedShipment.id}? Tindakan ini tidak dapat dibatalkan.`)) return
+    const isGroup = scope === 'group'
+    const msg = isGroup
+      ? `Hapus SEMUA ${(linkedSiblings.length + 1)} pengiriman yang terhubung? Tindakan ini tidak dapat dibatalkan.`
+      : `Hapus pengiriman ${selectedShipment.id}? Tindakan ini tidak dapat dibatalkan.`
+    if (!window.confirm(msg)) return
     try {
-      await shipmentsAPI.remove(selectedShipment.id)
-      showToast('Pengiriman dihapus.', 'success')
+      await shipmentsAPI.remove(selectedShipment.id, isGroup ? 'group' : undefined)
+      showToast(isGroup ? 'Pengiriman terhubung dihapus.' : 'Pengiriman dihapus.', 'success')
       setSelectedShipment(null)
       fetchShipments({ silent: true })
     } catch (err) {
@@ -1879,12 +1913,22 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
           )}
           {/* Creating shipments is Kepala Armada's job only */}
           {role === 'KEPALA_ARMADA' && (
-            <button
-              className="flex items-center justify-center gap-2 px-5 py-2.5 bg-dash-secondary hover:brightness-110 text-dash-primary font-bold rounded-xl shadow-sm transition-all hover:shadow-md"
-              onClick={openCreateModal}
-            >
-              <Icon name="add" size={20} /> Buat Pengiriman Baru
-            </button>
+            <>
+              <button
+                className="flex items-center justify-center gap-2 px-5 py-2.5 bg-white hover:bg-gray-50 text-dash-primary font-bold rounded-xl border border-gray-300 shadow-sm transition-all hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => openCreateModal(true)}
+                disabled={linkableTrips.length === 0}
+                title={linkableTrips.length === 0 ? 'Belum ada pengiriman aktif untuk dihubungkan' : 'Buat pengiriman pada trip driver yang sudah ada'}
+              >
+                <Icon name="route" size={20} /> Hubungkan Pengiriman
+              </button>
+              <button
+                className="flex items-center justify-center gap-2 px-5 py-2.5 bg-dash-secondary hover:brightness-110 text-dash-primary font-bold rounded-xl shadow-sm transition-all hover:shadow-md"
+                onClick={() => openCreateModal(false)}
+              >
+                <Icon name="add" size={20} /> Buat Pengiriman Baru
+              </button>
+            </>
           )}
         </div>
       </section>
@@ -2064,7 +2108,14 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
               {/* Panel Header */}
               <div className={`p-6 border-b border-gray-100 bg-gray-50/50 flex flex-col gap-4 ${usesFieldLayout ? 'shrink-0' : ''}`}>
               <div className="flex justify-between items-start">
-                <AdminStatusBadge status={selectedShipment.status} type="shipment" />
+                <div className="flex items-center gap-2 flex-wrap">
+                  <AdminStatusBadge status={selectedShipment.status} type="shipment" />
+                  {linkedSiblings.length > 0 && (
+                    <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 border border-indigo-300 rounded-full text-[0.6rem] font-bold uppercase tracking-wide flex items-center gap-1">
+                      <Icon name="route" size={12} /> Tertaut
+                    </span>
+                  )}
+                </div>
                 <button
                   className="w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-700 hover:bg-white transition-colors"
                   onClick={() => setSelectedShipment(null)}
@@ -2088,10 +2139,19 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
                 {canDeleteShipment && (
                   <button
                     className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
-                    onClick={handleDeleteShipment}
-                    title="Hapus pengiriman"
+                    onClick={() => handleDeleteShipment('single')}
+                    title={linkedSiblings.length > 0 ? 'Hapus hanya pengiriman ini' : 'Hapus pengiriman'}
                   >
-                    <Icon name="delete" size={14} /> Hapus
+                    <Icon name="delete" size={14} /> {linkedSiblings.length > 0 ? 'Hapus Pengiriman Ini' : 'Hapus'}
+                  </button>
+                )}
+                {canDeleteShipment && linkedSiblings.length > 0 && (
+                  <button
+                    className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white border border-red-700 rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
+                    onClick={() => handleDeleteShipment('group')}
+                    title="Hapus semua pengiriman yang terhubung"
+                  >
+                    <Icon name="delete" size={14} /> Hapus Semua Terhubung
                   </button>
                 )}
               </div>
@@ -2172,6 +2232,26 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
                   <span className="text-sm text-gray-500 font-medium">Kendaraan</span>
                   <span className="text-sm font-bold text-gray-900 col-span-2">{selectedShipment.vehicleName || 'Belum ditugaskan'}</span>
                 </div>
+
+                {linkedSiblings.length > 0 && (
+                  <div className="mt-1 p-3 bg-indigo-50 border border-indigo-200 rounded-xl flex flex-col gap-1.5">
+                    <span className="text-xs font-bold text-indigo-800 flex items-center gap-1">
+                      <Icon name="route" size={14} /> Trip yang sama ({linkedSiblings.length + 1} pengiriman)
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {linkedSiblings.map(s => (
+                        <button
+                          key={s.id}
+                          onClick={() => setSelectedShipment(s)}
+                          className="px-2 py-1 bg-white border border-indigo-200 rounded-lg text-xs font-bold text-indigo-700 hover:bg-indigo-100 transition-colors"
+                          title={`${s.client} — ${s.destinationCity}`}
+                        >
+                          {s.id}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {(selectedShipment.status === 'PENDING' || selectedShipment.status === 'DITUGASKAN') && (
                   <div className="mt-2">
@@ -2263,11 +2343,13 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
       {/* ── Create Shipment Modal ── */}
       {showCreateModal && (
         <AdminModal
-          title="Buat Pengiriman Baru"
-          subtitle="Isi detail pengiriman baru di bawah ini."
+          title={linkMode ? 'Hubungkan Pengiriman' : 'Buat Pengiriman Baru'}
+          subtitle={linkMode
+            ? 'Buat pengiriman baru pada trip driver yang sudah berjalan (satu driver & armada mengangkut beberapa pengiriman).'
+            : 'Isi detail pengiriman baru di bawah ini.'}
           onClose={() => setShowCreateModal(false)}
           onSubmit={handleCreateShipment}
-          submitLabel="Simpan Pengiriman"
+          submitLabel={linkMode ? 'Hubungkan Pengiriman' : 'Simpan Pengiriman'}
         >
           <div className="flex flex-col gap-6">
             {role === 'KEPALA_ARMADA' ? (
@@ -2302,22 +2384,39 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
                   </AdminFormField>
                 </div>
 
-                {/* Common Driver field */}
+                {/* Common Driver field — in link mode the driver+armada come from the chosen trip */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <AdminFormField label="Pilih Driver" required>
-                    <select
-                      value={formDriverId}
-                      onChange={e => setFormDriverId(e.target.value)}
-                      className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-white"
-                    >
-                      <option value="">-- Pilih Driver --</option>
-                      {selectableCreateDrivers.map(d => (
-                        <option key={d.id} value={d.id}>
-                          {d.fullName}{d.primaryVehicle ? ` — ${d.primaryVehicle.type} • ${d.primaryVehicle.licensePlate}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </AdminFormField>
+                  {linkMode ? (
+                    <AdminFormField label="Hubungkan ke Trip Driver" required>
+                      <select
+                        value={linkTargetId}
+                        onChange={e => setLinkTargetId(e.target.value)}
+                        className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-white"
+                      >
+                        <option value="">-- Pilih Trip --</option>
+                        {linkableTrips.map(t => (
+                          <option key={t.id} value={t.id}>
+                            {t.driverName || 'Driver'} — {t.vehicleName || 'Armada'} ({t.status === 'standby' ? 'Standby' : 'Ditugaskan'})
+                          </option>
+                        ))}
+                      </select>
+                    </AdminFormField>
+                  ) : (
+                    <AdminFormField label="Pilih Driver" required>
+                      <select
+                        value={formDriverId}
+                        onChange={e => setFormDriverId(e.target.value)}
+                        className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/20 focus:border-[#fec330] outline-none transition-all bg-white"
+                      >
+                        <option value="">-- Pilih Driver --</option>
+                        {selectableCreateDrivers.map(d => (
+                          <option key={d.id} value={d.id}>
+                            {d.fullName}{d.primaryVehicle ? ` — ${d.primaryVehicle.type} • ${d.primaryVehicle.licensePlate}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </AdminFormField>
+                  )}
                   <AdminFormField label="Tanggal Pickup" required>
                     <AdminDatePicker value={formPickupDate} onChange={setFormPickupDate} placeholder="Pilih Tanggal Pickup" minDate={restrictedMinDate} />
                   </AdminFormField>
