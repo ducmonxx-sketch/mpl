@@ -72,6 +72,9 @@ const mapStatus = (s) => {
   return map[s] || s.toLowerCase()
 }
 
+// Terminal (closed) statuses — the "Selesai" view; everything else is "Dalam Proses".
+const TERMINAL_STATUSES = ['DELIVERED', 'CANCELLED', 'FAILED']
+
 // Table sort: each role prioritises the statuses it acts on first. Rows then sort by
 // origin (Asal) then earliest created date within a status. Falls back to DEFAULT.
 const STATUS_SORT_RANK = {
@@ -205,10 +208,11 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
 
   const [serahTerimaUrl, setSerahTerimaUrl]           = useState('')
   const [handoverNotes, setHandoverNotes]             = useState('')
-  // PIC_GUDANG serah-terima (Diturunkan → Selesai): two catatan columns + confirm box
-  const [catatanPlantPengirim, setCatatanPlantPengirim]   = useState('')
+  // PIC_GUDANG serah-terima (Diturunkan → Selesai): Gudang Penerima note + confirm box
   const [catatanGudangPenerima, setCatatanGudangPenerima] = useState('')
   const [showGudangConfirm, setShowGudangConfirm]         = useState(false)
+  // Delete-shipment confirmation box: null = closed, 'single' | 'group' = open with scope
+  const [deleteScope, setDeleteScope]                     = useState(null)
 
   // ── SUPERADMIN separate assign modal ────────────────────────
   const [showAssignModal, setShowAssignModal]     = useState(false)
@@ -250,6 +254,10 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   // Field roles that use the compact page layout (status dropdown, no tabs, centered detail modal,
   // Dalam Proses/Selesai views).
   const usesFieldLayout = role === 'KEPALA_ARMADA' || role === 'PIC_PABRIK' || role === 'PIC_GUDANG'
+
+  // "Hubungkan Pengiriman" (link a new shipment onto an existing driver trip) is hidden
+  // for now across all roles — flip to true to re-enable the entry points.
+  const LINK_SHIPMENT_ENABLED = false
 
   // Calculate restricted minDate for specific roles
   let restrictedMinDate = null
@@ -326,6 +334,9 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     destinationCity:       s.destinationLocation,
     pickupDate:            formatDate(s.pickupDate || s.createdAt),
     rawPickupDate:         s.pickupDate || s.createdAt,
+    completionDate:        s.completionDate || null,
+    catatanPlantPengirim:  s.catatanPlantPengirim || '',
+    catatanGudangPenerima: s.catatanGudangPenerima || '',
     cargoDescription:      s.packageType,
     weightKg:              s.weightKg,
     units:                 s.units || '-',
@@ -657,20 +668,25 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   // Regular admins may delete only Standby shipments; SUPERADMIN may delete any status.
   const canDeleteShipment = selectedShipment && (isSuperAdmin || selectedShipment.rawStatus === 'STANDBY')
 
-  const handleDeleteShipment = async (scope = 'single') => {
+  // Open the delete confirmation box for the given scope ('single' | 'group').
+  const handleDeleteShipment = (scope = 'single') => {
     if (!selectedShipment) return
-    const isGroup = scope === 'group'
-    const msg = isGroup
-      ? `Hapus SEMUA ${(linkedSiblings.length + 1)} pengiriman yang terhubung? Tindakan ini tidak dapat dibatalkan.`
-      : `Hapus pengiriman ${selectedShipment.id}? Tindakan ini tidak dapat dibatalkan.`
-    if (!window.confirm(msg)) return
+    setDeleteScope(scope)
+  }
+
+  // Confirm-box action: actually delete the shipment (or the linked group).
+  const doDeleteShipment = async () => {
+    if (!selectedShipment || !deleteScope) return
+    const isGroup = deleteScope === 'group'
     try {
       await shipmentsAPI.remove(selectedShipment.id, isGroup ? 'group' : undefined)
       showToast(isGroup ? 'Pengiriman terhubung dihapus.' : 'Pengiriman dihapus.', 'success')
+      setDeleteScope(null)
       setSelectedShipment(null)
       fetchShipments({ silent: true })
     } catch (err) {
       showToast(err.message || 'Gagal menghapus pengiriman.', 'error')
+      setDeleteScope(null)
     }
   }
 
@@ -717,7 +733,6 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     setPabrikNotes('')
     setSerahTerimaUrl('')
     setHandoverNotes('')
-    setCatatanPlantPengirim('')
     setCatatanGudangPenerima('')
     setShowGudangConfirm(false)
     setPabrikPage(1)
@@ -814,7 +829,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   // Confirm-box action: PIC_GUDANG serah-terima → Selesai (DELIVERED)
   const doSubmitHandover = async () => {
     try {
-      await shipmentsAPI.handover(selectedShipment.id, { catatanPlantPengirim, catatanGudangPenerima })
+      await shipmentsAPI.handover(selectedShipment.id, { catatanGudangPenerima })
       showToast('Serah Terima Selesai. Status → Selesai.', 'success')
       setShowGudangConfirm(false)
       setShowStatusModal(false)
@@ -1204,7 +1219,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
                   </div>
                 )}
 
-                {menungguShipments.length > 0 && (
+                {LINK_SHIPMENT_ENABLED && menungguShipments.length > 0 && (
                   <div className="flex flex-col gap-3 pt-3 border-t border-gray-100">
                     <label className="flex items-center gap-2.5 cursor-pointer">
                       <input
@@ -1436,15 +1451,9 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
             </div>
             <div className="flex flex-col gap-3">
               <p className="text-sm font-bold text-gray-900 text-center border-b border-gray-100 pb-2">Catatan Serah Terima Perlengkapan Motor</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Plant Pengirim</label>
-                  <textarea className={ta} rows={5} placeholder="Catatan dari plant pengirim..." value={catatanPlantPengirim} onChange={e => setCatatanPlantPengirim(e.target.value)} />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Gudang Penerima</label>
-                  <textarea className={ta} rows={5} placeholder="Catatan dari gudang penerima..." value={catatanGudangPenerima} onChange={e => setCatatanGudangPenerima(e.target.value)} />
-                </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Gudang Penerima</label>
+                <textarea className={ta} rows={5} placeholder="Catatan dari gudang penerima..." value={catatanGudangPenerima} onChange={e => setCatatanGudangPenerima(e.target.value)} />
               </div>
             </div>
           </div>
@@ -1742,6 +1751,155 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     )
   }
 
+  // ── Surat Jalan (vector PDF) ──────────────────────────────────
+  // Render a crisp, single-page A4 Surat Jalan for a completed shipment using jsPDF's
+  // native text/table API — vector text (sharp + selectable), not a screenshot. Downloaded
+  // directly (no print dialog). jsPDF + autotable are lazy-loaded on click.
+  const handlePrintSuratJalan = async () => {
+    if (!selectedShipment) return
+    const s = selectedShipment
+    const pc = s.plantCheck || {}
+    const peng = pc.pengiriman || []
+    const lku = pc.lku || []
+    const ksu = pc.ksu || []
+    const plate = (s.vehicleName || '').split('•').pop().trim()
+    const fmt = (d) => d ? formatDate(d) : '-'
+
+    // Rasterize the sidebar SVG emblem to PNG so jsPDF can embed it (jsPDF has no SVG support).
+    const svgToPng = (url, size = 240) => new Promise((resolve) => {
+      const img = new Image()
+      img.onload = () => {
+        try {
+          const c = document.createElement('canvas'); c.width = size; c.height = size
+          c.getContext('2d').drawImage(img, 0, 0, size, size)
+          resolve(c.toDataURL('image/png'))
+        } catch { resolve(null) }
+      }
+      img.onerror = () => resolve(null)
+      img.src = url
+    })
+
+    try {
+      const [{ jsPDF }, { default: autoTable }] = await Promise.all([
+        import('jspdf'),
+        import('jspdf-autotable'),
+      ])
+      const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
+      const pageW = doc.internal.pageSize.getWidth()
+      const M = 12
+      const contentW = pageW - M * 2
+      let y = M
+
+      const logoPng = await svgToPng(`${window.location.origin}/mpl_logo_proto.svg`, 240)
+      if (logoPng) { try { doc.addImage(logoPng, 'PNG', M, y, 22, 22) } catch { /* skip logo */ } }
+
+      // Company header (centered)
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(17); doc.setTextColor(0)
+      doc.text('PT. MAHKOTA PUTRA LOGISTIK', pageW / 2, y + 8, { align: 'center' })
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5)
+      doc.text('Jl. Cakung Cilincing No. 35 Cakung Barat, Cakung, Kota ADM Jakarta Timur, DKI Jakarta', pageW / 2, y + 13, { align: 'center' })
+      doc.text('Telp. (021) 2213 5326  |  Email: mahkotaputralogistik@yahoo.com / mahkotaputralogistik@gmail.com', pageW / 2, y + 17, { align: 'center' })
+      y += 22
+      doc.setLineWidth(0.6); doc.line(M, y, pageW - M, y)
+      y += 4
+
+      // Title band
+      doc.setFillColor(229, 229, 229); doc.setDrawColor(0); doc.setLineWidth(0.2)
+      doc.rect(M, y, contentW, 8, 'FD')
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(12)
+      doc.text('SURAT JALAN', pageW / 2, y + 5.6, { align: 'center' })
+      y += 13
+
+      // Info block (two columns) — label : value
+      const colL = M, colR = pageW / 2 + 2
+      const infoLine = (x, yy, label, val) => {
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(0)
+        doc.text(label, x, yy)
+        doc.text(':', x + 26, yy)
+        doc.setFont('helvetica', 'bold')
+        doc.text(String(val ?? '-'), x + 29, yy)
+      }
+      infoLine(colL, y,      'Kepada Yth', s.client)
+      infoLine(colL, y + 5,  'Di', s.destinationCity)
+      infoLine(colL, y + 10, 'No. Order', s.id)
+      infoLine(colR, y,      'Plant', s.pickupPlantName)
+      infoLine(colR, y + 5,  'No. Polisi', plate)
+      infoLine(colR, y + 10, 'Driver', s.driverName)
+      infoLine(colR, y + 15, 'Tgl. Berangkat', fmt(s.rawPickupDate))
+      infoLine(colR, y + 20, 'Tgl. Bongkar', fmt(s.completionDate))
+      y += 26
+
+      // Shared table styling (grid, black borders, crisp small text).
+      const gridStyles = { fontSize: 8, cellPadding: 1.4, lineColor: [0, 0, 0], lineWidth: 0.2, textColor: 20, valign: 'middle' }
+      const headStyles = { fillColor: [229, 229, 229], textColor: 20, fontStyle: 'bold', halign: 'center', fontSize: 7.5, lineColor: [0, 0, 0], lineWidth: 0.2 }
+      const band = (label) => {
+        doc.setFillColor(207, 207, 207); doc.setDrawColor(0); doc.setLineWidth(0.2)
+        doc.rect(M, y, contentW, 6, 'FD')
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(0)
+        doc.text(label, pageW / 2, y + 4, { align: 'center' })
+        y += 6
+      }
+      const pad = (rows, min) => { const r = rows.slice(); while (r.length < min) r.push(null); return r }
+
+      // Data Pengiriman
+      autoTable(doc, {
+        startY: y, margin: { left: M, right: M }, theme: 'grid', pageBreak: 'avoid',
+        styles: gridStyles, headStyles, bodyStyles: { minCellHeight: 6 },
+        head: [['NO', 'TIPE MOTOR', 'NO. SHIPPING', 'JUMLAH', 'SATUAN', 'KETERANGAN']],
+        body: pad(peng, 6).map((r, i) => [String(i + 1), r?.tipeMotor || '', r?.noShipping || '', r?.jumlah ?? '', r?.satuan || '', r?.keterangan || '']),
+        columnStyles: { 0: { halign: 'center', cellWidth: 10 }, 3: { halign: 'center', cellWidth: 16 }, 4: { halign: 'center', cellWidth: 16 } },
+      })
+      y = doc.lastAutoTable.finalY + 3
+
+      band('LAPORAN KONDISI UNIT (LKU)')
+      autoTable(doc, {
+        startY: y, margin: { left: M, right: M }, theme: 'grid', pageBreak: 'avoid',
+        styles: gridStyles, headStyles, bodyStyles: { minCellHeight: 6 },
+        head: [['NO', 'TIPE MOTOR', 'NO. MESIN', 'NO. RANGKA', 'WARNA', 'ITEM DEFECT']],
+        body: pad(lku, 5).map((r, i) => [String(i + 1), r?.tipeMotor || '', r?.noMesin || '', r?.noRangka || '', r?.warna || '', r?.itemDefect || '']),
+        columnStyles: { 0: { halign: 'center', cellWidth: 10 } },
+      })
+      y = doc.lastAutoTable.finalY + 3
+
+      band('PERLENGKAPAN MOTOR (KSU)')
+      const ksuCenter = {}
+      ;[2, 3, 4, 5, 6, 7, 8, 9, 10].forEach((c) => { ksuCenter[c] = { halign: 'center' } })
+      autoTable(doc, {
+        startY: y, margin: { left: M, right: M }, theme: 'grid', pageBreak: 'avoid',
+        styles: { ...gridStyles, fontSize: 7 }, headStyles: { ...headStyles, fontSize: 6.5 }, bodyStyles: { minCellHeight: 6 },
+        head: [['NO', 'TIPE MOTOR', 'HELM', 'ACCU', 'SPION', 'TOOLKIT', 'BS & BP', 'K. KONTAK', 'FUSE', 'PLAT NO.', 'STICKER']],
+        body: pad(ksu, 5).map((r, i) => [String(i + 1), r?.tipeMotor || '', r?.helm || '', r?.accu || '', r?.spion || '', r?.toolkit || '', r?.bsBp || '', r?.kKontak || '', r?.fuse || '', r?.platNo || '', r?.sticker || '']),
+        columnStyles: { 0: { halign: 'center', cellWidth: 8 }, ...ksuCenter },
+      })
+      y = doc.lastAutoTable.finalY + 3
+
+      band('CATATAN SERAH TERIMA PERLENGKAPAN MOTOR')
+      autoTable(doc, {
+        startY: y, margin: { left: M, right: M }, theme: 'grid', pageBreak: 'avoid',
+        styles: gridStyles, headStyles,
+        head: [['GUDANG PENERIMA']],
+        body: [[s.catatanGudangPenerima || '']],
+        bodyStyles: { minCellHeight: 24, valign: 'top' },
+      })
+      y = doc.lastAutoTable.finalY + 3
+
+      // Signature row — labels on top, blank space below to sign.
+      autoTable(doc, {
+        startY: y, margin: { left: M, right: M }, theme: 'grid', pageBreak: 'avoid',
+        styles: { ...gridStyles, halign: 'center' },
+        head: [['Security MPL', 'Driver', 'Penerima Unit', 'Penerima KSU']],
+        headStyles: { fillColor: [255, 255, 255], textColor: 20, fontStyle: 'normal', halign: 'center', valign: 'top', lineColor: [0, 0, 0], lineWidth: 0.2, fontSize: 8 },
+        body: [['', '', '', '']],
+        bodyStyles: { minCellHeight: 16 },
+      })
+
+      doc.save(`Surat-Jalan-${s.id.replace(/[^A-Za-z0-9-]/g, '')}.pdf`)
+    } catch (err) {
+      showToast('Gagal membuat PDF Surat Jalan.', 'error')
+      console.error('Surat Jalan PDF failed:', err)
+    }
+  }
+
   // ── WhatsApp notify ───────────────────────────────────────────
   const handleNotifyDriver = async () => {
     const id = selectedShipment.id
@@ -1778,16 +1936,14 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     let matchViewMode = true
     if (['KEPALA_ARMADA', 'PIC_PABRIK', 'PIC_GUDANG'].includes(role)) {
       if (usesFieldLayout) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const pDate = new Date(s.rawPickupDate);
-
+        // Split by lifecycle, not date: "Selesai" = terminal (done/cancelled),
+        // "Dalam Proses" = everything still active. A shipment marked Selesai moves
+        // to the Selesai tab immediately.
+        const isDone = TERMINAL_STATUSES.includes(s.rawStatus)
         if (viewMode === 'today') {
-          // "Dalam Proses": today or future dates
-          matchViewMode = pDate >= today;
+          matchViewMode = !isDone   // Dalam Proses
         } else if (viewMode === 'history') {
-          // "Selesai": past shipments
-          matchViewMode = pDate < today;
+          matchViewMode = isDone    // Selesai
         }
       } else if (viewMode === 'today') {
         matchViewMode = s.pickupDate === formatDate(new Date())
@@ -1802,10 +1958,16 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     return matchStatus && matchClient && matchService && matchSearch && matchViewMode && matchPlant
   })
 
-  // All roles: sort by status (order unique per role) → origin (Asal) → earliest date.
+  // Selesai view: order by when the shipment was closed (most recently completed first).
+  // Otherwise: sort by status (order unique per role) → origin (Asal) → earliest date.
   {
+    const isSelesaiView = usesFieldLayout && viewMode === 'history'
+    const closedAt = (s) => new Date(s.completionDate || s.rawPickupDate).getTime()
     const RANK = STATUS_SORT_RANK[role] || STATUS_SORT_RANK.DEFAULT
     filtered.sort((a, b) => {
+      if (isSelesaiView) {
+        return closedAt(b) - closedAt(a) // newest completion first
+      }
       const ra = RANK[a.rawStatus] ?? 99
       const rb = RANK[b.rawStatus] ?? 99
       if (ra !== rb) return ra - rb
@@ -1916,14 +2078,16 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
           {/* Creating shipments is Kepala Armada's job only */}
           {role === 'KEPALA_ARMADA' && (
             <>
-              <button
-                className="flex items-center justify-center gap-2 px-5 py-2.5 bg-white hover:bg-gray-50 text-dash-primary font-bold rounded-xl border border-gray-300 shadow-sm transition-all hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={() => openCreateModal(true)}
-                disabled={linkableTrips.length === 0}
-                title={linkableTrips.length === 0 ? 'Belum ada pengiriman aktif untuk dihubungkan' : 'Buat pengiriman pada trip driver yang sudah ada'}
-              >
-                <Icon name="route" size={20} /> Hubungkan Pengiriman
-              </button>
+              {LINK_SHIPMENT_ENABLED && (
+                <button
+                  className="flex items-center justify-center gap-2 px-5 py-2.5 bg-white hover:bg-gray-50 text-dash-primary font-bold rounded-xl border border-gray-300 shadow-sm transition-all hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={() => openCreateModal(true)}
+                  disabled={linkableTrips.length === 0}
+                  title={linkableTrips.length === 0 ? 'Belum ada pengiriman aktif untuk dihubungkan' : 'Buat pengiriman pada trip driver yang sudah ada'}
+                >
+                  <Icon name="route" size={20} /> Hubungkan Pengiriman
+                </button>
+              )}
               <button
                 className="flex items-center justify-center gap-2 px-5 py-2.5 bg-dash-secondary hover:brightness-110 text-dash-primary font-bold rounded-xl shadow-sm transition-all hover:shadow-md"
                 onClick={() => openCreateModal(false)}
@@ -2136,6 +2300,15 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
                     title="Update status pengiriman"
                   >
                     Update Status
+                  </button>
+                )}
+                {selectedShipment.rawStatus === 'DELIVERED' && (
+                  <button
+                    className="px-3 py-1.5 bg-dash-primary hover:opacity-90 text-white rounded-lg text-xs font-bold transition-opacity flex items-center gap-1"
+                    onClick={handlePrintSuratJalan}
+                    title="Unduh Surat Jalan sebagai PDF"
+                  >
+                    <Icon name="download" size={14} /> Unduh Surat Jalan
                   </button>
                 )}
                 {canDeleteShipment && (
@@ -2646,10 +2819,6 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
             </div>
             <div className="flex flex-col gap-3 p-6">
               <div className="flex flex-col gap-1">
-                <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Plant Pengirim</span>
-                <p className="text-sm text-gray-800 whitespace-pre-wrap">{catatanPlantPengirim.trim() || '-'}</p>
-              </div>
-              <div className="flex flex-col gap-1">
                 <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Gudang Penerima</span>
                 <p className="text-sm text-gray-800 whitespace-pre-wrap">{catatanGudangPenerima.trim() || '-'}</p>
               </div>
@@ -2657,6 +2826,33 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
             <div className="flex justify-end gap-3 p-6 border-t border-gray-100 bg-gray-50/50 rounded-b-2xl">
               <button type="button" onClick={() => setShowGudangConfirm(false)} className="px-5 py-2.5 text-sm font-bold text-gray-600 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl transition-colors">Batal</button>
               <button type="button" onClick={doSubmitHandover} className="px-5 py-2.5 text-sm font-bold text-[#002442] bg-[#fec330] hover:bg-[#eab308] rounded-xl shadow-sm transition-colors flex items-center gap-2"><Icon name="check" size={18} /> Ya, Selesaikan</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Delete-shipment confirmation box — z-[300] */}
+      {deleteScope && selectedShipment && createPortal(
+        <div className="fixed inset-0 z-[300] bg-[#002442]/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setDeleteScope(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col animate-in fade-in zoom-in-95 duration-150" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start gap-3 p-6 border-b border-gray-100">
+              <span className="w-10 h-10 rounded-full bg-red-100 text-red-600 flex items-center justify-center shrink-0"><Icon name="delete" size={22} /></span>
+              <div>
+                <h3 className="text-lg font-bold text-dash-primary">
+                  {deleteScope === 'group' ? 'Hapus Pengiriman Terhubung?' : 'Hapus Pengiriman?'}
+                </h3>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {deleteScope === 'group'
+                    ? <>Semua <b>{linkedSiblings.length + 1}</b> pengiriman yang terhubung akan dihapus permanen.</>
+                    : <>Pengiriman <b>{selectedShipment.id}</b> akan dihapus permanen.</>}
+                  {' '}Tindakan ini tidak dapat dibatalkan.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 p-6 border-t border-gray-100 bg-gray-50/50 rounded-b-2xl">
+              <button type="button" onClick={() => setDeleteScope(null)} className="px-5 py-2.5 text-sm font-bold text-gray-600 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl transition-colors">Batal</button>
+              <button type="button" onClick={doDeleteShipment} className="px-5 py-2.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 border border-red-700 rounded-xl shadow-sm transition-colors flex items-center gap-2"><Icon name="delete" size={18} /> Ya, Hapus</button>
             </div>
           </div>
         </div>,

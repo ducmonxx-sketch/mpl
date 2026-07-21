@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "animejs": "^3.2.2",
+    "jspdf": "^3.0.1",
+    "jspdf-autotable": "^5.0.8",
     "lucide-react": "^1.21.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

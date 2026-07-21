@@ -250,6 +250,29 @@ async function main() {
   const history = Array.from({ length: 10 }, (_, k) => ({ status: "DELIVERED", di: k % vehicles.length }))
   const shipmentSpecs = [...ongoing, ...history]
 
+  // Plant check exists once the shipment has departed the plant (TRANSIT onward).
+  const MOTOR_TYPES = ["Honda Vario 160", "Honda BeAT", "Honda PCX 160", "Honda Scoopy"]
+  const PLANT_CHECK_STATUSES = ["TRANSIT", "DITERIMA", "DITURUNKAN", "DELIVERED"]
+  const makePlantCheck = (i: number) => {
+    const t1 = MOTOR_TYPES[i % MOTOR_TYPES.length]
+    const t2 = MOTOR_TYPES[(i + 1) % MOTOR_TYPES.length]
+    const seq = String(i + 1).padStart(4, "0")
+    return {
+      checkedByAdminId: admin.id,
+      pengiriman: { create: [
+        { tipeMotor: t1, noShipping: `SHP-${seq}-A`, jumlah: 5, satuan: "Unit", keterangan: "Kondisi baik" },
+        { tipeMotor: t2, noShipping: `SHP-${seq}-B`, jumlah: 3, satuan: "Unit", keterangan: i % 2 === 0 ? "Terpal basah" : "-" },
+      ] },
+      lku: { create: [
+        { tipeMotor: t1, noMesin: `ENG-${seq}-001`, noRangka: `RNG-${seq}-001`, warna: "Merah", itemDefect: i % 3 === 0 ? "Lecet body kiri" : "" },
+      ] },
+      ksu: { create: [t1, t2].map((t) => ({
+        tipeMotor: t, helm: "OK", accu: "OK", spion: "OK", toolkit: "OK",
+        bsBp: "OK", kKontak: "OK", fuse: "OK", platNo: "Ada", sticker: "Ada",
+      })) },
+    }
+  }
+
   for (let i = 0; i < shipmentSpecs.length; i++) {
     const { status, di } = shipmentSpecs[i]
     const plant = plants[i % plants.length]
@@ -274,10 +297,17 @@ async function main() {
         driverId:            drivers[di].id,
         vehicleId:           vehicles[di].id,
         createdByAdminId:    admin.id,
+        // Completed rows: stamp when they were closed (drives the "Selesai" sort) + serah-terima note.
+        ...(isDone && {
+          completionDate:        daysFromNow(-(i - 5)),
+          catatanGudangPenerima: "Semua unit diterima lengkap dan sesuai. Perlengkapan motor cocok.",
+        }),
+        // Plant check (relational): present once the shipment has left the plant.
+        ...(PLANT_CHECK_STATUSES.includes(status) && { plantCheck: { create: makePlantCheck(i) } }),
       },
     })
   }
-  console.log(`✅ ${shipmentSpecs.length} mock UNIT shipments (6 ongoing fleet-synced: 2 Standby/1 Ditugaskan/1 Di Pabrik/1 Dalam Perjalanan/1 Diterima + 10 Selesai)`)
+  console.log(`✅ ${shipmentSpecs.length} mock UNIT shipments (6 ongoing + 10 Selesai; plant-check on TRANSIT+; serah-terima on Selesai)`)
 
   console.log("\n🌱 Seed complete.")
 }

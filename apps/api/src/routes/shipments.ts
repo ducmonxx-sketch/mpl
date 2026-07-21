@@ -556,7 +556,9 @@ router.patch("/:id/status", authenticate, adminOnly, async (req: AuthRequest, re
       data: {
         status,
         currentProgressPercent,
-        ...(status === "DELIVERED" && { completionDate: new Date() }),
+        // Stamp when the shipment reaches a terminal state (Selesai/Dibatalkan) — used to
+        // order the "Selesai" view by most-recently-closed.
+        ...((status === "DELIVERED" || status === "CANCELLED") && { completionDate: new Date() }),
         lastUpdatedByAdminId: req.user!.id,
       },
     })
