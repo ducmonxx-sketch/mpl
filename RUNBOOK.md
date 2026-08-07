@@ -241,6 +241,15 @@ For each: file + line (`path:line`), what's wrong, blast radius (admin-only vs s
 
 ## 6. Session Log
 
+### 2026-08-07 — Claude Code tooling (hooks + deploy-preflight) + cleared the long-standing tsc baseline to 0
+- **Synced:** `tier1-infra`, already even with `origin/tier1-infra` (0/0), no pull needed; at `01c7e6f`. `main` unchanged (tier1-infra = main + 13 commits, main fully contained).
+- **Resync:** npm install n/a (no dep change); **prisma generate ✓** (ran to test a stale-client theory — did **not** clear the `.driver` errors, confirming they were a type cascade, not a stale client); migrate/seed not run.
+- **Found:** 🟡 API `tsc --noEmit` had **38 errors** (the long-standing "≈37 baseline" + 1). Root cause: **Express 5 / `@types/express-serve-static-core` 5.1.1** now types `req.params.*` & `req.query.*` as `string | string[]`; passing one into a Prisma `where` both errors **and** collapses the inferred payload type — that produced the 11 phantom "Property 'driver' does not exist" cascade errors far from the real cause. See memory `express5-req-params-typing`.
+- **Fixed:** coerced with `as string` at ~20 call sites across `shipments.ts`, `users.ts`, `tracking.ts`, `notifications.ts`, `adminNotifications.ts` (matches the existing `fleet.ts`/`auditLogs.ts` convention) + `seed.ts` `status as ShipmentStatus` (new `import type { ShipmentStatus }`). **tsc now 0 errors**; **smoke 22/22**; diff is type-only (no runtime behaviour change). Also added `.claude/settings.json` + hooks (`guard.mjs` = block `.env` edits & force-push `main`; `typecheck-api.mjs` = PostToolUse `tsc` on `apps/api/**/*.ts` edits) and a `deploy-preflight` skill (GO/NO-GO gate from DEPLOYMENT.md §3/§5). **Deferred:** none.
+- **New env vars:** none. **New migrations:** none.
+- **Client-side follow-ups:** none (admin/backend + tooling only).
+- **Server/branch state left:** no servers started. Committed on `tier1-infra`, **not pushed**: `fix(api)` + `chore(claude)` + this log. `.claude/skills/task-observer/` left **untracked** (pre-existing, not created this session).
+
 ### 2026-07-18 (cont. 2) — Link refinements, liveish seed, admin roster + activity-feed wiring, KPI routing (all pushed)
 - **Branch/push:** `tier1-infra` **pushed to origin** — now at `e83ee4e` (was `f97bf0c`). `main` untouched at `f97bf0c` (clean fast-forward available; left alone — shared with friend's agent). New commits this stretch: `4ffaf4c`, `015bacb`, `6b62233`, `e83ee4e` (on top of the 5 from the (cont.) entry). 9 commits total this session, all on `origin/tier1-infra`.
 - **Hubungkan picker refined** (`4ffaf4c`): link targets are **STANDBY-only** (driver+armada reserved/idle; not AVAILABLE=free, not ON_DUTY=dispatched) — enforced in the picker filter *and* the backend create-linked guard. Picker **deduped per driver+vehicle pairing** (was per-shipment) so a pairing on several shipments — or an existing link group — shows once. Verified N-member groups work (4-member smoke 4/4: any member resolves to the same group).
