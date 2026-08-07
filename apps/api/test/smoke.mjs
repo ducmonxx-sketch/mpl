@@ -80,6 +80,45 @@ async function call(name, method, path, { token, body, expect = [200, 201] } = {
   await call('GET /notifications', 'GET', '/api/notifications', { token: CLIENT })
   await call('GET /admin-notifications', 'GET', '/api/admin-notifications', { token: ADMIN })
 
+  // onboarding — magic-link registration lifecycle (generate → validate → register → verify → login)
+  const picEmail = `pic${rnd}@t.com`
+  let NEW_PIC_ID
+  const gen = await call('POST /users/magic-link (generate)', 'POST', '/api/users/magic-link', { token: ADMIN, body: { companyName: 'SmokeCo', accountType: 'client' }, expect: [201] })
+  const mtoken = (gen.json.link || '').split('/').pop()
+  if (mtoken) {
+    await call('GET /users/magic-link/:token (validate)', 'GET', `/api/users/magic-link/${mtoken}`, { expect: [200] })
+    const reg = await call('POST /users/magic-link/:token/register', 'POST', `/api/users/magic-link/${mtoken}/register`, { body: { fullName: 'PIC Smoke', email: picEmail, password: 'secret123', confirmPassword: 'secret123' }, expect: [201] })
+    NEW_PIC_ID = reg.json.user?.id
+    await call('POST /auth/registration-status (-> PENDING)', 'POST', '/api/auth/registration-status', { body: { email: picEmail }, expect: [200] })
+    await call('POST /auth/login (pending -> 403)', 'POST', '/api/auth/login', { body: { email: picEmail, password: 'secret123' }, expect: [403] })
+    if (NEW_PIC_ID) await call('PATCH /users/:id/verify (magic-link acct)', 'PATCH', `/api/users/${NEW_PIC_ID}/verify`, { token: ADMIN, expect: [200] })
+    await call('POST /auth/registration-status (-> VERIFIED)', 'POST', '/api/auth/registration-status', { body: { email: picEmail }, expect: [200] })
+    await call('POST /auth/login (verified -> 200)', 'POST', '/api/auth/login', { body: { email: picEmail, password: 'secret123' }, expect: [200] })
+  }
+
+  // permission guard — pipeline roles (PIC Gudang) may NOT manage clients
+  const gud = await call('POST /auth/admin/login (gudang)', 'POST', '/api/auth/admin/login', { body: { email: 'gudang@mpl.com', password: 'gudang1234' }, expect: [200] })
+  const GUDANG = gud.json.token
+  if (GUDANG) {
+    await call('POST /users (gudang blocked -> 403)', 'POST', '/api/users', { token: GUDANG, body: { fullName: 'Nope', email: `nope${rnd}@t.com` }, expect: [403] })
+    await call('POST /users/magic-link (gudang blocked -> 403)', 'POST', '/api/users/magic-link', { token: GUDANG, body: { companyName: 'SmokeCo' }, expect: [403] })
+  }
+
+  // ── cleanup: remove everything this run created so the dev DB stays clean ──
+  const del = async (path) => {
+    try {
+      const r = await fetch(BASE + path, { method: 'DELETE', headers: { Authorization: `Bearer ${ADMIN}` } })
+      return r.ok
+    } catch { return false }
+  }
+  let cleaned = 0
+  if (SHIP)       cleaned += (await del(`/api/shipments/${encodeURIComponent(SHIP)}`)) ? 1 : 0
+  if (DRIVER)     cleaned += (await del(`/api/fleet/drivers/${DRIVER}`)) ? 1 : 0
+  if (VEHICLE)    cleaned += (await del(`/api/fleet/vehicles/${VEHICLE}`)) ? 1 : 0
+  if (NEW_ID)     cleaned += (await del(`/api/users/${NEW_ID}`)) ? 1 : 0
+  if (NEW_PIC_ID) cleaned += (await del(`/api/users/${NEW_PIC_ID}`)) ? 1 : 0
+  console.log(`\n🧹 cleanup: removed ${cleaned} test record(s) (magic_link rows are one-time-use and left inert)`)
+
   // ── report ──
   console.log('\n================ SMOKE TEST ================')
   for (const r of results) {
