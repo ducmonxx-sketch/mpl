@@ -1,7 +1,16 @@
 # DEV-PLAN — resume point
 
 > **Resuming?** Read this first, then [RUNBOOK.md](RUNBOOK.md) (sync + audit) and [CLAUDE.md](CLAUDE.md) (scope).
-> Last updated: **2026-07-18**. Newest work at the top; RUNBOOK §6 has per-session detail.
+> Last updated: **2026-08-07**. Newest work at the top; RUNBOOK §6 has per-session detail.
+
+## 🔜 NEXT SESSION — planned (not built yet), queued 2026-08-07
+Continue client-onboarding / admin work. Three items the user queued:
+
+1. **Split activity logs by role — SUPERADMIN vs OPERATIONS.** Today the Beranda "Log Aktivitas" is SUPERADMIN-only and shows `scope=normal` (OPERATIONS/SUPPORT actions lumped together); the superadmin's own log is the deferred Profil-page item. Goal: **separate super-admin actions from operations-admin actions** in the activity view (distinct sections/filters, not one combined feed). Touches `routes/auditLogs.ts` (it already accepts `scope`/`adminId` and returns `admin.role`) + `OverviewSection.jsx` (+ maybe the Profil log). Admin-scope, frontend-heavy.
+2. **Give SUPERADMIN every available action.** Audit all RBAC gates (`clientManagerOnly`, `requireRole`, `requirePermission`, per-status UI gates, sidebar filters) and ensure **SUPERADMIN is never blocked from any action** anywhere (a consistent superadmin bypass). Cross-cutting: check `middleware/auth.ts`, `lib/rbac.ts`, route guards, and the frontend role gates.
+3. **Wire up user settings — change name + reset password.** Make the profile/settings UI functional for **changing display name** and **resetting password**. Backend partly exists: clients have `PATCH /api/users/me` (name), admin has `PATCH /api/auth/admin/me/password` (password); an **admin self-update for name** may still be missing (flagged earlier — "needs an admin self-update endpoint"). Confirm the surface (client settings vs admin Profil vs both) and wire the forms end-to-end. Client side touches shared contracts — coordinate.
+
+> Also still open: push `tier1-infra` (coordinate the 2 magic-link migrations with the friend); **[SECURITY-MAGICLINK.md](SECURITY-MAGICLINK.md) Phase A** before public launch; the **super-admin page to add/remove OPERATIONS & SUPPORT accounts** (the `accountType` link tag is groundwork). See RUNBOOK §6 (2026-08-07) for the onboarding work just shipped.
 
 ## ✅ DONE (2026-07-18) — Pipeline hardening + Link shipments ("Hubungkan Pengiriman")
 - **#1 DONE** (`8ed685f`): `AT_PLANT` gated to **PIC_PABRIK** (from DITUGASKAN; SUPERADMIN keeps override); **auto-WhatsApp-on-assign removed** (manual `/notify-driver` only).
