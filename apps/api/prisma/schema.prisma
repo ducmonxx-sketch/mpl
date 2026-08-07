@@ -473,7 +473,9 @@ model MagicLink {
   id          String   @id @default(uuid())
   token       String   @unique
   type        String   // 'registration' | 'reset_password'
+  accountType String   @default("client") // what this link creates: 'client' | 'operations' | 'support'
   companyName String
+  email       String?  // optional: admin can pre-bind the invitee's email; else they enter it
   userId      String?
   used        Boolean  @default(false)
   expiresAt   DateTime
