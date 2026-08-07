@@ -1,8 +1,60 @@
-import { Link } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import Icon from '../components/Icon'
+import { authAPI } from '../lib/api'
 import './VerificationPage.css'
 
 export default function VerificationPage() {
+  const navigate = useNavigate()
+  const [status, setStatus] = useState('PENDING')
+  // Pending accounts have no token (login is blocked), so we poll by the email
+  // stashed at login/registration time instead of hitting an authenticated /me.
+  const email =
+    typeof window !== 'undefined' ? sessionStorage.getItem('mpl_pending_email') : null
+
+  // Poll the account's verification status until it's approved (or rejected).
+  useEffect(() => {
+    if (!email) return
+    let active = true
+    const check = async () => {
+      try {
+        const { status: s } = await authAPI.registrationStatus(email)
+        if (active && (s === 'VERIFIED' || s === 'REJECTED')) setStatus(s)
+      } catch {
+        /* transient network error — retry on next tick */
+      }
+    }
+    check()
+    const interval = setInterval(check, 6000)
+    return () => {
+      active = false
+      clearInterval(interval)
+    }
+  }, [email])
+
+  // Once approved, clear the stash and send them to the login screen to sign in.
+  useEffect(() => {
+    if (status !== 'VERIFIED') return
+    sessionStorage.removeItem('mpl_pending_email')
+    const t = setTimeout(() => navigate('/client', { replace: true }), 3000)
+    return () => clearTimeout(t)
+  }, [status, navigate])
+
+  const isVerified = status === 'VERIFIED'
+  const isRejected = status === 'REJECTED'
+
+  const subtitle = isVerified
+    ? 'Akun anda telah terverifikasi!'
+    : isRejected
+    ? 'Pendaftaran tidak disetujui'
+    : 'Akun anda sedang di-verifikasi'
+
+  const desc = isVerified
+    ? 'Selamat! Akun Anda telah disetujui admin. Anda akan diarahkan ke halaman masuk — silakan masuk untuk mengakses dashboard Anda.'
+    : isRejected
+    ? 'Mohon maaf, pendaftaran akun Anda belum dapat disetujui. Silakan hubungi tim dukungan kami untuk informasi lebih lanjut.'
+    : 'Tim kami sedang meninjau detail pendaftaran Anda. Halaman ini akan otomatis diperbarui setelah akun Anda disetujui.'
+
   return (
     <div className="verify-page">
       {/* ── Header ── */}
@@ -50,9 +102,12 @@ export default function VerificationPage() {
                 alt=""
                 loading="eager"
               />
-              {/* Yellow badge with shield icon */}
+              {/* Yellow badge with status icon */}
               <div className="verify-illustration__badge">
-                <Icon name="verified" size={40} />
+                <Icon
+                  name={isVerified ? 'check_circle' : isRejected ? 'cancel' : 'verified'}
+                  size={40}
+                />
               </div>
             </div>
 
@@ -71,22 +126,23 @@ export default function VerificationPage() {
           <h1 className="verify-title">Verification</h1>
           <div className="verify-title-bar" />
 
-          <h2 className="verify-subtitle">
-            Akun anda sedang di-verifikasi
-          </h2>
+          <h2 className="verify-subtitle">{subtitle}</h2>
 
-          <p className="verify-desc">
-            Tim kami sedang meninjau detail pendaftaran Anda untuk memastikan
-            standar keamanan tertinggi. Kami akan segera memberi tahu Anda
-            melalui email setelah proses selesai.
-          </p>
+          <p className="verify-desc">{desc}</p>
 
           {/* Action Buttons */}
           <div className="verify-actions">
-            <Link to="/" className="verify-btn verify-btn--primary">
-              <Icon name="home" size={20} />
-              Back to Home
-            </Link>
+            {isVerified ? (
+              <Link to="/client" className="verify-btn verify-btn--primary">
+                <Icon name="login" size={20} />
+                Masuk Sekarang
+              </Link>
+            ) : (
+              <Link to="/" className="verify-btn verify-btn--primary">
+                <Icon name="home" size={20} />
+                Back to Home
+              </Link>
+            )}
             <a
               href="mailto:mahkotaputralogistik@yahoo.com"
               className="verify-btn verify-btn--secondary"
@@ -96,10 +152,14 @@ export default function VerificationPage() {
             </a>
           </div>
 
-          {/* Estimation */}
+          {/* Estimation / status note */}
           <p className="verify-estimate">
             <Icon name="info" size={16} />
-            Estimasi waktu verifikasi: 1-2 hari kerja.
+            {isVerified
+              ? 'Mengarahkan ke halaman masuk...'
+              : isRejected
+              ? 'Hubungi dukungan untuk bantuan lebih lanjut.'
+              : 'Estimasi waktu verifikasi: 1-2 hari kerja.'}
           </p>
         </div>
       </main>

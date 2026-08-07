@@ -15,9 +15,11 @@ export default function MagicLinkPage() {
   const [formData, setFormData] = useState({
     fullName: '',
     companyName: '',
+    email: '',
     password: '',
     confirmPassword: ''
   })
+  const [emailBound, setEmailBound] = useState(false)
   
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
@@ -29,8 +31,10 @@ export default function MagicLinkPage() {
         const res = await usersAPI.validateMagicLink(token)
         setFormData(prev => ({
           ...prev,
-          companyName: res.companyName || ''
+          companyName: res.companyName || '',
+          email: res.email || ''
         }))
+        setEmailBound(!!res.email)
         setLoading(false)
       } catch (err) {
         setError(err.message || 'Link tidak valid atau sudah kadaluarsa.')
@@ -52,6 +56,7 @@ export default function MagicLinkPage() {
     try {
       await usersAPI.registerViaMagicLink(token, {
         fullName: formData.fullName,
+        email: formData.email,
         password: formData.password,
         confirmPassword: formData.confirmPassword
       })
@@ -99,7 +104,7 @@ export default function MagicLinkPage() {
           <div className="ml-form-panel">
             {success ? (
               <div className="ml-global-success">
-                <p>Akun berhasil dibuat!</p>
+                <p>Akun berhasil dibuat! Akun Anda menunggu verifikasi admin sebelum dapat digunakan untuk masuk.</p>
                 <Link to="/client" className="ml-link-btn">
                   Ke Halaman Login <Icon name="arrow_forward" size={18} />
                 </Link>
@@ -135,6 +140,27 @@ export default function MagicLinkPage() {
                         value={formData.companyName}
                       />
                     </div>
+                  </div>
+
+                  <div className="ml-field">
+                    <label className="ml-field__label">Email</label>
+                    <div className="ml-field__input-wrap">
+                      <div className="ml-field__icon"><Icon name="mail" size={20} /></div>
+                      <input
+                        type="email"
+                        required
+                        readOnly={emailBound}
+                        className="ml-field__input"
+                        placeholder="Masukkan email Anda"
+                        value={formData.email}
+                        onChange={e => setFormData(p => ({ ...p, email: e.target.value }))}
+                      />
+                    </div>
+                    {emailBound && (
+                      <p className="ml-field__hint" style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.6)', margin: '0.35rem 0 0' }}>
+                        Email ini sudah ditetapkan oleh admin.
+                      </p>
+                    )}
                   </div>
 
                   <div className="ml-field">

@@ -59,8 +59,8 @@ export default function ClientAuthPage() {
             password: passwordValue,
             phoneNumber,
           })
-          console.log("success brother")
-          // Registration successful → redirect to verification page
+          // Registration successful → remember email so the verification page can poll status
+          sessionStorage.setItem('mpl_pending_email', emailValue)
           navigate('/client/verification')
         } else {
           // ── Login ──
@@ -74,6 +74,7 @@ export default function ClientAuthPage() {
         if (err.status === 403) {
           // Account pending or rejected
           if (err.message?.toLowerCase().includes('pending')) {
+            sessionStorage.setItem('mpl_pending_email', emailValue)
             navigate('/client/verification')
             return
           }

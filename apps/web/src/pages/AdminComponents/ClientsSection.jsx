@@ -59,12 +59,19 @@ export default function ClientsSection() {
     try {
       const data = await usersAPI.listAll()
       const users = data.users || []
+      // Total Pengiriman is cumulative PER COMPANY: sum shipments across every
+      // account sharing a companyName (accounts with no company count on their own).
+      const companyTotals = {}
+      for (const u of users) {
+        const key = u.companyName || `__self_${u.id}`
+        companyTotals[key] = (companyTotals[key] || 0) + (u._count?.shipments || 0)
+      }
       // Show ALL users — no role filter (User model has no role field)
       const mapped = users.map(u => ({
         id: u.id,
         companyName: u.companyName || u.fullName,
         isActive: u.verificationStatus === 'VERIFIED',
-        shipmentCount: u._count?.shipments || 0,
+        shipmentCount: companyTotals[u.companyName || `__self_${u.id}`],
         pics: [{ name: u.fullName, phone: u.phoneNumber || '-', email: u.email }],
         notes: '',
         address: u.address || '-',
@@ -85,6 +92,17 @@ export default function ClientsSection() {
     const interval = setInterval(() => fetchClients({ silent: true }), 8000)
     return () => clearInterval(interval)
   }, [fetchClients])
+
+  // Keep an open detail panel in sync with the latest polled data (Total Pengiriman, status).
+  useEffect(() => {
+    setSelectedClient(prev => {
+      if (!prev) return prev
+      const fresh = CLIENTS.find(c => c.id === prev.id)
+      if (!fresh) return prev
+      if (fresh.shipmentCount === prev.shipmentCount && fresh.isActive === prev.isActive) return prev
+      return { ...prev, shipmentCount: fresh.shipmentCount, isActive: fresh.isActive }
+    })
+  }, [CLIENTS])
 
   useEffect(() => {
     if (!loading) {
@@ -152,7 +170,7 @@ export default function ClientsSection() {
       return
     }
     try {
-      const res = await usersAPI.createUser({
+      await usersAPI.createUser({
         fullName: 'Admin Perusahaan', // Fallback for backend
         companyName: formCompanyName,
         email: formEmail,
@@ -161,16 +179,8 @@ export default function ClientsSection() {
         address: formAddress,
         npwp: formNpwp,
       })
-      
+
       fetchClients()
-      
-      try {
-        const linkRes = await usersAPI.generateMagicLink({ companyName: formCompanyName })
-        setPicMagicLink(linkRes.link)
-      } catch (err) {
-        console.error('Failed to auto-generate magic link:', err)
-      }
-      
       setCreateSuccess(true)
     } catch (err) {
       showToast(err.message || 'Gagal menambah perusahaan.', 'error')
@@ -198,6 +208,17 @@ export default function ClientsSection() {
       fetchClients()
     } catch (err) {
       showToast(err.message || 'Gagal memperbarui klien.', 'error')
+    }
+  }
+
+  const handleVerifyClient = async (id, name) => {
+    try {
+      await usersAPI.verify(id)
+      showToast(`Akun ${name} telah diaktifkan.`, 'success')
+      setSelectedClient(prev => (prev && prev.id === id ? { ...prev, isActive: true } : prev))
+      fetchClients()
+    } catch (err) {
+      showToast(err.message || 'Gagal mengaktifkan akun.', 'error')
     }
   }
 
@@ -293,7 +314,7 @@ export default function ClientsSection() {
       return
     }
     try {
-      const res = await usersAPI.generateMagicLink({ companyName: selectedCompanyId })
+      const res = await usersAPI.generateMagicLink({ companyName: selectedCompanyId, accountType: 'client' })
       setPicMagicLink(res.link)
       setPicMagicLinkCopied(false)
     } catch (err) {
@@ -307,7 +328,11 @@ export default function ClientsSection() {
     setTimeout(() => setPicMagicLinkCopied(false), 2000)
   }
 
-  const companyOptions = CLIENTS.map(c => ({ value: c.companyName, label: c.companyName }))
+  // Unique companies only — the flat client list has one row per account, so a
+  // company with several PICs would otherwise repeat in the dropdown.
+  const companyOptions = [...new Set(CLIENTS.map(c => c.companyName).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b))
+    .map(name => ({ value: name, label: name }))
 
   const filters = [
     { id: 'all', label: 'Semua' },
@@ -371,6 +396,16 @@ export default function ClientsSection() {
       label: '',
       render: (_, row) => (
         <div className="adm-actions">
+          {!row.isActive && (
+            <button
+              className="adm-action-btn"
+              title="Aktifkan Akun"
+              style={{ color: 'var(--dash-tertiary-light)' }}
+              onClick={(e) => { e.stopPropagation(); handleVerifyClient(row.id, row.companyName) }}
+            >
+              <Icon name="check_circle" size={16} />
+            </button>
+          )}
           <button
             className="adm-action-btn"
             title="Lihat Detail"
@@ -601,7 +636,22 @@ export default function ClientsSection() {
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-8 custom-scrollbar">
-              
+
+              {!selectedClient.isActive && (
+                <div className="flex items-center justify-between gap-3 p-4 rounded-xl bg-amber-50 border border-amber-200">
+                  <div className="flex items-center gap-2 text-amber-800">
+                    <Icon name="info" size={18} />
+                    <span className="text-sm font-bold">Akun belum aktif — menunggu persetujuan.</span>
+                  </div>
+                  <button
+                    className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-green-600 text-white text-sm font-bold hover:bg-green-700 transition-colors"
+                    onClick={() => handleVerifyClient(selectedClient.id, selectedClient.companyName)}
+                  >
+                    <Icon name="check_circle" size={16} /> Aktifkan
+                  </button>
+                </div>
+              )}
+
               <div className="flex flex-col gap-4">
                 <h4 className="flex items-center gap-2 text-sm font-bold text-gray-900 border-b border-gray-100 pb-2">
                   <Icon name="business" size={18} className="text-gray-400" /> Informasi Perusahaan
@@ -684,53 +734,9 @@ export default function ClientsSection() {
                 <h4 style={{ margin: '0 0 0.5rem', color: 'var(--dash-primary)', fontWeight: 800 }}>
                   Perusahaan Berhasil Dibuat!
                 </h4>
-                <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '0 0 1rem' }}>
-                  Bagikan magic link ini kepada PIC untuk registrasi mandiri.
+                <p style={{ fontSize: '0.82rem', color: '#64748b', margin: 0 }}>
+                  Tambahkan akun PIC untuk perusahaan ini lewat tombol "Tambah PIC" — secara manual atau dengan magic link.
                 </p>
-                {picMagicLink ? (
-                  <div>
-                    <div
-                      style={{
-                        padding: '0.75rem',
-                        background: '#fff',
-                        border: '1px solid #e2e8f0',
-                        borderRadius: '8px',
-                        fontFamily: 'monospace',
-                        fontSize: '0.78rem',
-                        wordBreak: 'break-all',
-                        textAlign: 'left',
-                        color: '#334155',
-                        marginBottom: '0.75rem',
-                        lineHeight: 1.5,
-                      }}
-                    >
-                      {picMagicLink}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleCopyPicLink}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '0.55rem 1.25rem',
-                        background: picMagicLinkCopied ? '#16a34a' : '#f1f5f9',
-                        color: picMagicLinkCopied ? '#fff' : 'var(--dash-primary)',
-                        border: '1px solid ' + (picMagicLinkCopied ? '#16a34a' : '#cbd5e1'),
-                        borderRadius: '8px',
-                        fontWeight: 600,
-                        fontSize: '0.85rem',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s',
-                      }}
-                    >
-                      <Icon name={picMagicLinkCopied ? 'check' : 'content_copy'} size={16} />
-                      {picMagicLinkCopied ? 'Tersalin!' : 'Salin Link'}
-                    </button>
-                  </div>
-                ) : (
-                  <p style={{ fontSize: '0.82rem', color: 'var(--dash-error)' }}>Gagal membuat magic link otomatis. Silakan gunakan opsi reset password.</p>
-                )}
               </div>
             </div>
           ) : (

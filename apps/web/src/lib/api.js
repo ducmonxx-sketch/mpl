@@ -141,6 +141,10 @@ export const authAPI = {
   login: (email, password) =>
     api.post('/api/auth/login', { email, password }),
 
+  /** Public: poll a pending account's verification status by email → { status } */
+  registrationStatus: (email) =>
+    api.post('/api/auth/registration-status', { email }),
+
   /** Admin login → { token, admin } */
   adminLogin: (email, password) =>
     api.post('/api/auth/admin/login', { email, password }),

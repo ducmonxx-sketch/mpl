@@ -59,8 +59,10 @@ export default function AdminSidebar({
       if (userRole === 'PIC_PABRIK' || userRole === 'PIC_GUDANG') {
          return ['overview', 'shipments', 'profile'].includes(item.id);
       }
-      // Default (e.g. OPERATIONS or SUPPORT)
-      return item.id !== 'users'; 
+      // OPERATIONS = generic admin: everything except admin management ('users').
+      if (userRole === 'OPERATIONS') return item.id !== 'users';
+      // SUPPORT / any other: no admin management and no client management.
+      return item.id !== 'users' && item.id !== 'clients';
     });
     return { ...group, items };
   }).filter(group => group.items.length > 0);
