@@ -244,7 +244,7 @@ router.patch("/me/settings", authenticate, async (req: AuthRequest, res: Respons
 router.patch("/:id/verify", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
   try {
     const user = await prisma.user.update({
-      where: { id: req.params.id },
+      where: { id: req.params.id as string },
       data: {
         verificationStatus: "VERIFIED",
         verifiedByAdminId:  req.user!.id,
@@ -281,7 +281,7 @@ router.patch("/:id/verify", authenticate, adminOnly, async (req: AuthRequest, re
 router.patch("/:id/reject", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
   try {
     const user = await prisma.user.update({
-      where: { id: req.params.id },
+      where: { id: req.params.id as string },
       data:  { verificationStatus: "REJECTED" },
       select: { id: true, fullName: true, email: true },
     })
@@ -362,7 +362,7 @@ router.post("/magic-link", authenticate, adminOnly, async (req: AuthRequest, res
 router.get("/magic-link/:token", async (req: AuthRequest, res: Response) => {
   try {
     const link = await prisma.magicLink.findUnique({
-      where: { token: req.params.token },
+      where: { token: req.params.token as string },
     })
 
     if (!link || link.type !== "registration") {
@@ -394,7 +394,7 @@ router.post("/magic-link/:token/register", async (req: AuthRequest, res: Respons
     }
 
     const link = await prisma.magicLink.findUnique({
-      where: { token: req.params.token },
+      where: { token: req.params.token as string },
     })
 
     if (!link || link.type !== "registration" || link.used || new Date() > link.expiresAt) {
@@ -482,7 +482,7 @@ router.post("/reset-password-link", authenticate, adminOnly, async (req: AuthReq
 router.get("/reset-password/:token", async (req: AuthRequest, res: Response) => {
   try {
     const link = await prisma.magicLink.findUnique({
-      where: { token: req.params.token },
+      where: { token: req.params.token as string },
     })
 
     if (!link || link.type !== "reset_password") {
@@ -519,7 +519,7 @@ router.post("/reset-password/:token", async (req: AuthRequest, res: Response) =>
     }
 
     const link = await prisma.magicLink.findUnique({
-      where: { token: req.params.token },
+      where: { token: req.params.token as string },
     })
 
     if (!link || link.type !== "reset_password" || link.used || new Date() > link.expiresAt) {
@@ -561,7 +561,7 @@ router.patch("/:id", authenticate, adminOnly, async (req: AuthRequest, res: Resp
     }
 
     const user = await prisma.user.update({
-      where: { id: req.params.id },
+      where: { id: req.params.id as string },
       data: {
         ...(fullName    !== undefined && { fullName }),
         ...(companyName !== undefined && { companyName }),
@@ -604,7 +604,7 @@ router.patch("/:id", authenticate, adminOnly, async (req: AuthRequest, res: Resp
 // Admin deletes a client. Their shipments are removed too.
 router.delete("/:id", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
   try {
-    const id = req.params.id
+    const id = req.params.id as string
 
     const user = await prisma.user.findUnique({
       where:  { id },

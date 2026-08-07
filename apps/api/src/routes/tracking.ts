@@ -13,7 +13,7 @@ const router = Router()
 // ── GET /api/tracking/:shipmentId ────────────────────────────
 router.get("/:shipmentId", authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { shipmentId } = req.params
+    const shipmentId = req.params.shipmentId as string
 
     const shipment = await prisma.shipment.findUnique({
       where: { id: shipmentId },
@@ -56,7 +56,7 @@ router.get("/:shipmentId", authenticate, async (req: AuthRequest, res: Response)
 // Admin adds a new checkpoint to the timeline
 router.post("/:shipmentId/events", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
   try {
-    const { shipmentId } = req.params
+    const shipmentId = req.params.shipmentId as string
     const { stepName, location, status, driverNotes, eventTimestamp } = req.body
 
     const event = await prisma.shipmentEvent.create({
@@ -130,7 +130,7 @@ router.patch("/events/:eventId", authenticate, adminOnly, async (req: AuthReques
     const { status, driverNotes } = req.body
 
     const event = await prisma.shipmentEvent.update({
-      where: { id: req.params.eventId },
+      where: { id: req.params.eventId as string },
       data: {
         ...(status      && { status }),
         ...(driverNotes && { driverNotes }),

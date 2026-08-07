@@ -37,7 +37,7 @@ router.patch("/read-all", authenticate, adminOnly, async (req: AuthRequest, res:
 router.patch("/:id/read", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
   try {
     const notification = await prisma.adminNotification.update({
-      where: { id: req.params.id },
+      where: { id: req.params.id as string },
       data: { isRead: true },
     })
     res.json({ message: "Notification marked as read.", notification })

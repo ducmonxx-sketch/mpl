@@ -49,7 +49,7 @@ router.patch("/read-all", authenticate, async (req: AuthRequest, res: Response) 
 router.patch("/:id/read", authenticate, async (req: AuthRequest, res: Response) => {
   try {
     await prisma.notification.updateMany({
-      where: { id: req.params.id, userId: req.user!.id },
+      where: { id: req.params.id as string, userId: req.user!.id },
       data:  { isRead: true },
     })
 

@@ -1,5 +1,6 @@
 import "dotenv/config"
 import { PrismaClient } from "../src/generated/prisma/client"
+import type { ShipmentStatus } from "../src/generated/prisma/enums"
 import { Pool } from "pg"
 import { PrismaPg } from "@prisma/adapter-pg"
 import bcrypt from "bcrypt"
@@ -290,7 +291,7 @@ async function main() {
         shippingCategory:    "Unit",
         originLocation:      plantLabel(plant),
         destinationLocation: "Gudang MPL",
-        status:              status,
+        status:              status as ShipmentStatus,
         pickupDate:          daysFromNow(pickupOffset),
         pickupPlantId:       plant.id,
         clientId:            clients[i % clients.length].id,

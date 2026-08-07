@@ -116,7 +116,7 @@ router.get("/stats", authenticate, async (req: AuthRequest, res: Response) => {
 router.get("/:id", authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const shipment = await prisma.shipment.findUnique({
-      where: { id: req.params.id },
+      where: { id: req.params.id as string },
       include: {
         client:         { select: { fullName: true, companyName: true, email: true } },
         driver:         { select: { fullName: true, phoneNumber: true } },
@@ -257,12 +257,12 @@ router.patch("/:id/assign", authenticate, adminOnly, async (req: AuthRequest, re
     const { driverId, vehicleId, pickupPlantId, pickupDate } = req.body
 
     const current = await prisma.shipment.findUnique({
-      where:  { id: req.params.id },
+      where:  { id: req.params.id as string },
       select: { status: true },
     })
 
     const shipment = await prisma.shipment.update({
-      where: { id: req.params.id },
+      where: { id: req.params.id as string },
       data: {
         driverId,
         vehicleId,
@@ -339,7 +339,7 @@ router.patch("/:id/assign", authenticate, adminOnly, async (req: AuthRequest, re
 router.post("/:id/notify-driver", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
   try {
     const shipment = await prisma.shipment.findUnique({
-      where: { id: req.params.id },
+      where: { id: req.params.id as string },
       include: { driver: true },
     })
 
@@ -468,11 +468,11 @@ router.patch("/:id/handover", authenticate, adminOnly, async (req: AuthRequest, 
   try {
     const { serahTerimaUrl, handoverNotes, catatanPlantPengirim, catatanGudangPenerima } = req.body
     const existing = await prisma.shipment.findUnique({
-      where:  { id: req.params.id },
+      where:  { id: req.params.id as string },
       select: { driverId: true, vehicleId: true },
     })
     const shipment = await prisma.shipment.update({
-      where: { id: req.params.id },
+      where: { id: req.params.id as string },
       data: {
         serahTerimaUrl:        serahTerimaUrl ?? undefined,
         handoverNotes:         handoverNotes ?? undefined,
