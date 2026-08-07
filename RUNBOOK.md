@@ -241,6 +241,21 @@ For each: file + line (`path:line`), what's wrong, blast radius (admin-only vs s
 
 ## 6. Session Log
 
+### 2026-08-07 (cont.) — Client onboarding: functional magic link + client-mgmt RBAC + verification flow
+- **Synced:** `tier1-infra`, on top of the tsc-fix + Claude-tooling commits earlier today.
+- **Resync:** 2 new migrations applied (`magiclink_email`, `magiclink_account_type`); DB reseeded once (added an OPERATIONS admin); the smoke test now self-cleans, so it no longer pollutes the DB (removed the old `SmokeCo` residue).
+- **Built (client onboarding, full-stack):**
+  - **Magic link now works end-to-end.** Fixed the dead URL (`/register/magic?token=` → `/auth/register/:token`). Register creates a **PENDING** client bound to the link's company and **inherits the company profile** (phone/city/address/npwp) instead of leaving it blank. Links carry an `accountType` tag (`client` now; `operations`/`support` reserved for a future admin page). Email is entered by the client at registration.
+  - **+Daftar Perusahaan** no longer auto-generates a link; links are issued from **Tambah PIC** (company selector = the verification binder). Manual PIC = **VERIFIED/active** immediately with shareable creds.
+  - **Client-management RBAC:** create-client + magic-link generation restricted to **SUPERADMIN + OPERATIONS** (`clientManagerOnly` middleware); pipeline roles blocked at the API and hidden from the Klien nav. Seeded `admin2@mpl.com` (OPERATIONS).
+  - **Klien page:** approval button (Tidak Aktif → Aktif via `/verify`), **cumulative-per-company** Total Pengiriman (+ live panel sync), unique-company dropdown (was duplicating per PIC).
+  - **Client side:** **sessionless** verification page polls `POST /api/auth/registration-status` and routes to login once approved (pending accounts get no token, by design — admins confirm to clients out-of-band).
+- **Verified:** API typecheck **0**; `vite build` clean; **smoke 33/33** — now covers the whole onboarding lifecycle (generate → validate → register → PENDING → verify → login) + the RBAC guard, and deletes its own test records.
+- **New env vars:** none. **New migrations:** `magiclink_email`, `magiclink_account_type`.
+- **Client-side follow-ups:** verification → login is one extra sign-in (sessionless design, intentional).
+- **Security:** wrote **[SECURITY-MAGICLINK.md](SECURITY-MAGICLINK.md)** — pre-launch hardening plan for the now-public registration/auth surface (rate limits, enumeration, open-signup decision, token-in-URL, CAPTCHA). **Not yet implemented** — do before public launch. Ties into DEPLOYMENT.md §3/§5.
+- **Server/branch state left:** committed on `tier1-infra`, **not pushed**. `.claude/skills/task-observer/` left untracked.
+
 ### 2026-08-07 — Claude Code tooling (hooks + deploy-preflight) + cleared the long-standing tsc baseline to 0
 - **Synced:** `tier1-infra`, already even with `origin/tier1-infra` (0/0), no pull needed; at `01c7e6f`. `main` unchanged (tier1-infra = main + 13 commits, main fully contained).
 - **Resync:** npm install n/a (no dep change); **prisma generate ✓** (ran to test a stale-client theory — did **not** clear the `.driver` errors, confirming they were a type cascade, not a stale client); migrate/seed not run.
