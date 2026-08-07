@@ -109,6 +109,27 @@ router.post("/login", async (req: Request, res: Response) => {
   }
 })
 
+// ── POST /api/auth/registration-status ───────────────────────
+// Public: lets the verification page poll whether a pending account has been
+// approved (sessionless — pending users hold no token). Returns the account's
+// verification status by email, or "NONE" if there's no such account.
+router.post("/registration-status", async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body
+    if (!email) {
+      return res.status(400).json({ message: "Email is required." })
+    }
+    const user = await prisma.user.findUnique({
+      where:  { email },
+      select: { verificationStatus: true },
+    })
+    res.json({ status: user?.verificationStatus ?? "NONE" })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to check status." })
+  }
+})
+
 // ── POST /api/auth/admin/login ───────────────────────────────
 router.post("/admin/login", async (req: Request, res: Response) => {
   try {

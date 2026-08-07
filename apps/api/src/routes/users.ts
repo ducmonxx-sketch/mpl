@@ -14,7 +14,7 @@ import { Router, Response } from "express"
 import bcrypt from "bcrypt"
 import crypto from "crypto"
 import prisma from "../lib/prisma"
-import { authenticate, adminOnly, AuthRequest } from "../middleware/auth"
+import { authenticate, adminOnly, clientManagerOnly, AuthRequest } from "../middleware/auth"
 import { uploadImageField, saveUpload, deleteUpload } from "../lib/upload"
 import { getStorage } from "../lib/storage"
 
@@ -58,7 +58,7 @@ router.get("/", authenticate, adminOnly, async (req: AuthRequest, res: Response)
 // since an admin vouches for it.
 // TODO (Option B): once email (Resend/Nodemailer) is wired up, email the
 // temporary password to the client instead of returning it in the response.
-router.post("/", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+router.post("/", authenticate, clientManagerOnly, async (req: AuthRequest, res: Response) => {
   try {
     const {
       fullName,
@@ -87,16 +87,26 @@ router.post("/", authenticate, adminOnly, async (req: AuthRequest, res: Response
     const plainPassword = password || crypto.randomBytes(9).toString("base64url")
     const passwordHash  = await bcrypt.hash(plainPassword, 10)
 
+    // Inherit any missing profile fields from the existing company record, so a
+    // PIC added to an existing company isn't left with blank details.
+    const company = companyName
+      ? await prisma.user.findFirst({
+          where:   { companyName },
+          orderBy: { createdAt: "asc" }, // the company anchor is the earliest record
+          select:  { phoneNumber: true, city: true, address: true, npwp: true },
+        })
+      : null
+
     const user = await prisma.user.create({
       data: {
         fullName,
         companyName:        companyName ?? null,
         email,
         passwordHash,
-        phoneNumber:        phoneNumber ?? null,
-        city:               city ?? null,
-        address:            address ?? null,
-        npwp:               npwp ?? null,
+        phoneNumber:        phoneNumber ?? company?.phoneNumber ?? null,
+        city:               city ?? company?.city ?? null,
+        address:            address ?? company?.address ?? null,
+        npwp:               npwp ?? company?.npwp ?? null,
         verificationStatus: "VERIFIED",
         verifiedByAdminId:  req.user!.id,
         settings:           { create: {} }, // default notification/theme prefs
@@ -320,9 +330,9 @@ router.get("/companies", authenticate, adminOnly, async (req: AuthRequest, res: 
 })
 
 // ── POST /api/users/magic-link ───────────────────────────────
-router.post("/magic-link", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+router.post("/magic-link", authenticate, clientManagerOnly, async (req: AuthRequest, res: Response) => {
   try {
-    const { companyName } = req.body
+    const { companyName, email, accountType } = req.body
     if (!companyName) {
       return res.status(400).json({ message: "Company name is required." })
     }
@@ -335,7 +345,9 @@ router.post("/magic-link", authenticate, adminOnly, async (req: AuthRequest, res
       data: {
         token,
         type: "registration",
+        accountType: accountType || "client", // tag: what kind of account this link creates
         companyName,
+        email: email || null, // optional: admin pre-binds invitee email; else null (registrant enters it)
         expiresAt,
       },
     })
@@ -350,7 +362,7 @@ router.post("/magic-link", authenticate, adminOnly, async (req: AuthRequest, res
       },
     })
 
-    const link = `${process.env.CLIENT_URL || "http://localhost:5173"}/register/magic?token=${token}`
+    const link = `${process.env.CLIENT_URL || "http://localhost:5173"}/auth/register/${token}`
     res.status(201).json({ message: "Magic link generated.", link })
   } catch (err) {
     console.error(err)
@@ -377,7 +389,7 @@ router.get("/magic-link/:token", async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: "Magic link has expired." })
     }
 
-    res.json({ companyName: link.companyName })
+    res.json({ companyName: link.companyName, email: link.email })
   } catch (err) {
     console.error(err)
     res.status(500).json({ message: "Failed to validate magic link." })
@@ -387,8 +399,11 @@ router.get("/magic-link/:token", async (req: AuthRequest, res: Response) => {
 // ── POST /api/users/magic-link/:token/register ───────────────
 router.post("/magic-link/:token/register", async (req: AuthRequest, res: Response) => {
   try {
-    const { fullName, email, password, confirmPassword } = req.body
+    const { fullName, email: bodyEmail, password, confirmPassword } = req.body
 
+    if (!fullName || !password) {
+      return res.status(400).json({ message: "Name and password are required." })
+    }
     if (password !== confirmPassword) {
       return res.status(400).json({ message: "Passwords do not match." })
     }
@@ -401,6 +416,18 @@ router.post("/magic-link/:token/register", async (req: AuthRequest, res: Respons
       return res.status(400).json({ message: "Invalid or expired magic link." })
     }
 
+    // Only client self-registration is supported here. Admin-account links
+    // (operations/support) will be handled by the admin-management flow.
+    if (link.accountType !== "client") {
+      return res.status(400).json({ message: "This registration link is not supported." })
+    }
+
+    // Email may be pre-bound to the link by the admin; otherwise the registrant supplies it.
+    const email = link.email ?? bodyEmail
+    if (!email) {
+      return res.status(400).json({ message: "Email is required." })
+    }
+
     const existingUser = await prisma.user.findUnique({ where: { email } })
     if (existingUser) {
       return res.status(400).json({ message: "Email is already registered." })
@@ -408,13 +435,25 @@ router.post("/magic-link/:token/register", async (req: AuthRequest, res: Respons
 
     const passwordHash = await bcrypt.hash(password, 10)
 
+    // Inherit the company profile (phone/city/address/npwp) from the bound company
+    // so magic-link accounts aren't left blank; null if the company has none.
+    const company = await prisma.user.findFirst({
+      where:   { companyName: link.companyName },
+      orderBy: { createdAt: "asc" },
+      select:  { phoneNumber: true, city: true, address: true, npwp: true },
+    })
+
     const user = await prisma.user.create({
       data: {
         fullName,
         email,
         companyName: link.companyName,
         passwordHash,
-        verificationStatus: "VERIFIED",
+        phoneNumber: company?.phoneNumber ?? null,
+        city:        company?.city ?? null,
+        address:     company?.address ?? null,
+        npwp:        company?.npwp ?? null,
+        verificationStatus: "PENDING",
         settings: {
           create: {
             emailNotifications: true,
@@ -426,7 +465,7 @@ router.post("/magic-link/:token/register", async (req: AuthRequest, res: Respons
 
     await prisma.magicLink.update({
       where: { id: link.id },
-      data: { used: true },
+      data: { used: true, userId: user.id }, // bind the created account to its link
     })
 
     res.status(201).json({ message: "Registration successful.", user: { id: user.id, email: user.email } })

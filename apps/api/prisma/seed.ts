@@ -15,9 +15,9 @@ const daysFromNow = (d: number) => new Date(now.getTime() + d * 24 * 60 * 60 * 1
 
 async function main() {
   // ════════════════════════════════════════════════════════════
-  // ADMINS — SUPERADMIN (login) + the pipeline role accounts (Kepala Armada + all PIC).
-  // No generic OPERATIONS admin: the superadmin's activity feed now surfaces the pipeline
-  // roles' actions (see auditLogs.ts NORMAL_ROLES).
+  // ADMINS — SUPERADMIN + a generic OPERATIONS admin (both may manage clients) + the
+  // pipeline role accounts (Kepala Armada + all PIC). The superadmin's activity feed
+  // surfaces the pipeline roles' actions (see auditLogs.ts NORMAL_ROLES).
   // ════════════════════════════════════════════════════════════
   const admin = await prisma.admin.upsert({
     where: { email: "admin@mpl.com" },
@@ -27,6 +27,16 @@ async function main() {
       email: "admin@mpl.com",
       passwordHash: await bcrypt.hash("admin1234", 10),
       role: "SUPERADMIN",
+    },
+  })
+  await prisma.admin.upsert({
+    where: { email: "admin2@mpl.com" },
+    update: { role: "OPERATIONS", passwordHash: await bcrypt.hash("admin1234", 10) },
+    create: {
+      fullName: "Admin Operasional",
+      email: "admin2@mpl.com",
+      passwordHash: await bcrypt.hash("admin1234", 10),
+      role: "OPERATIONS",
     },
   })
   await prisma.admin.upsert({
@@ -59,7 +69,7 @@ async function main() {
       role: "PIC_GUDANG",
     },
   })
-  console.log("✅ Admins: admin@mpl.com (SUPERADMIN), armada@mpl.com (KEPALA_ARMADA), pabrik@mpl.com (PIC_PABRIK), gudang@mpl.com (PIC_GUDANG)")
+  console.log("✅ Admins: admin@mpl.com (SUPERADMIN), admin2@mpl.com (OPERATIONS), armada@mpl.com (KEPALA_ARMADA), pabrik@mpl.com (PIC_PABRIK), gudang@mpl.com (PIC_GUDANG)")
 
   // ════════════════════════════════════════════════════════════
   // CLIENTS (10): 8 tracked-in-shipments (idx 0–7) + 2 idle (idx 8–9).

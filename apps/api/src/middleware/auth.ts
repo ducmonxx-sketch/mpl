@@ -55,3 +55,7 @@ export const requireRole = (...roles: string[]) => {
     next()
   }
 }
+
+// Client management (create/onboard clients + registration magic links).
+// SUPERADMIN + OPERATIONS only — pipeline roles (Kepala Armada, PIC Pabrik/Gudang) are excluded.
+export const clientManagerOnly = requireRole("SUPERADMIN", "OPERATIONS")
