@@ -121,61 +121,79 @@ Basis: **650k shipments** total (~356/day).
 (~25/shipment) + notifications + audit-log rows + indexes/overhead.
 → **~4.5 GB/year → ~23 GB at 5 years.** Budget a **60 GB** DB volume. Trivial for Postgres.
 
-**Files dominate — and the upload pipeline (§2.3) swings the total by >10×:**
+**Files — sized against the decisions in §2.3 + §2.4** (WebP full-size, no resize, **14-day**
+retention with an off-server archive; thumbnails kept permanently):
 
-| Image policy | Per photo | Per shipment (4) | Per year | 5-year |
-|---|---|---|---|---|
-| ❌ Raw phone JPEG | ~4 MB | ~16 MB | ~2 TB | ~10 TB |
-| ❌ WebP only, no resize | ~2.5 MB | ~10 MB | ~1.3 TB | ~6.5 TB |
-| ✅ **Resize 1600 px + WebP q75** *(planning basis)* | **~250 KB** | **~1 MB** | **~130 GB** | **~650 GB** |
-| ✅ + 320 px thumbnail | +30 KB | +120 KB | +15 GB | +78 GB |
+| Tier | Per photo | Per shipment (4) | Per day | Retained | Steady-state |
+|---|---|---|---|---|---|
+| **Full-size WebP** (no downscale) | ~2.5 MB | ~10 MB | ~3.6 GB | **14 days** | **~50 GB** |
+| **Thumbnails (400 px)** | ~30 KB | ~120 KB | ~43 MB | **permanent** | **~16 GB/year** |
 
-📌 **The resize does ~90% of the work, not the format.** Converting a 4000×3000 photo to WebP at full
-dimensions saves only ~30%; downscaling to 1600 px first is the 10–16× win. "Convert to WebP" alone
-is *not* sufficient.
+📌 Two notes on why this works:
+- **14-day retention is what makes skipping the resize affordable.** Unbounded full-res growth would
+  be ~1.3 TB/yr; a 14-day window makes it a flat ~50 GB. The trade-off is that the **off-server
+  archive becomes load-bearing** (§2.4).
+- **Thumbnails are now a permanent record** (they feed the graph detail report), so they're the one
+  image tier that grows forever — keep them small (~30 KB); don't let them drift up.
 
-**Totals — chosen path (mini PC, 1 TB RAID 1, with the §2.3 pipeline):**
+**Totals — mini PC, ~1 TB RAID 1 usable:**
 
-| Where | Size |
-|---|---|
-| OS + Docker | ~30 GB |
-| Postgres (even 10 years of rows) | ~46 GB |
-| Logs (rotated) + local `pg_dump` history | ~50 GB |
-| **Non-image subtotal** | **~130 GB** |
-| Images + thumbnails | **~145 GB / year** |
-| **→ Headroom on ~1 TB usable** | **≈ 5.8 years** ✅ |
+| Component | Year 1 | Year 5 | Year 30 |
+|---|---|---|---|
+| OS + Docker | 30 GB | 30 GB | 30 GB |
+| Postgres rows (~4.5 GB/yr, kept forever) | 5 GB | 23 GB | 135 GB |
+| Logs (rotated) + local `pg_dump` history | 50 GB | 50 GB | 50 GB |
+| **Full-size images** — flat, 14-day window | 50 GB | 50 GB | 50 GB |
+| **Thumbnails** — permanent, ~16 GB/yr | 16 GB | 80 GB | 470 GB |
+| **Total** | **~150 GB** | **~233 GB** | **~735 GB** |
 
-**Conclusion: the disk you planned to buy covers the whole 5-year horizon.** No deletion cron is
-required in the planning window — see §2.4. Without §2.3, the same disk lasts **~2 months**.
+**Conclusion: ~1 TB comfortably covers a 30-year horizon.** The 14-day window makes full-size images
+a *flat* cost rather than a growing one, so the only item that grows indefinitely is thumbnails —
+which is why keeping them ~30 KB matters. Revisit storage if thumbnails drift larger or the photo
+count per shipment grows well beyond 4.
 
 Files stay on the **filesystem, not in Postgres `bytea`** ✅ (already true). The storage adapter is
 pluggable to S3/Supabase, so photos can later move to object storage and decouple growth from NAS capacity.
 
 ---
 
-### 2.3 Image pipeline — resize + WebP on upload 🔴 **required**
+### 2.3 Image pipeline — WebP + thumbnail on upload 🔴 **required**
+
+> **Revised 2026-09-17: the resize was dropped.** Originals stay at **full resolution** — being able
+> to zoom into a scratch is the whole point of defect evidence, and 14-day retention (§2.4) plus an
+> off-server archive makes local storage a non-issue. **WebP conversion + a thumbnail are still
+> required**, both via `sharp`.
 
 The single choke point already exists: **`apps/api/src/lib/upload.ts` → `saveUpload()`**. Every upload
 flows through it, and today it has only **2 call sites (both avatars)** — the high-volume shipment
 photos (handover proof, POD, plant-check, defect evidence) **aren't built yet**. Do this *before*
-those features land so they inherit compression automatically, instead of needing a retrofit + backfill.
+those features land so they inherit the pipeline automatically, instead of needing a retrofit + backfill.
 
 `sharp` is already a dependency in `apps/web` (v0.35.4) and `apps/web/scripts/convert-to-webp.mjs` is
-a working precedent. Add it to `apps/api` and transform the buffer inside `saveUpload`:
+a working precedent. Add it to `apps/api` and produce **two** outputs inside `saveUpload`:
 
 ```js
-sharp(file.buffer)
-  .rotate()                                   // auto-orient from EXIF — see gotcha 1
-  .resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true })
-  .webp({ quality: 75 })
-  .toBuffer()
+// 1. full-size — format conversion only, NO downscale (evidence fidelity)
+sharp(file.buffer).rotate().webp({ quality: 82 }).toBuffer()
+
+// 2. thumbnail — permanent record + graph detail report (§2.4)
+sharp(file.buffer).rotate()
+  .resize({ width: 400, fit: "inside", withoutEnlargement: true })
+  .webp({ quality: 70 }).toBuffer()
 ```
 
-…plus a second pass at 320 px for the thumbnail, and override the stored extension/mime to `webp`.
+Override the stored extension/mime to `webp` for both. Store the thumbnail under a separate key so
+the 14-day purge can delete the full-size while leaving the thumbnail untouched.
+
+⚠️ **Bandwidth consequence of skipping the resize:** full-res WebP is ~2.5 MB vs ~250 KB resized —
+**10× more** on every upload *and* every view. Since the office uplink is the throughput ceiling
+(§6), **always render thumbnails in lists and reports**, and fetch the full-size only on explicit
+click. *(Optional middle ground if field uploads prove slow: cap at ~2560 px — still plenty for
+zooming into damage, roughly half the bytes.)*
 
 **Gotchas — each of these bites in production:**
 1. 🔴 **`.rotate()` is mandatory.** Processing strips EXIF; without auto-orient every phone photo saves **sideways**.
-2. ⚠️ **Raise `MAX_BYTES`** — it is `5 MB` today, which *rejects* many raw phone photos (bad UX for a driver uploading proof). Go to ~15–20 MB and shrink server-side; keep a hard cap for DoS.
+2. 🔴 **Raise `MAX_BYTES` to ~25 MB.** It is `5 MB` today, which **rejects most raw phone photos** — and multer's limit applies *before* sharp runs, so with no downscale the original must be accepted as-is. A driver's upload failing silently is the worst possible failure here. Keep a hard cap for DoS.
 3. ⚠️ **Add HEIC/HEIF** to `IMAGE_MIMES` if any PIC uses an iPhone — iOS shoots HEIC by default, so those uploads are **rejected today**. (sharp decodes HEIF depending on the libvips build — verify.)
 4. **Keep PDFs out of this path** — Surat Jalan documents must pass through untouched.
 5. **EXIF/GPS trade-off** — stripping is a privacy win (phone photos embed GPS + device info). If you want location/timestamp as delivery *evidence*, extract it into DB columns **before** stripping.
@@ -186,31 +204,46 @@ concurrency only if bulk uploads are ever allowed.
 
 ### 2.4 Data retention — **revised 2026-09-17**
 
-An earlier idea was rolling deletion (shipment data after 2 years, images after 1 month). The sizing
-above makes most of it unnecessary, and parts of it risky:
+**Decided policy:**
 
 | Data | Policy | Why |
 |---|---|---|
-| **Shipment rows + events + plant-check/LKU** | **Keep — no deletion** | Only ~4.5 GB/yr. Deleting at 2 yrs saves ~14 GB on a 1 TB disk (noise) but permanently caps the new **condition-analytics reporting** (`ShipmentConditionChart`, `ServiceLineSummary`) to a 2-year window. |
-| **Images** | **Keep ~5 years locally**; revisit in year 4 | §2.2 gives ≈5.8 years of headroom once §2.3 is in place. |
-| **Thumbnails (320 px)** | **Keep permanently** | ~20 GB per 5 years — preserves a visual record even if full-size originals are ever purged. |
+| **Shipment rows + events + plant-check/LKU** | **Keep — no deletion** | Only ~4.5 GB/yr. Deleting at 2 yrs would save ~14 GB on a 1 TB disk (noise) while permanently capping the **condition-analytics reporting** (`ShipmentConditionChart`, `ServiceLineSummary`) to a 2-year window. |
+| **Full-size images** | **14 days**, then purge per-day | Admins archive originals **off-server on upload**, so the server copy is only a working window. Keeps full-res on disk flat at ~50 GB. |
+| **Thumbnails (400 px)** | **Keep permanently** | They feed the **graph detail report**, so they are part of the permanent analytics record (alongside the rollup table in DEV-PLAN.md). ~16 GB/yr. |
 | **Audit log** | **Never auto-delete** | It is the forensic / compliance trail. |
 
-⚠️ **1-month image retention was too aggressive.** These photos are *evidence* (handover proof, defect
-documentation). Damage claims and payment disputes routinely surface weeks-to-months after delivery —
-at 1 month the proof is already gone.
+**Off-server archive — manual, by design (decided 2026-09-17).** Admins copy originals to separate
+storage at upload time. This is a deliberate manual process; no automation planned.
+
+📌 What this means architecturally: the server copy is a **14-day working buffer**, not the record of
+truth — **the admin archive is the record**. Anything asked after day 14 (e.g. an invoice dispute on
+30/60/90-day terms) is answered from the archive, not from the app. Accepted.
+
+Implication for the purge job: it only ever deletes the **full-size** file. Thumbnails stay, so the
+app always retains a visual reference for every delivery even once originals are off-server.
 
 🔴 **Legal check before deleting anything:** Indonesian tax rules commonly require bookkeeping and
 supporting documents be retained **~10 years**, and shipment records may qualify. **Confirm with your
 accountant.** A policy that deletes records you are legally required to keep is a far worse problem
 than a full disk.
 
-**If deletion is ever enabled later, these are prerequisites:**
-- **Verified offsite backups first** — RAID 1 mirrors a bad `DELETE` to both disks instantly.
-  Automated deletion without tested offsite backups is one buggy cron away from permanent loss.
+**Requirements for the 14-day image purge job:**
+- **Delete the full-size key only** — never the thumbnail. The two tiers now have different
+  retention, so they must be stored under separate keys (§2.3).
+- **Clear / repoint the DB reference** (`serahTerimaUrl`, etc.) so the UI falls back to the thumbnail
+  rather than rendering a broken image.
+- **Dry-run first, and keep it idempotent.** RAID 1 mirrors a bad delete to both disks instantly, so
+  run it in report-only mode until the file set it selects looks correct.
+- ⚠️ **Edge case to decide: purge by upload date vs shipment completion.** "14 days from upload"
+  means a shipment still in progress after 14 days loses its *earlier* photos (e.g. plant-check
+  photos vanish before handover, so they can't be compared at the gudang step). Mitigated by
+  permanent thumbnails, but worth an explicit choice: purge strictly by upload date (simplest, as
+  specified), or exempt shipments that haven't reached DELIVERED yet.
+
+**Still applies if row deletion is ever considered (not planned):**
 - **FK-safe delete order** — shipments cascade into `ShipmentEvent`, `PlantCheck`/LKU/KSU and
   notifications; we already hit ordering pain during smoke-test cleanup.
-- **Clear DB pointers** when deleting files (`serahTerimaUrl`, etc.) or the UI renders broken images.
 - Prefer **archive-then-delete** (compressed export to cold storage) over hard deletion.
 
 ---
