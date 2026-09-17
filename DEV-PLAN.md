@@ -333,6 +333,65 @@ Velocity/safety investments, separate from feature work. Tier-2 primitives overl
 - [ ] `npm audit` in CI + a pre-commit hook running typecheck/lint locally.
 - [ ] Optional: error tracking (Sentry) + basic request logging/metrics.
 
+## Performance & scale checklist — internet-facing, 130k shipments/yr
+> Added 2026-09-17. Each item was checked against the real stack, not assumed. Sizing basis:
+> [DEPLOYMENT-NAS.md](DEPLOYMENT-NAS.md) §2.2.
+>
+> **Framing: the bottleneck is data volume, not request volume.** ~356 shipments/day and a handful of
+> admin users will never stress the web tier. **650k rows on one mini PC with a limited office
+> uplink** will. Optimize data size and query shape — not traffic-scaling infrastructure.
+
+### 🔴 Needed
+- [ ] **Paginate list endpoints** — `GET /api/shipments` has no `take`/`skip`; at 650k rows that's a
+      multi-hundred-MB JSON response. Also `/users`, `/fleet/*`. *(Also a launch blocker in DEPLOYMENT-NAS.md §3 Layer 4.)*
+- [ ] **Database indexes** — ⚠️ **Postgres does not auto-index foreign keys** and Prisma won't add
+      them, so `Shipment.clientId` / `driverId` / `vehicleId` are likely unindexed. Add those plus
+      `status` and `createdAt`. Cheap now, painful under load.
+- [ ] **Image resize + WebP on upload** — spec in DEPLOYMENT-NAS.md §2.3 (`sharp`, inside `lib/upload.ts` → `saveUpload`).
+- [ ] **Compress API payloads** — `compression` middleware at the origin. Lands directly on the real
+      constraint: office **upload bandwidth** is the ceiling for every remote PIC and client.
+- [ ] **Tune the pg connection pool** — pooling already exists (`@prisma/adapter-pg` + `pg.Pool`);
+      size it *down* for a 16 GB box (each Postgres connection costs RAM).
+- [ ] **Cache only the aggregation endpoints** — `condition-analytics` + `/shipments/stats`.
+      Do **not** cache live operational reads; an admin panel needs fresh shipment status.
+- [ ] **Reduce dashboard polling** — see "higher-impact additions" below.
+
+### 🟡 Nice-to-have (hardening pass)
+- [ ] Audit for **N+1 queries** (`await prisma.*` inside loops; Prisma's `include` itself batches fine)
+- [ ] **Delete unused dependencies** — security win + quieter `npm audit`; the invoices removal likely left orphans
+- [ ] **Image `loading="lazy"`** once shipment photo galleries exist
+- [ ] **Lighthouse audit — public landing/client app only** (SEO; `robots.txt` + `sitemap.xml` already
+      added). Pointless for the authed admin panel — repeat users, no SEO.
+- [ ] Fix the lint error **"Cannot call impure function during render"** (a real React correctness bug).
+      Broad memoization/re-render work is **not** needed yet.
+- [ ] **Debounce search inputs** — no network cost today (search filters an already-fetched array);
+      becomes necessary once search moves server-side, which pagination will force.
+- [ ] Defer non-critical scripts (landing page, minor)
+
+### ✅ Already done — no action needed
+- [x] **Minify JS/CSS** — Vite on `build`, plus `vite-plugin-compression`
+- [x] **Route code-splitting** — `App.jsx` already `lazy()`-loads every page; `animejs` is a dynamic
+      `import()`. *Remaining micro-win:* make `xlsx` (~1 MB) and `jspdf` dynamic-only.
+- [x] **CDN** — free from decisions already made (Cloudflare in front + client app on a cloud static host)
+
+### ❌ Not needed at this scale
+- **Load balancer** — one instance, ~15 shipments/hour. Revisit only when a 2nd instance is added,
+  which is also the moment `rate-limit-redis` becomes mandatory (per-process counters would multiply
+  the effective rate limits).
+
+### Higher-impact additions (weren't on the original list)
+1. 🔴 **Dashboard polling is the biggest self-inflicted load.** `ClientsSection` (and peers) run
+   `setInterval(fetch…, 8000)` — every section × every logged-in admin, continuously, worsening as
+   tables grow. Raise to 15–30 s, poll only the visible section, or add ETag/304 conditional requests.
+2. **Postgres config tuning** — defaults are very conservative; set `shared_buffers` / `work_mem` /
+   `effective_cache_size` for a 16 GB host.
+3. **`trust proxy` + Redis-backed rate limits** — DEPLOYMENT-NAS.md §3 Layer 4. Security rather than
+   performance, but essential once the endpoints are public.
+
+### Recommended order
+pagination → DB indexes (incl. FKs) → image pipeline → payload compression → polling interval →
+cache the two analytics endpoints. Everything after that is polish.
+
 ## Full roadmap (the friend + user's original list — reference)
 **Backend (focus):**
 1. Cleaner notification integration · 2. Reset password in profile · 3. Profile picture change · 4. Notify driver via WhatsApp, one-time-use · 5. Send PDF invoice to WhatsApp · 6. Integrate client side to backend · 7. Security, rate limiter, etc. · 8. Bug: pengiriman section opens shipment detail without clicking (mostly frontend) · 9. Failed shipments excluded from faktur · 10. Super-admin vs admin roles.
