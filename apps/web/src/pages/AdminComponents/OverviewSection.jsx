@@ -18,6 +18,19 @@ const ADMIN_ROLE_LABELS = {
   PIC_GUDANG: 'PIC Gudang',
 }
 
+// Role-group tabs for the activity feed — keeps Super Admin, operations, and pipeline
+// actions in separate views instead of one combined feed.
+const ROLE_TABS = [
+  { key: 'ops', label: 'Operasional', roles: 'OPERATIONS,SUPPORT' },
+  { key: 'pipeline', label: 'Pipeline', roles: 'KEPALA_ARMADA,PIC_PABRIK,PIC_GUDANG' },
+  { key: 'super', label: 'Super Admin', roles: 'SUPERADMIN' },
+]
+const ROLE_TAB_SUBTITLE = {
+  ops: 'Aktivitas admin operasional.',
+  pipeline: 'Aktivitas peran pipeline (Armada & PIC).',
+  super: 'Aktivitas Super Admin.',
+}
+
 // Map an AdminAuditLog actionType to a timeline icon + colors. Order matters:
 // specific cases (create/delete/verify/send/reset) before the generic update/assign.
 const ACTIVITY_VISUALS = [
@@ -132,13 +145,15 @@ export default function OverviewSection({ onChangeNav, onNavigateToShipment, use
   const [activityTotal, setActivityTotal] = useState(0)
   const [adminOptions, setAdminOptions] = useState([])
   const [filterAdminId, setFilterAdminId] = useState('')
+  const [roleTab, setRoleTab] = useState('ops')
 
   async function loadActivities({ append = false } = {}) {
     setActivityLoading(true)
     try {
       const offset = append ? activities.length : 0
+      const activeTab = ROLE_TABS.find((t) => t.key === roleTab) || ROLE_TABS[0]
       const data = await auditLogsAPI.list({
-        scope: 'normal',
+        role: activeTab.roles,
         limit: ACTIVITY_LIMIT,
         offset,
         ...(filterAdminId ? { adminId: filterAdminId } : {}),
@@ -157,13 +172,14 @@ export default function OverviewSection({ onChangeNav, onNavigateToShipment, use
   useEffect(() => {
     if (isSuperAdmin) loadActivities({ append: false })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSuperAdmin, filterAdminId])
+  }, [isSuperAdmin, filterAdminId, roleTab])
 
-  // Populate the filter dropdown with normal admins (SUPERADMIN only).
+  // Populate the filter dropdown with all admins (SUPERADMIN only); the dropdown is
+  // narrowed to the active role tab at render time.
   useEffect(() => {
     if (!isSuperAdmin) return
     adminsAPI.list()
-      .then((data) => setAdminOptions((data.admins || []).filter((a) => a.role !== 'SUPERADMIN')))
+      .then((data) => setAdminOptions(data.admins || []))
       .catch(() => { /* non-fatal: dropdown just stays empty */ })
   }, [isSuperAdmin])
 
@@ -334,9 +350,21 @@ export default function OverviewSection({ onChangeNav, onNavigateToShipment, use
                 </div>
               </div>
 
-              <p className="text-xs text-gray-400 mt-2 mb-3">Aktivitas seluruh admin (selain Super Admin).</p>
+              {/* Role-group tabs — separate Super Admin / Operasional / Pipeline */}
+              <div className="flex items-center gap-1 mt-2 mb-2 bg-gray-100 rounded-xl p-1">
+                {ROLE_TABS.map((t) => (
+                  <button
+                    key={t.key}
+                    onClick={() => { setRoleTab(t.key); setFilterAdminId('') }}
+                    className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-bold transition-colors ${roleTab === t.key ? 'bg-white text-[#002442] shadow-sm' : 'text-gray-500 hover:text-[#002442]'}`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-gray-400 mb-3">{ROLE_TAB_SUBTITLE[roleTab]}</p>
 
-              {/* Filter by admin name */}
+              {/* Filter by admin name (within the active role tab) */}
               <div className="relative mb-5">
                 <Icon name="filter_list" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                 <select
@@ -345,9 +373,11 @@ export default function OverviewSection({ onChangeNav, onNavigateToShipment, use
                   className="w-full appearance-none border border-gray-200 rounded-xl pl-9 pr-8 py-2 text-sm font-medium text-[#002442] bg-gray-50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-dash-secondary/20 focus:border-dash-secondary outline-none transition-all cursor-pointer"
                 >
                   <option value="">Semua Admin</option>
-                  {adminOptions.map((a) => (
-                    <option key={a.id} value={a.id}>{a.fullName}</option>
-                  ))}
+                  {adminOptions
+                    .filter((a) => (ROLE_TABS.find((t) => t.key === roleTab)?.roles || '').split(',').includes(a.role))
+                    .map((a) => (
+                      <option key={a.id} value={a.id}>{a.fullName}</option>
+                    ))}
                 </select>
                 <Icon name="expand_more" size={18} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
               </div>

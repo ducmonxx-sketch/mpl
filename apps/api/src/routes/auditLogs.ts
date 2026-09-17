@@ -28,6 +28,11 @@ router.get("/", authenticate, adminOnly, requirePermission("admin:manage"), asyn
   try {
     const scope = String(req.query.scope ?? "all")
     const adminId = req.query.adminId ? String(req.query.adminId) : undefined
+    // Optional explicit role filter (comma-separated), e.g. ?role=OPERATIONS,SUPPORT or
+    // ?role=SUPERADMIN. Takes precedence over `scope` so the feed can be split per role group.
+    const roleList = req.query.role
+      ? String(req.query.role).split(",").map((r) => r.trim()).filter(Boolean)
+      : undefined
 
     const rawLimit = Number(req.query.limit)
     const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(Math.trunc(rawLimit), 1), MAX_LIMIT) : DEFAULT_LIMIT
@@ -36,7 +41,11 @@ router.get("/", authenticate, adminOnly, requirePermission("admin:manage"), asyn
 
     const where = {
       ...(adminId ? { adminId } : {}),
-      ...(scope === "normal" ? { admin: { role: { in: NORMAL_ROLES as any } } } : {}),
+      ...(roleList
+        ? { admin: { role: { in: roleList as any } } }
+        : scope === "normal"
+        ? { admin: { role: { in: NORMAL_ROLES as any } } }
+        : {}),
     }
 
     const [logs, total] = await Promise.all([
