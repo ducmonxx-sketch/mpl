@@ -236,13 +236,13 @@ than a full disk.
   available" state instead of a broken image.
 - **Dry-run first, and keep it idempotent.** RAID 1 mirrors a bad delete to both disks instantly, so
   run it in report-only mode until the file set it selects looks correct.
-- 🔴 **Edge case that now needs a decision: purge by upload date vs shipment completion.** "14 days
-  from upload" means a shipment still in progress after 14 days loses its *earlier* photos — e.g.
-  plant-check photos vanish before handover, so PIC Gudang can't compare condition at the gudang
-  step. **This used to be softened by permanent thumbnails; with all images purged there is no
-  fallback at all.** Options: purge strictly by upload date (simplest, as specified), or **exempt
-  shipments that haven't reached DELIVERED** (recommended — it protects in-flight work without
-  changing the 14-day rule for completed shipments).
+- ⏭️ **Purge-window edge case — deferred to the last-mile phase.** "14 days from upload" means a
+  shipment still in progress after 14 days loses its *earlier* photos (plant-check photos vanish
+  before the gudang comparison step), with **no thumbnail fallback** now that all tiers are purged.
+  This only becomes material once the journey extends to the client's door and shipments routinely
+  exceed two weeks — so the decision is queued with that work, where the real end-to-end lead time
+  will be known. See **[DEV-PLAN.md](DEV-PLAN.md) → "Last-mile leg: Gudang MPL → client's door"**.
+  **Interim behaviour: purge strictly by upload date, as specified.**
 
 **Still applies if row deletion is ever considered (not planned):**
 - **FK-safe delete order** — shipments cascade into `ShipmentEvent`, `PlantCheck`/LKU/KSU and

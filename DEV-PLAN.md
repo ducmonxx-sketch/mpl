@@ -333,6 +333,48 @@ Velocity/safety investments, separate from feature work. Tier-2 primitives overl
 - [ ] `npm audit` in CI + a pre-commit hook running typecheck/lint locally.
 - [ ] Optional: error tracking (Sentry) + basic request logging/metrics.
 
+## 🚧 Next planned — Last-mile leg: Gudang MPL → client's door (DESIGN ONLY, not built)
+> Queued 2026-09-17. This is the **second half of the shipment journey.** Today the pipeline ends at
+> the warehouse (Transit → Diterima → Diturunkan → Selesai — the Kepala Gudang leg). The outbound leg
+> **from Gudang MPL to the client's door** does not exist yet.
+
+**Why it's its own phase:** it extends the shipment lifecycle, adds at least one new (likely remote)
+role, adds client-visible states, and adds a second round of proof photos — so it touches schema,
+RBAC, the client dashboard and the image pipeline all at once.
+
+### Scope sketch (to design, not locked)
+- **New outbound statuses** after the gudang leg — e.g. ready-to-dispatch → out-for-delivery →
+  received-by-client → final Selesai. ⚠️ `ShipmentStatus` is a **shared contract**: enum + migration
+  + client-visible labels, and `statusFlow.ts`, frontend `FORWARD_STATUS` / `mapStatus`, badges and
+  filter tabs all follow. Coordinate with the friend's agent.
+- **New role(s)** for the delivery leg (courier / last-mile PIC). Likely **remote**, so they also need
+  a Cloudflare Access allowlist entry (DEPLOYMENT-NAS.md §3 Layer 3) plus sidebar + RBAC gating.
+- **Client-visible tracking** — the outbound leg is the part clients actually care about.
+  ⚠️ `TrackingSection` is a shared client+admin contract (see CLAUDE.md scope note).
+- **Proof of delivery at the door** — photo and/or signature capture. Routes through
+  `lib/upload.ts` → `saveUpload`, so it inherits the §2.3 image pipeline automatically.
+
+### 🔴 Decision to settle in this phase — the image purge window
+Carried over from **DEPLOYMENT-NAS.md §2.4**: images are purged **14 days from upload**, and *all*
+tiers go (no thumbnail fallback). That's fine while a shipment completes inside two weeks.
+
+**This leg is exactly what breaks that assumption.** Once the journey is plant → warehouse → client's
+door, a shipment can easily run **longer than 14 days**, and then:
+- plant-check photos disappear before the gudang comparison step, and
+- gudang photos could disappear before final delivery / POD,
+
+with **no thumbnail left** to compare against.
+
+Options — decide here, with real end-to-end lead times in hand:
+1. **Purge strictly by upload date** (simplest, matches the stated rule) — accept that long shipments
+   lose earlier evidence mid-journey. *(Current interim behaviour.)*
+2. **Exempt shipments not yet in a final state** — purge 14 days after *completion* rather than
+   upload. Protects in-flight work while keeping the 14-day rule for finished shipments. **(Recommended.)**
+3. **Hybrid** — purge by upload date, but retain while the shipment is still open, whichever is longer.
+
+The deciding input is the **end-to-end lead time for the full journey**; that number doesn't exist
+until this leg is built, which is why the decision is queued here rather than in the deployment plan.
+
 ## Performance & scale checklist — internet-facing, 130k shipments/yr
 > Added 2026-09-17. Each item was checked against the real stack, not assumed. Sizing basis:
 > [DEPLOYMENT-NAS.md](DEPLOYMENT-NAS.md) §2.2.
