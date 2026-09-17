@@ -122,7 +122,7 @@ Basis: **650k shipments** total (~356/day).
 → **~4.5 GB/year → ~23 GB at 5 years.** Budget a **60 GB** DB volume. Trivial for Postgres.
 
 **Files — sized against the decisions in §2.3 + §2.4** (WebP full-size, no resize, **14-day**
-retention with an off-server archive; thumbnails kept permanently):
+retention with an off-server archive; **all images purged at 14 days**):
 
 | Tier | Per photo | Per shipment (4) | Per day | Retained | Steady-state |
 |---|---|---|---|---|---|
@@ -236,11 +236,13 @@ than a full disk.
   available" state instead of a broken image.
 - **Dry-run first, and keep it idempotent.** RAID 1 mirrors a bad delete to both disks instantly, so
   run it in report-only mode until the file set it selects looks correct.
-- ⚠️ **Edge case to decide: purge by upload date vs shipment completion.** "14 days from upload"
-  means a shipment still in progress after 14 days loses its *earlier* photos (e.g. plant-check
-  photos vanish before handover, so they can't be compared at the gudang step). Mitigated by
-  permanent thumbnails, but worth an explicit choice: purge strictly by upload date (simplest, as
-  specified), or exempt shipments that haven't reached DELIVERED yet.
+- 🔴 **Edge case that now needs a decision: purge by upload date vs shipment completion.** "14 days
+  from upload" means a shipment still in progress after 14 days loses its *earlier* photos — e.g.
+  plant-check photos vanish before handover, so PIC Gudang can't compare condition at the gudang
+  step. **This used to be softened by permanent thumbnails; with all images purged there is no
+  fallback at all.** Options: purge strictly by upload date (simplest, as specified), or **exempt
+  shipments that haven't reached DELIVERED** (recommended — it protects in-flight work without
+  changing the 14-day rule for completed shipments).
 
 **Still applies if row deletion is ever considered (not planned):**
 - **FK-safe delete order** — shipments cascade into `ShipmentEvent`, `PlantCheck`/LKU/KSU and
