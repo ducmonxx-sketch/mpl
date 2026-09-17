@@ -76,6 +76,43 @@ async function call(name, method, path, { token, body, expect = [200, 201] } = {
   }
   if (EVENT) await call('PATCH /tracking/events/:id', 'PATCH', `/api/tracking/events/${EVENT}`, { token: ADMIN, body: { status: 'DONE' } })
 
+  // plant-check → handover → condition-analytics (Kepala Armada → Kepala Gudang pipeline)
+  const ship2 = await call('POST /shipments (client, pipeline)', 'POST', '/api/shipments', { token: CLIENT, body: { packageType: 'Unit', weightKg: 120, serviceLevel: 'Darat', originLocation: 'Jakarta', destinationLocation: 'Semarang', shippingCategory: 'Unit' }, expect: [201] })
+  const SHIP2 = ship2.json.shipment?.id
+  if (SHIP2 && DRIVER && VEHICLE) await call('PATCH /shipments/:id/assign (pipeline)', 'PATCH', `/api/shipments/${encodeURIComponent(SHIP2)}/assign`, { token: ADMIN, body: { driverId: DRIVER, vehicleId: VEHICLE } })
+  if (SHIP2) await call('PATCH /shipments/:id/status (-> AT_PLANT)', 'PATCH', `/api/shipments/${encodeURIComponent(SHIP2)}/status`, { token: ADMIN, body: { status: 'AT_PLANT' } })
+  if (SHIP2) {
+    await call('PATCH /shipments/:id/plant-check', 'PATCH', `/api/shipments/${encodeURIComponent(SHIP2)}/plant-check`, {
+      token: ADMIN,
+      body: {
+        dataPengiriman: [{ tipeMotor: 'Honda Beat', jumlah: 2, satuan: 'unit' }],
+        lku: [
+          { tipeMotor: 'Honda Beat', noMesin: `M${rnd}A`, noRangka: `R${rnd}A`, warna: 'Merah' },
+          { tipeMotor: 'Honda Beat', noMesin: `M${rnd}B`, noRangka: `R${rnd}B`, warna: 'Hitam' },
+        ],
+      },
+    })
+  }
+  if (SHIP2) await call('PATCH /shipments/:id/status (-> DITERIMA)', 'PATCH', `/api/shipments/${encodeURIComponent(SHIP2)}/status`, { token: ADMIN, body: { status: 'DITERIMA' } })
+  if (SHIP2) await call('PATCH /shipments/:id/status (-> DITURUNKAN)', 'PATCH', `/api/shipments/${encodeURIComponent(SHIP2)}/status`, { token: ADMIN, body: { status: 'DITURUNKAN' } })
+  if (SHIP2) {
+    const detail = await call('GET /shipments/:id (fetch LKU ids)', 'GET', `/api/shipments/${encodeURIComponent(SHIP2)}`, { token: ADMIN })
+    const lkuRows = detail.json.shipment?.plantCheck?.lku || []
+    const lkuUpdates = lkuRows.map((r, i) => ({ id: r.id, arrivedDefective: i === 0, arrivalNote: i === 0 ? 'Lecet saat bongkar' : null }))
+    await call('PATCH /shipments/:id/handover (with lkuUpdates)', 'PATCH', `/api/shipments/${encodeURIComponent(SHIP2)}/handover`, { token: ADMIN, body: { catatanGudangPenerima: 'Smoke handover', lkuUpdates } })
+  }
+  await call('GET /shipments/condition-analytics', 'GET', '/api/shipments/condition-analytics?range=month', { token: ADMIN })
+  await call('GET /shipments/condition-analytics?category=Unit', 'GET', '/api/shipments/condition-analytics?range=month&category=Unit', { token: ADMIN })
+  await call('GET /shipments/condition-analytics?category=Cargo', 'GET', '/api/shipments/condition-analytics?range=month&category=Cargo', { token: ADMIN })
+
+  // status guard on /handover: a regular (non-override) admin may not handover a shipment
+  // that hasn't reached TRANSIT/DITURUNKAN yet (PENDING → DELIVERED is not a forward move).
+  const ops = await call('POST /auth/admin/login (ops)', 'POST', '/api/auth/admin/login', { body: { email: 'ops@mpl.com', password: 'ops1234' }, expect: [200] })
+  const OPS = ops.json.token
+  const ship3 = await call('POST /shipments (client, guard check)', 'POST', '/api/shipments', { token: CLIENT, body: { packageType: 'Unit', weightKg: 100, serviceLevel: 'Darat', originLocation: 'Jakarta', destinationLocation: 'Solo' }, expect: [201] })
+  const SHIP3 = ship3.json.shipment?.id
+  if (OPS && SHIP3) await call('PATCH /shipments/:id/handover (guard rejects PENDING -> 403)', 'PATCH', `/api/shipments/${encodeURIComponent(SHIP3)}/handover`, { token: OPS, body: { catatanGudangPenerima: 'x' }, expect: [403] })
+
   // notifications
   await call('GET /notifications', 'GET', '/api/notifications', { token: CLIENT })
   await call('GET /admin-notifications', 'GET', '/api/admin-notifications', { token: ADMIN })
@@ -113,6 +150,8 @@ async function call(name, method, path, { token, body, expect = [200, 201] } = {
   }
   let cleaned = 0
   if (SHIP)       cleaned += (await del(`/api/shipments/${encodeURIComponent(SHIP)}`)) ? 1 : 0
+  if (SHIP2)      cleaned += (await del(`/api/shipments/${encodeURIComponent(SHIP2)}`)) ? 1 : 0
+  if (SHIP3)      cleaned += (await del(`/api/shipments/${encodeURIComponent(SHIP3)}`)) ? 1 : 0
   if (DRIVER)     cleaned += (await del(`/api/fleet/drivers/${DRIVER}`)) ? 1 : 0
   if (VEHICLE)    cleaned += (await del(`/api/fleet/vehicles/${VEHICLE}`)) ? 1 : 0
   if (NEW_ID)     cleaned += (await del(`/api/users/${NEW_ID}`)) ? 1 : 0

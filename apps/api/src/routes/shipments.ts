@@ -112,6 +112,152 @@ router.get("/stats", authenticate, async (req: AuthRequest, res: Response) => {
   }
 })
 
+// ── GET /api/shipments/condition-analytics ────────────────────
+// Admin-only. Perfect-vs-defective unit counts for DELIVERED shipments, keyed off
+// completionDate. ?range=month|quarter|ytd (default month):
+//   - month/quarter: DAILY buckets, first date to last date of the covered month(s).
+//   - ytd: MONTHLY buckets, January through the current month.
+// ?category=all|Unit|Cargo|Container filters to one of the 3 service lines (default all).
+router.get("/condition-analytics", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+  try {
+    const { range = "month", category = "all" } = req.query
+    const now = new Date()
+    const monthLabels = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"]
+
+    let startDate: Date, endDate: Date
+    const granularity: "day" | "month" = range === "ytd" ? "month" : "day"
+    if (range === "ytd") {
+      startDate = new Date(now.getFullYear(), 0, 1)
+      endDate = now
+    } else {
+      const monthsBack = range === "quarter" ? 2 : 0
+      startDate = new Date(now.getFullYear(), now.getMonth() - monthsBack, 1)
+      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0) // last day of the current month
+    }
+
+    const shipments = await prisma.shipment.findMany({
+      where: {
+        status: "DELIVERED",
+        completionDate: { gte: startDate, lte: endDate },
+        ...(category !== "all" && { shippingCategory: category as string }),
+      },
+      select: {
+        completionDate: true,
+        plantCheck: { select: { lku: { select: { arrivedDefective: true } } } },
+      },
+    })
+
+    const keyFor = (d: Date) => granularity === "day"
+      ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+      : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+
+    const bucketMap = new Map<string, { unitsPerfect: number; unitsDefective: number }>()
+    for (const s of shipments) {
+      if (!s.completionDate) continue
+      const key = keyFor(s.completionDate)
+      const bucket = bucketMap.get(key) ?? { unitsPerfect: 0, unitsDefective: 0 }
+      for (const unit of s.plantCheck?.lku ?? []) {
+        if (unit.arrivedDefective) bucket.unitsDefective += 1
+        else bucket.unitsPerfect += 1
+      }
+      bucketMap.set(key, bucket)
+    }
+
+    // Days that haven't happened yet get `null`, not 0 — a real 0 means "no defects that
+    // day," but a future day has no data at all, and plotting it as 0 makes the line look
+    // like it crashes to the floor at today's date instead of simply not having a value yet.
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+
+    const buckets: { period: string; label: string; unitsPerfect: number | null; unitsDefective: number | null }[] = []
+    const cursor = new Date(startDate)
+    while (cursor <= endDate) {
+      const key = keyFor(cursor)
+      const isFuture = granularity === "day" && cursor > today
+      const counts = isFuture
+        ? { unitsPerfect: null, unitsDefective: null }
+        : (bucketMap.get(key) ?? { unitsPerfect: 0, unitsDefective: 0 })
+      const label = granularity === "day"
+        ? `${String(cursor.getDate()).padStart(2, "0")} ${monthLabels[cursor.getMonth()]} ${cursor.getFullYear()}`
+        : `${monthLabels[cursor.getMonth()]} ${cursor.getFullYear()}`
+      buckets.push({ period: key, label, ...counts })
+      if (granularity === "day") cursor.setDate(cursor.getDate() + 1)
+      else cursor.setMonth(cursor.getMonth() + 1)
+    }
+
+    res.json({ range, category, buckets })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to fetch condition analytics." })
+  }
+})
+
+// ── GET /api/shipments/condition-analytics/detail ──────────────
+// Admin-only. Drill-down for a single chart point: which shipments made up that
+// bucket's perfect/defective counts. ?period=YYYY-MM-DD (day bucket) or YYYY-MM
+// (month bucket, from the YTD view) — same `period` value the chart already carries
+// per point. ?category=all|Unit|Cargo|Container, matching /condition-analytics.
+router.get("/condition-analytics/detail", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+  try {
+    const { period, category = "all" } = req.query
+    if (typeof period !== "string" || !/^\d{4}-\d{2}(-\d{2})?$/.test(period)) {
+      return res.status(400).json({ message: "Parameter period tidak valid." })
+    }
+
+    let startDate: Date, endDate: Date
+    if (period.length === 7) {
+      // Month bucket (YYYY-MM) — whole calendar month.
+      const [y, m] = period.split("-").map(Number)
+      startDate = new Date(y, m - 1, 1)
+      endDate = new Date(y, m, 0, 23, 59, 59, 999)
+    } else {
+      // Day bucket (YYYY-MM-DD) — that single day.
+      const [y, m, d] = period.split("-").map(Number)
+      startDate = new Date(y, m - 1, d)
+      endDate = new Date(y, m - 1, d, 23, 59, 59, 999)
+    }
+
+    const where = {
+      status: "DELIVERED" as const,
+      completionDate: { gte: startDate, lte: endDate },
+      ...(category !== "all" && { shippingCategory: category as string }),
+    }
+
+    const [total, shipments] = await Promise.all([
+      prisma.shipment.count({ where }),
+      prisma.shipment.findMany({
+        where,
+        take: 200,
+        orderBy: { completionDate: "asc" },
+        select: {
+          id: true,
+          destinationLocation: true,
+          shippingCategory: true,
+          client: { select: { fullName: true, companyName: true } },
+          plantCheck: { select: { lku: { select: { tipeMotor: true, noRangka: true, arrivedDefective: true, arrivalNote: true } } } },
+        },
+      }),
+    ])
+
+    const result = shipments.map(s => {
+      const units = s.plantCheck?.lku ?? []
+      return {
+        id: s.id,
+        client: s.client?.companyName || s.client?.fullName || "-",
+        destination: s.destinationLocation,
+        shippingCategory: s.shippingCategory,
+        unitsPerfect: units.filter(u => !u.arrivedDefective).length,
+        unitsDefective: units.filter(u => u.arrivedDefective).length,
+        units,
+      }
+    })
+
+    res.json({ period, category, total, shipments: result })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to fetch condition analytics detail." })
+  }
+})
+
 // ── GET /api/shipments/:id ────────────────────────────────────
 router.get("/:id", authenticate, async (req: AuthRequest, res: Response) => {
   try {
@@ -463,39 +609,73 @@ router.patch("/:id/plant-check", authenticate, adminOnly, async (req: AuthReques
 })
 
 // ── PATCH /api/shipments/:id/handover ──────────────────────────
-// PIC Kepala Gudang completes handover
+// PIC Kepala Gudang completes handover (DITURUNKAN → DELIVERED).
+// Body also accepts:
+//   lkuUpdates: [{ id, arrivedDefective, arrivalNote }]  — arrival condition per unit,
+//   ticked against the shipment's existing PlantCheckLku rows (created earlier by
+//   Pengurus Pabrik at plant-check). Feeds the condition-analytics chart.
 router.patch("/:id/handover", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
   try {
+    const id = String(req.params.id)
     const { serahTerimaUrl, handoverNotes, catatanPlantPengirim, catatanGudangPenerima } = req.body
+    const lkuUpdates = Array.isArray(req.body.lkuUpdates) ? req.body.lkuUpdates : []
+
     const existing = await prisma.shipment.findUnique({
-      where:  { id: req.params.id as string },
-      select: { driverId: true, vehicleId: true },
+      where:  { id },
+      select: { status: true, driverId: true, vehicleId: true, plantCheck: { select: { lku: { select: { id: true } } } } },
     })
-    const shipment = await prisma.shipment.update({
-      where: { id: req.params.id as string },
-      data: {
-        serahTerimaUrl:        serahTerimaUrl ?? undefined,
-        handoverNotes:         handoverNotes ?? undefined,
-        catatanPlantPengirim:  catatanPlantPengirim ?? null,
-        catatanGudangPenerima: catatanGudangPenerima ?? null,
-        status: "DELIVERED",
-        completionDate: new Date(),
-        currentProgressPercent: 100,
-        lastUpdatedByAdminId: req.user!.id,
-      },
-    })
+    if (!existing) {
+      return res.status(404).json({ message: "Pengiriman tidak ditemukan." })
+    }
+
+    if (!canChangeStatus(req.user!.role, "shipment", existing.status, "DELIVERED")) {
+      return res.status(403).json({
+        message: `Hanya Super Admin yang dapat mengubah status dari ${existing.status} ke DELIVERED.`,
+      })
+    }
+
+    // Ownership check: only accept lkuUpdates ids that actually belong to this shipment's plant check.
+    const validLkuIds = new Set((existing.plantCheck?.lku ?? []).map(r => r.id))
+    const invalidId = (lkuUpdates as any[]).find(r => !validLkuIds.has(r?.id))
+    if (invalidId) {
+      return res.status(400).json({ message: "Data unit tidak valid untuk pengiriman ini." })
+    }
+
+    const [shipment] = await prisma.$transaction([
+      prisma.shipment.update({
+        where: { id },
+        data: {
+          serahTerimaUrl:        serahTerimaUrl ?? undefined,
+          handoverNotes:         handoverNotes ?? undefined,
+          catatanPlantPengirim:  catatanPlantPengirim ?? null,
+          catatanGudangPenerima: catatanGudangPenerima ?? null,
+          status: "DELIVERED",
+          completionDate: new Date(),
+          currentProgressPercent: 100,
+          lastUpdatedByAdminId: req.user!.id,
+        },
+      }),
+      ...(lkuUpdates as any[]).map(r => prisma.plantCheckLku.update({
+        where: { id: r.id },
+        data: {
+          arrivedDefective: Boolean(r.arrivedDefective),
+          arrivalNote:      r.arrivalNote ?? null,
+        },
+      })),
+    ])
 
     // Free the driver + vehicle via the shared mirror — group-aware, so it won't free them
     // while a linked sibling shipment is still active.
-    await mirrorFleetStatus("DELIVERED", existing?.driverId, existing?.vehicleId, String(req.params.id))
+    await mirrorFleetStatus("DELIVERED", existing.driverId, existing.vehicleId, id)
 
+    const defectiveCount = (lkuUpdates as any[]).filter(r => r.arrivedDefective).length
     await prisma.adminAuditLog.create({
       data: {
         adminId: req.user!.id,
         actionType: "UPDATE_STATUS",
         targetTable: "shipments",
         targetRecordId: shipment.id,
-        changesSummary: `Completed Handover. Status -> DELIVERED`,
+        changesSummary: `Completed Handover (${defectiveCount}/${lkuUpdates.length} unit rusak saat tiba). Status -> DELIVERED`,
       }
     })
 
@@ -605,10 +785,16 @@ router.patch("/:id/status", authenticate, adminOnly, async (req: AuthRequest, re
 })
 
 // ── DELETE /api/shipments/:id ────────────────────────────────
-// Regular admins may only delete a STANDBY shipment; SUPERADMIN may delete any status.
+// OPERATIONS admins may only delete a STANDBY shipment; SUPERADMIN may delete any status.
+// Field roles (KEPALA_ARMADA, PIC_PABRIK, PIC_GUDANG) and SUPPORT may not delete shipments at all.
 // Frees the assigned driver + armada and removes tracking events (cascade).
 router.delete("/:id", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
   try {
+    const isSuperAdmin = req.user!.role === "SUPERADMIN"
+    if (!isSuperAdmin && req.user!.role !== "OPERATIONS") {
+      return res.status(403).json({ message: "Anda tidak memiliki izin untuk menghapus pengiriman." })
+    }
+
     const id = String(req.params.id)
     const scope = String(req.query.scope || "single")  // "single" | "group"
     const existing = await prisma.shipment.findUnique({
@@ -618,8 +804,6 @@ router.delete("/:id", authenticate, adminOnly, async (req: AuthRequest, res: Res
     if (!existing) {
       return res.status(404).json({ message: "Pengiriman tidak ditemukan." })
     }
-
-    const isSuperAdmin = req.user!.role === "SUPERADMIN"
 
     // "Hapus Semua Pengiriman Terhubung" — delete the whole linked group.
     if (scope === "group" && existing.linkGroupId) {

@@ -29,6 +29,13 @@ export default {
                 lg: "0.5rem",
                 xl: "0.75rem",
             },
+            transitionDuration: {
+                // Unified motion scale — use these instead of ad hoc duration-XXX values.
+                fast: "150ms",   // micro-interactions: icon/color hover
+                base: "300ms",   // default UI transitions (most hover states)
+                slow: "500ms",   // section-level reveals, overlay fades
+                zoom: "2000ms",  // deliberate slow photo hover-zoom (hero/about images)
+            },
         },
     },
     plugins: [],

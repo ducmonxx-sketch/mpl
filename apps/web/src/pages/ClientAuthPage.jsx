@@ -105,7 +105,7 @@ export default function ClientAuthPage() {
       <div className="auth-bg" aria-hidden="true">
         <img
           className="auth-bg__img"
-          src="/fresh_logistics_bg.png"
+          src="/fresh_logistics_bg.webp"
           alt=""
           loading="eager"
           fetchPriority="high"

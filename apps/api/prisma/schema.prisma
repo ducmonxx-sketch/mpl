@@ -172,6 +172,7 @@ model User {
   npwp               String?
   avatarKey          String?            // storage key for profile picture (see lib/storage)
   verificationStatus VerificationStatus @default(PENDING)
+  isMainPic          Boolean            @default(false) // designated main PIC among accounts sharing a companyName
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
@@ -352,6 +353,7 @@ model Shipment {
   plantCheck PlantCheck?
 
   @@index([linkGroupId])
+  @@index([status, completionDate])
   @@map("shipments")
 }
 
@@ -400,6 +402,11 @@ model PlantCheckLku {
   noRangka     String?
   warna        String?
   itemDefect   String?
+
+  // --- Set by Kepala Gudang at handover (arrival condition, distinct from
+  // itemDefect which is the pre-departure Pengurus Pabrik note) ---
+  arrivedDefective Boolean @default(false)
+  arrivalNote      String?
 
   @@map("plant_check_lku")
 }

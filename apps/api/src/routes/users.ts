@@ -14,7 +14,7 @@ import { Router, Response } from "express"
 import bcrypt from "bcrypt"
 import crypto from "crypto"
 import prisma from "../lib/prisma"
-import { authenticate, adminOnly, clientManagerOnly, AuthRequest } from "../middleware/auth"
+import { authenticate, adminOnly, clientManagerOnly, requireRole, AuthRequest } from "../middleware/auth"
 import { uploadImageField, saveUpload, deleteUpload } from "../lib/upload"
 import { getStorage } from "../lib/storage"
 
@@ -37,6 +37,7 @@ router.get("/", authenticate, adminOnly, async (req: AuthRequest, res: Response)
         address:            true,
         npwp:               true,
         verificationStatus: true,
+        isMainPic:          true,
         createdAt:          true,
         verifiedByAdmin:    { select: { fullName: true } },
         _count:             { select: { shipments: true } },
@@ -284,6 +285,53 @@ router.patch("/:id/verify", authenticate, adminOnly, async (req: AuthRequest, re
   } catch (err) {
     console.error(err)
     res.status(500).json({ message: "Failed to verify user." })
+  }
+})
+
+// ── PATCH /api/users/:id/set-main-pic ─────────────────────────
+// SUPERADMIN only: designate this account as the main PIC for its company.
+// Unsets isMainPic on every other account sharing the same companyName first,
+// so a company always has at most one main PIC.
+router.patch("/:id/set-main-pic", authenticate, requireRole("SUPERADMIN"), async (req: AuthRequest, res: Response) => {
+  try {
+    const target = await prisma.user.findUnique({
+      where:  { id: req.params.id as string },
+      select: { id: true, fullName: true, companyName: true },
+    })
+
+    if (!target) {
+      return res.status(404).json({ message: "User not found." })
+    }
+    if (!target.companyName) {
+      return res.status(400).json({ message: "This account has no company to be the main PIC of." })
+    }
+
+    const [, user] = await prisma.$transaction([
+      prisma.user.updateMany({
+        where: { companyName: target.companyName, NOT: { id: target.id } },
+        data:  { isMainPic: false },
+      }),
+      prisma.user.update({
+        where:  { id: target.id },
+        data:   { isMainPic: true },
+        select: { id: true, fullName: true, email: true, companyName: true, isMainPic: true },
+      }),
+    ])
+
+    await prisma.adminAuditLog.create({
+      data: {
+        adminId:        req.user!.id,
+        actionType:     "UPDATE_USER",
+        targetTable:    "users",
+        targetRecordId: user.id,
+        changesSummary: `Set ${user.fullName} as main PIC for ${user.companyName}`,
+      },
+    })
+
+    res.json({ message: `${user.fullName} is now the main PIC.`, user })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to set main PIC." })
   }
 })
 
@@ -647,16 +695,29 @@ router.delete("/:id", authenticate, adminOnly, async (req: AuthRequest, res: Res
 
     const user = await prisma.user.findUnique({
       where:  { id },
-      select: { id: true, email: true },
+      select: { id: true, email: true, companyName: true, isMainPic: true },
     })
 
     if (!user) {
       return res.status(404).json({ message: "User not found." })
     }
 
+    // If the deleted account was the company's main PIC, promote the next
+    // earliest-created remaining account so the company isn't left without one.
+    let promoted: string | null = null
+    if (user.isMainPic && user.companyName) {
+      const next = await prisma.user.findFirst({
+        where:   { companyName: user.companyName, NOT: { id } },
+        orderBy: { createdAt: "asc" },
+        select:  { id: true },
+      })
+      promoted = next?.id ?? null
+    }
+
     await prisma.$transaction([
       prisma.shipment.deleteMany({ where: { clientId: id } }),
       prisma.user.delete({ where: { id } }),
+      ...(promoted ? [prisma.user.update({ where: { id: promoted }, data: { isMainPic: true } })] : []),
     ])
 
     await prisma.adminAuditLog.create({

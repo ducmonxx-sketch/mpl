@@ -1,55 +1,42 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import anime from 'animejs'
 import { env } from '../../lib/env.js'
 import { Mail, MessageCircle } from 'lucide-react'
+import { MOTION } from '../../lib/motion.js'
+import { useScrollTriggeredTimeline } from '../../hooks/useScrollTriggeredTimeline'
 
 export default function CTASection() {
-    const sectionRef = useRef(null)
-    const animatedRef = useRef(false)
-
     useEffect(() => {
         // Initial hidden state for the container and its children
         anime.set('.cta-container', { opacity: 0, scale: 0.95, translateY: 40 })
         anime.set('.cta-item', { opacity: 0, translateX: -20 })
         anime.set('.cta-map', { opacity: 0, scale: 0.9 })
-
-        const observer = new IntersectionObserver(
-            (entries) => {
-                entries.forEach((entry) => {
-                    if (entry.isIntersecting && !animatedRef.current) {
-                        animatedRef.current = true
-
-                        const tl = anime.timeline({ easing: 'spring(1, 120, 12, 0)', duration: 400 })
-
-                        // Pop the glass container in
-                        tl.add({
-                            targets: '.cta-container',
-                            opacity: [0, 1],
-                            scale: [0.95, 1],
-                            translateY: [40, 0],
-                        })
-                        // Stagger the text and buttons on the left
-                        .add({
-                            targets: '.cta-item',
-                            opacity: [0, 1],
-                            translateX: [-20, 0],
-                            delay: anime.stagger(60),
-                        }, '-=300')
-                        // Pop the map in on the right
-                        .add({
-                            targets: '.cta-map',
-                            opacity: [0, 1],
-                            scale: [0.9, 1],
-                        }, '-=400')
-                    }
-                })
-            },
-            { threshold: 0.2 }
-        )
-
-        if (sectionRef.current) observer.observe(sectionRef.current)
-        return () => observer.disconnect()
     }, [])
+
+    const sectionRef = useScrollTriggeredTimeline(() => {
+        const tl = anime.timeline({ easing: 'easeOutCubic', duration: MOTION.stagger })
+
+        // Pop the glass container in
+        tl.add({
+            targets: '.cta-container',
+            opacity: [0, 1],
+            scale: [0.95, 1],
+            translateY: [40, 0],
+        })
+        // Stagger the text and buttons on the left
+        .add({
+            targets: '.cta-item',
+            opacity: [0, 1],
+            translateX: [-20, 0],
+            delay: anime.stagger(40),
+        }, `-=${MOTION.stagger - 50}`)
+        // Pop the map in on the right
+        .add({
+            targets: '.cta-map',
+            opacity: [0, 1],
+            scale: [0.9, 1],
+        }, `-=${MOTION.stagger}`)
+    }, { threshold: 0.2 })
 
     return (
         <section className="relative overflow-hidden bg-primary py-24 lg:py-32" id="contact" ref={sectionRef}>
@@ -89,12 +76,12 @@ export default function CTASection() {
                                     href={env.VITE_WHATSAPP_LINK}
                                     target="_blank" 
                                     rel="noopener noreferrer"
-                                    className="cta-item group relative flex h-14 w-full sm:w-auto min-w-[220px] items-center justify-center gap-3 overflow-hidden rounded-xl bg-secondary px-6 text-base font-bold text-primary shadow-[0_0_40px_rgba(255,204,0,0.2)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_60px_rgba(255,204,0,0.4)]"
+                                    className="cta-item group relative flex h-14 w-full sm:w-auto min-w-[220px] items-center justify-center gap-3 overflow-hidden rounded-xl bg-secondary px-6 text-base font-bold text-primary shadow-[0_0_40px_rgba(255,204,0,0.2)] transition-all duration-base hover:-translate-y-1 hover:shadow-[0_0_60px_rgba(255,204,0,0.4)]"
                                 >
-                                    <MessageCircle size={20} strokeWidth={2.5} className="transition-transform duration-300 group-hover:scale-110" />
+                                    <MessageCircle size={20} strokeWidth={2.5} className="transition-transform duration-base group-hover:scale-110" />
                                     <span>Chat WhatsApp</span>
                                     {/* Shiny sweep effect */}
-                                    <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/40 to-transparent transition-transform duration-[800ms] group-hover:translate-x-full"></div>
+                                    <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/40 to-transparent transition-transform duration-slow group-hover:translate-x-full"></div>
                                 </a>
                             </div>
                         </div>
@@ -104,7 +91,7 @@ export default function CTASection() {
                             {/* Grayscale filter applied to iframe, removed on hover */}
                             <iframe 
                                 src="https://maps.google.com/maps?q=PT%20Mahkota%20Putra%20Logistik&t=&z=15&ie=UTF8&iwloc=&output=embed" 
-                                className="w-full h-full border-0 grayscale-[40%] opacity-80 transition-all duration-500 group-hover:grayscale-0 group-hover:opacity-100"
+                                className="w-full h-full border-0 grayscale-[40%] opacity-80 transition-all duration-slow group-hover:grayscale-0 group-hover:opacity-100"
                                 allowFullScreen="" 
                                 loading="lazy" 
                                 referrerPolicy="no-referrer-when-downgrade"

@@ -94,7 +94,7 @@ export default function MagicLinkPage() {
         <div className="ml-card">
           <div className="ml-brand">
             <div className="ml-brand__logo">
-              <img src="/logo.png" alt="MPL Logo" onError={(e) => e.target.style.display = 'none'} />
+              <img src="/mpl_logo.webp" alt="MPL Logo" onError={(e) => e.target.style.display = 'none'} />
               <span className="ml-brand__logo-text">MPL LOGISTICS</span>
             </div>
             <h1 className="ml-brand__heading">Pendaftaran Akun</h1>

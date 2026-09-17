@@ -26,9 +26,13 @@ export default function Footer() {
                     <div>
                         <div className="flex items-center gap-3 mb-6">
                             <img
-                                src="/mpl_logo_proto.svg"
+                                src="/mpl_logo.webp"
                                 alt="PT Mahkota Putra Logistik Logo"
-                                className="h-10 w-10 rounded-lg object-contain bg-white/5 p-1 border border-white/10"
+                                className="h-14 w-14 object-contain"
+                                width="56"
+                                height="56"
+                                loading="lazy"
+                                decoding="async"
                             />
                             {/* Renamed to full company name as requested */}
                             <h3 className="text-xl font-display font-bold text-white tracking-wide">
@@ -40,14 +44,14 @@ export default function Footer() {
                         </p>
                         <div className="flex gap-4">
                             <a 
-                                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/5 border border-white/10 text-gray-400 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all duration-300" 
+                                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/5 border border-white/10 text-gray-400 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all duration-base" 
                                 href="#"
                                 aria-label="Website"
                             >
                                 <Globe size={18} />
                             </a>
                             <a 
-                                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/5 border border-white/10 text-gray-400 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all duration-300" 
+                                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/5 border border-white/10 text-gray-400 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all duration-base" 
                                 href={`mailto:${env.VITE_CONTACT_EMAIL}`}
                                 aria-label="Email"
                             >
@@ -55,7 +59,7 @@ export default function Footer() {
                             </a>
                             {env.VITE_WHATSAPP_LINK && (
                                 <a 
-                                    className="flex h-10 w-10 items-center justify-center rounded-full bg-white/5 border border-white/10 text-gray-400 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all duration-300" 
+                                    className="flex h-10 w-10 items-center justify-center rounded-full bg-white/5 border border-white/10 text-gray-400 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all duration-base" 
                                     href={env.VITE_WHATSAPP_LINK}
                                     target="_blank"
                                     rel="noopener noreferrer"
@@ -73,7 +77,7 @@ export default function Footer() {
                         <ul className="space-y-4 text-sm text-gray-400">
                             <li>
                                 <a 
-                                    className="inline-block hover:text-secondary hover:translate-x-1 transition-all duration-300" 
+                                    className="inline-block hover:text-secondary hover:translate-x-1 transition-all duration-base" 
                                     href="#home"
                                     onClick={(e) => handleSmoothScroll(e, 'home')}
                                 >
@@ -82,7 +86,7 @@ export default function Footer() {
                             </li>
                             <li>
                                 <a 
-                                    className="inline-block hover:text-secondary hover:translate-x-1 transition-all duration-300" 
+                                    className="inline-block hover:text-secondary hover:translate-x-1 transition-all duration-base" 
                                     href="#about"
                                     onClick={(e) => handleSmoothScroll(e, 'about')}
                                 >
@@ -91,7 +95,7 @@ export default function Footer() {
                             </li>
                             <li>
                                 <a 
-                                    className="inline-block hover:text-secondary hover:translate-x-1 transition-all duration-300" 
+                                    className="inline-block hover:text-secondary hover:translate-x-1 transition-all duration-base" 
                                     href="#services"
                                     onClick={(e) => handleSmoothScroll(e, 'services')}
                                 >
@@ -100,7 +104,7 @@ export default function Footer() {
                             </li>
                             <li>
                                 <a 
-                                    className="inline-block hover:text-secondary hover:translate-x-1 transition-all duration-300" 
+                                    className="inline-block hover:text-secondary hover:translate-x-1 transition-all duration-base" 
                                     href="#partners"
                                     onClick={(e) => handleSmoothScroll(e, 'partners')}
                                 >
@@ -109,7 +113,7 @@ export default function Footer() {
                             </li>
                             <li>
                                 <a 
-                                    className="inline-block hover:text-secondary hover:translate-x-1 transition-all duration-300" 
+                                    className="inline-block hover:text-secondary hover:translate-x-1 transition-all duration-base" 
                                     href="#contact"
                                     onClick={(e) => handleSmoothScroll(e, 'contact')}
                                 >

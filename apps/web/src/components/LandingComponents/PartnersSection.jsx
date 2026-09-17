@@ -1,12 +1,12 @@
 import { useFadeInOnScroll } from '../../hooks/useFadeInOnScroll'
 
 const partners = [
-    { name: 'Yamaha Motor', logo: '/logos/Yamaha_Logo.png' },
-    { name: 'Honda Motor', logo: '/logos/Honda_Logo.svg.png' },
-    { name: 'QJ Motor', logo: '/logos/QJ_Logo.png' },
-    { name: 'Suzuki Motor', logo: '/logos/Suzuki_Logo.png' },
-    { name: 'Yadea', logo: '/logos/Yadea_Logo.svg.png' },
-    { name: 'Mitsubishi Motors', logo: '/logos/Mitsubishi_Logo.png' },
+    { name: 'Yamaha Motor', logo: '/logos/Yamaha_Logo.webp' },
+    { name: 'Honda Motor', logo: '/logos/Honda_Logo.webp' },
+    { name: 'QJ Motor', logo: '/logos/QJ_Logo.webp' },
+    { name: 'Suzuki Motor', logo: '/logos/Suzuki_Logo.webp' },
+    { name: 'Yadea', logo: '/logos/Yadea_Logo.webp' },
+    { name: 'Mitsubishi Motors', logo: '/logos/Mitsubishi_Logo.webp' },
 ]
 
 // Duplicate the array multiple times to ensure the track is long enough for a seamless infinite loop
@@ -43,7 +43,7 @@ export default function PartnersSection() {
                                 <div
                                     // Use index in key because we have duplicate items
                                     key={`${partner.name}-${index}`}
-                                    className="group flex w-[200px] flex-col items-center justify-center gap-4 transition-all duration-300"
+                                    className="group flex w-[200px] flex-col items-center justify-center gap-4 transition-all duration-base"
                                 >
                                     {/* Logo Container */}
                                     <div className="flex h-20 w-full items-center justify-center p-4">
@@ -51,13 +51,13 @@ export default function PartnersSection() {
                                             src={partner.logo}
                                             alt={partner.name}
                                             // Grayscale by default, full color on hover
-                                            className="max-h-full max-w-full object-contain grayscale opacity-40 transition-all duration-500 group-hover:scale-110 group-hover:grayscale-0 group-hover:opacity-100 drop-shadow-sm"
+                                            className="max-h-full max-w-full object-contain grayscale opacity-40 transition-all duration-slow group-hover:scale-110 group-hover:grayscale-0 group-hover:opacity-100 drop-shadow-sm"
                                             loading="lazy"
                                             decoding="async"
                                         />
                                     </div>
                                     {/* Name Label */}
-                                    <p className="text-sm font-semibold tracking-wide text-neutral-dark/40 transition-colors duration-500 group-hover:text-primary">
+                                    <p className="text-sm font-semibold tracking-wide text-neutral-dark/40 transition-colors duration-slow group-hover:text-primary">
                                         {partner.name}
                                     </p>
                                 </div>

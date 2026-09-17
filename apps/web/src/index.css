@@ -10,7 +10,10 @@ html {
 .fade-in-section {
   opacity: 0;
   transform: translateY(24px);
-  transition: opacity 0.7s ease-out, transform 0.7s ease-out;
+  /* Kept quicker than the shared "slow" (500ms) hover-transition tier on
+     purpose — this is a scroll-triggered content reveal, not a hover state,
+     and users perceive entrance "pop" delay far more than hover lag. */
+  transition: opacity 0.25s ease-out, transform 0.25s ease-out;
 }
 
 .fade-in-section.is-visible {
@@ -19,10 +22,12 @@ html {
 }
 
 
-/* 
+/*
   ========================================
   Infinite Marquee Utilities
   ========================================
+  NOTE: 40s is a deliberate ambient scroll speed, not a UI-feedback duration —
+  intentionally left outside the unified motion scale (see src/lib/motion.js).
 */
 @keyframes marquee {
   0% { transform: translateX(0%); }

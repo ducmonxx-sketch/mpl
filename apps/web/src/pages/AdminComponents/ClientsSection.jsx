@@ -12,7 +12,8 @@ import { usersAPI } from '../../lib/api'
 // Boxed input style shared by the Klien form fields (matches the Armada form).
 const INPUT_CLASS = 'w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-dash-secondary/20 focus:border-dash-secondary outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white'
 
-export default function ClientsSection() {
+export default function ClientsSection({ userRole }) {
+  const canSetMainPic = userRole === 'SUPERADMIN'
   const { showToast } = useToast()
   const [searchQuery, setSearchQuery] = useState('')
   const [filter, setFilter] = useState('all')
@@ -21,6 +22,8 @@ export default function ClientsSection() {
   const [currentPage, setCurrentPage] = useState(1)
   const [CLIENTS, setCLIENTS] = useState([])
   const [loading, setLoading] = useState(true)
+  // Which PIC is currently selected per company row (row.id -> pic.id).
+  const [selectedPicByRow, setSelectedPicByRow] = useState({})
 
   // Reset Password Modal State
   const [showResetModal, setShowResetModal] = useState(false)
@@ -59,24 +62,41 @@ export default function ClientsSection() {
     try {
       const data = await usersAPI.listAll()
       const users = data.users || []
-      // Total Pengiriman is cumulative PER COMPANY: sum shipments across every
-      // account sharing a companyName (accounts with no company count on their own).
-      const companyTotals = {}
+      // One row PER COMPANY: every account sharing a companyName is a PIC of that
+      // company (accounts with no company get their own singleton row). Total
+      // Pengiriman is cumulative across every PIC in the company.
+      const companies = new Map()
       for (const u of users) {
         const key = u.companyName || `__self_${u.id}`
-        companyTotals[key] = (companyTotals[key] || 0) + (u._count?.shipments || 0)
+        const pic = {
+          id: u.id,
+          name: u.fullName,
+          phone: u.phoneNumber || '-',
+          email: u.email,
+          isActive: u.verificationStatus === 'VERIFIED',
+          isMainPic: !!u.isMainPic,
+        }
+        const existing = companies.get(key)
+        if (existing) {
+          existing.pics.push(pic)
+          existing.shipmentCount += u._count?.shipments || 0
+        } else {
+          companies.set(key, {
+            id: u.id,
+            companyName: u.companyName || u.fullName,
+            shipmentCount: u._count?.shipments || 0,
+            pics: [pic],
+            notes: '',
+            address: u.address || '-',
+            city: u.city || '-',
+            npwp: u.npwp || '-',
+          })
+        }
       }
-      // Show ALL users — no role filter (User model has no role field)
-      const mapped = users.map(u => ({
-        id: u.id,
-        companyName: u.companyName || u.fullName,
-        isActive: u.verificationStatus === 'VERIFIED',
-        shipmentCount: companyTotals[u.companyName || `__self_${u.id}`],
-        pics: [{ name: u.fullName, phone: u.phoneNumber || '-', email: u.email }],
-        notes: '',
-        address: u.address || '-',
-        city: u.city || '-',
-        npwp: u.npwp || '-',
+      // "Aktif" only once every PIC on the company is verified.
+      const mapped = [...companies.values()].map(c => ({
+        ...c,
+        isActive: c.pics.every(p => p.isActive),
       }))
       setCLIENTS(mapped)
     } catch (err) {
@@ -135,6 +155,20 @@ export default function ClientsSection() {
     }
   }, [selectedClient])
 
+  // The designated main PIC for a company (server-persisted via isMainPic).
+  // Falls back to the first PIC only as a defensive default — every company
+  // should have exactly one isMainPic after the migration backfill.
+  const getMainPic = (row) => row.pics.find(p => p.isMainPic) || row.pics[0]
+
+  // Resolves the PIC currently selected in a company row's dropdown (detail
+  // panel), defaulting to the main PIC when nothing has been picked yet.
+  const getSelectedPic = (row) =>
+    row.pics.find(p => p.id === selectedPicByRow[row.id]) || getMainPic(row)
+
+  const handleSelectPic = (rowId, picId) => {
+    setSelectedPicByRow(prev => ({ ...prev, [rowId]: picId }))
+  }
+
   const [isEditMode, setIsEditMode] = useState(false)
   const [editingClientId, setEditingClientId] = useState(null)
 
@@ -152,12 +186,12 @@ export default function ClientsSection() {
     setPicMagicLinkCopied(false)
   }
 
-  const handleOpenEdit = (row) => {
+  const handleOpenEdit = (row, pic = getMainPic(row)) => {
     setIsEditMode(true)
-    setEditingClientId(row.id)
+    setEditingClientId(pic.id)
     setFormCompanyName(row.companyName || '')
-    setFormPhone(row.pics[0].phone || '')
-    setFormEmail(row.pics[0].email || '')
+    setFormPhone(pic.phone || '')
+    setFormEmail(pic.email || '')
     setFormCity(row.city || '')
     setFormAddress(row.address || '')
     setFormNpwp(row.npwp || '')
@@ -215,10 +249,29 @@ export default function ClientsSection() {
     try {
       await usersAPI.verify(id)
       showToast(`Akun ${name} telah diaktifkan.`, 'success')
-      setSelectedClient(prev => (prev && prev.id === id ? { ...prev, isActive: true } : prev))
+      setSelectedClient(prev => {
+        if (!prev || !prev.pics.some(p => p.id === id)) return prev
+        const pics = prev.pics.map(p => (p.id === id ? { ...p, isActive: true } : p))
+        return { ...prev, pics, isActive: pics.every(p => p.isActive) }
+      })
       fetchClients()
     } catch (err) {
       showToast(err.message || 'Gagal mengaktifkan akun.', 'error')
+    }
+  }
+
+  const handleSetMainPic = async (id, name) => {
+    try {
+      await usersAPI.setMainPic(id)
+      showToast(`${name} sekarang menjadi PIC Utama.`, 'success')
+      setSelectedClient(prev => {
+        if (!prev || !prev.pics.some(p => p.id === id)) return prev
+        const pics = prev.pics.map(p => ({ ...p, isMainPic: p.id === id }))
+        return { ...prev, pics }
+      })
+      fetchClients()
+    } catch (err) {
+      showToast(err.message || 'Gagal menjadikan PIC utama.', 'error')
     }
   }
 
@@ -229,7 +282,7 @@ export default function ClientsSection() {
     try {
       await usersAPI.deleteUser(id)
       showToast('Klien berhasil dihapus.', 'success')
-      if (selectedClient?.id === id) {
+      if (selectedClient?.pics?.some(p => p.id === id)) {
         setSelectedClient(null)
       }
       fetchClients()
@@ -350,35 +403,56 @@ export default function ClientsSection() {
 
   const verifiedCount = CLIENTS.filter(c => c.isActive).length
   const unverifiedCount = CLIENTS.filter(c => !c.isActive).length
+  const detailPic = selectedClient ? getSelectedPic(selectedClient) : null
 
+  // Row-level actions (top row + Lihat Detail) always target the primary PIC —
+  // per-PIC actions for the rest of the company live in the expanded card list.
   const columns = [
-    {
-      key: 'expand',
-      label: '',
-      width: '40px',
-      render: (_, __, { toggleRow, isExpanded }) => (
-        <button
-          className="adm-action-btn"
-          onClick={toggleRow}
-          style={{ padding: '0.2rem', margin: 0, width: 'auto', background: isExpanded ? 'rgba(254,195,48,0.1)' : 'transparent' }}
-          title="Lihat semua PIC"
-        >
-          <Icon name={isExpanded ? 'keyboard_arrow_up' : 'keyboard_arrow_down'} size={20} />
-        </button>
-      ),
-    },
     {
       key: 'companyName',
       label: 'Nama Perusahaan',
-      render: (v) => <span className="adm-table__cell-main">{v}</span>,
+      render: (v, row, { toggleRow, isExpanded }) => (
+        <button
+          onClick={toggleRow}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            background: 'none',
+            border: 'none',
+            padding: 0,
+            cursor: 'pointer',
+            font: 'inherit',
+            textAlign: 'left',
+          }}
+          title="Lihat semua PIC perusahaan ini"
+        >
+          <Icon name={isExpanded ? 'keyboard_arrow_up' : 'keyboard_arrow_down'} size={18} style={{ color: '#94a3b8', flexShrink: 0 }} />
+          <span className="adm-table__cell-main">{v}</span>
+          {row.pics.length > 1 && (
+            <span
+              style={{
+                fontSize: '0.68rem',
+                fontWeight: 700,
+                color: 'var(--dash-primary)',
+                background: 'color-mix(in srgb, var(--dash-secondary) 20%, transparent)',
+                borderRadius: '999px',
+                padding: '0.1rem 0.5rem',
+              }}
+            >
+              {row.pics.length} PIC
+            </span>
+          )}
+        </button>
+      ),
     },
-    { key: 'picName', label: 'PIC Utama', render: (_, row) => row.pics[0].name },
-    { key: 'phone', label: 'Telepon', render: (_, row) => row.pics[0].phone },
+    { key: 'picName', label: 'PIC Utama', render: (_, row) => getMainPic(row).name },
+    { key: 'phone', label: 'Telepon', render: (_, row) => getMainPic(row).phone },
     {
       key: 'email',
       label: 'Email',
       render: (_, row) => (
-        <span style={{ fontSize: '0.78rem', color: '#64748b' }}>{row.pics[0].email}</span>
+        <span style={{ fontSize: '0.78rem', color: '#64748b' }}>{getMainPic(row).email}</span>
       ),
     },
     {
@@ -394,14 +468,16 @@ export default function ClientsSection() {
     {
       key: 'actions',
       label: '',
-      render: (_, row) => (
+      render: (_, row) => {
+        const pic = getMainPic(row)
+        return (
         <div className="adm-actions">
-          {!row.isActive && (
+          {!pic.isActive && (
             <button
               className="adm-action-btn"
-              title="Aktifkan Akun"
+              title={`Aktifkan Akun ${pic.name}`}
               style={{ color: 'var(--dash-tertiary-light)' }}
-              onClick={(e) => { e.stopPropagation(); handleVerifyClient(row.id, row.companyName) }}
+              onClick={(e) => { e.stopPropagation(); handleVerifyClient(pic.id, pic.name) }}
             >
               <Icon name="check_circle" size={16} />
             </button>
@@ -415,27 +491,28 @@ export default function ClientsSection() {
           </button>
           <button
             className="adm-action-btn"
-            title="Edit"
-            onClick={(e) => { e.stopPropagation(); handleOpenEdit(row) }}
+            title={`Edit ${pic.name}`}
+            onClick={(e) => { e.stopPropagation(); handleOpenEdit(row, pic) }}
           >
             <Icon name="edit" size={16} />
           </button>
           <button
             className="adm-action-btn"
-            title="Reset Password"
-            onClick={(e) => { e.stopPropagation(); handleGenerateResetLink(row) }}
+            title={`Reset Password ${pic.name}`}
+            onClick={(e) => { e.stopPropagation(); handleGenerateResetLink({ id: pic.id, companyName: row.companyName }) }}
           >
             <Icon name="key" size={16} />
           </button>
           <button
             className="adm-action-btn adm-action-btn--danger"
-            title="Hapus"
-            onClick={(e) => { e.stopPropagation(); handleDeleteClient(row.id, row.companyName) }}
+            title={`Hapus ${pic.name}`}
+            onClick={(e) => { e.stopPropagation(); handleDeleteClient(pic.id, pic.name) }}
           >
             <Icon name="delete" size={16} />
           </button>
         </div>
-      ),
+        )
+      },
     },
   ]
 
@@ -556,26 +633,116 @@ export default function ClientsSection() {
           <AdminDataTable
             columns={columns}
             data={filtered}
-            onRowClick={setSelectedClient}
             expandableContent={(row) => (
               <div>
                 <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.85rem', color: 'var(--dash-primary)' }}>
                   Kontak Person In Charge (PIC)
                 </h4>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-                  {row.pics.map((pic, idx) => (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+                  {row.pics.map((pic) => (
                     <div
-                      key={idx}
-                      style={{ padding: '0.75rem', backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0' }}
+                      key={pic.id}
+                      style={{
+                        padding: '0.75rem',
+                        backgroundColor: '#fff',
+                        borderRadius: '8px',
+                        border: pic.isMainPic ? '1px solid var(--dash-secondary)' : '1px solid #e2e8f0',
+                        boxShadow: pic.isMainPic ? '0 0 0 3px color-mix(in srgb, var(--dash-secondary) 15%, transparent)' : 'none',
+                      }}
                     >
-                      <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.25rem', color: 'var(--dash-text)' }}>
-                        {pic.name}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem', gap: '0.5rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--dash-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {pic.name}
+                          </div>
+                          {pic.isMainPic && (
+                            <span
+                              title="PIC Utama"
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '2px',
+                                fontSize: '0.65rem',
+                                fontWeight: 700,
+                                color: 'var(--dash-primary)',
+                                background: 'var(--dash-secondary)',
+                                borderRadius: '999px',
+                                padding: '0.1rem 0.45rem',
+                                flexShrink: 0,
+                              }}
+                            >
+                              <Icon name="star" size={11} /> PIC Utama
+                            </span>
+                          )}
+                        </div>
+                        {pic.isActive ? (
+                          <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--dash-tertiary-light)', flexShrink: 0 }}>✅ Aktif</span>
+                        ) : (
+                          <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--dash-error)', flexShrink: 0 }}>❌ Belum Aktif</span>
+                        )}
                       </div>
                       <div style={{ fontSize: '0.75rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
                         <Icon name="phone" size={12} /> {pic.phone}
                       </div>
-                      <div style={{ fontSize: '0.75rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <div style={{ fontSize: '0.75rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '0.6rem' }}>
                         <Icon name="email" size={12} /> {pic.email}
+                      </div>
+                      {canSetMainPic && row.pics.length > 1 && !pic.isMainPic && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleSetMainPic(pic.id, pic.name) }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px',
+                            width: '100%',
+                            padding: '0.4rem',
+                            marginBottom: '0.6rem',
+                            background: '#f8fafc',
+                            border: '1px dashed #cbd5e1',
+                            borderRadius: '6px',
+                            color: 'var(--dash-primary)',
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <Icon name="star" size={14} /> Jadikan PIC Utama
+                        </button>
+                      )}
+                      <div className="adm-actions" style={{ borderTop: '1px solid #f1f5f9', paddingTop: '0.5rem' }}>
+                        {!pic.isActive && (
+                          <button
+                            className="adm-action-btn"
+                            title={`Aktifkan Akun ${pic.name}`}
+                            style={{ color: 'var(--dash-tertiary-light)' }}
+                            onClick={(e) => { e.stopPropagation(); handleVerifyClient(pic.id, pic.name) }}
+                          >
+                            <Icon name="check_circle" size={16} />
+                          </button>
+                        )}
+                        <button
+                          className="adm-action-btn"
+                          title={`Edit ${pic.name}`}
+                          onClick={(e) => { e.stopPropagation(); handleOpenEdit(row, pic) }}
+                        >
+                          <Icon name="edit" size={16} />
+                        </button>
+                        <button
+                          className="adm-action-btn"
+                          title={`Reset Password ${pic.name}`}
+                          onClick={(e) => { e.stopPropagation(); handleGenerateResetLink({ id: pic.id, companyName: row.companyName }) }}
+                        >
+                          <Icon name="key" size={16} />
+                        </button>
+                        <button
+                          className="adm-action-btn adm-action-btn--danger"
+                          title={`Hapus ${pic.name}`}
+                          onClick={(e) => { e.stopPropagation(); handleDeleteClient(pic.id, pic.name) }}
+                        >
+                          <Icon name="delete" size={16} />
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -621,9 +788,21 @@ export default function ClientsSection() {
                   <h3 className="text-2xl font-black text-dash-primary m-0 leading-tight">
                     {selectedClient.companyName}
                   </h3>
-                  <p className="text-sm text-gray-500 mt-1 font-medium">
-                    PIC Utama: {selectedClient.pics[0].name}
-                  </p>
+                  {selectedClient.pics.length > 1 ? (
+                    <select
+                      value={detailPic.id}
+                      onChange={(e) => handleSelectPic(selectedClient.id, e.target.value)}
+                      className="text-sm text-dash-primary mt-1 font-bold border border-gray-200 rounded-lg px-2 py-1 bg-white"
+                    >
+                      {selectedClient.pics.map(pic => (
+                        <option key={pic.id} value={pic.id}>{pic.isMainPic ? `★ ${pic.name}` : pic.name}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="text-sm text-gray-500 mt-1 font-medium">
+                      PIC: {detailPic.name}
+                    </p>
+                  )}
                 </div>
               </div>
               <button 
@@ -637,15 +816,15 @@ export default function ClientsSection() {
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-8 custom-scrollbar">
 
-              {!selectedClient.isActive && (
+              {!detailPic.isActive && (
                 <div className="flex items-center justify-between gap-3 p-4 rounded-xl bg-amber-50 border border-amber-200">
                   <div className="flex items-center gap-2 text-amber-800">
                     <Icon name="info" size={18} />
-                    <span className="text-sm font-bold">Akun belum aktif — menunggu persetujuan.</span>
+                    <span className="text-sm font-bold">Akun {detailPic.name} belum aktif — menunggu persetujuan.</span>
                   </div>
                   <button
                     className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-green-600 text-white text-sm font-bold hover:bg-green-700 transition-colors"
-                    onClick={() => handleVerifyClient(selectedClient.id, selectedClient.companyName)}
+                    onClick={() => handleVerifyClient(detailPic.id, detailPic.name)}
                   >
                     <Icon name="check_circle" size={16} /> Aktifkan
                   </button>
@@ -659,11 +838,11 @@ export default function ClientsSection() {
                 <div className="grid grid-cols-2 gap-y-4">
                   <div className="flex flex-col gap-1">
                     <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Telepon</span>
-                    <span className="text-sm font-bold text-dash-primary">{selectedClient.pics[0].phone}</span>
+                    <span className="text-sm font-bold text-dash-primary">{detailPic.phone}</span>
                   </div>
                   <div className="flex flex-col gap-1">
                     <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Email</span>
-                    <span className="text-sm font-bold text-dash-primary break-all">{selectedClient.pics[0].email}</span>
+                    <span className="text-sm font-bold text-dash-primary break-all">{detailPic.email}</span>
                   </div>
                   <div className="flex flex-col gap-1 col-span-2">
                     <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Alamat</span>

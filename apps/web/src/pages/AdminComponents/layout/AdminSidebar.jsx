@@ -14,6 +14,7 @@ export const NAV_GROUPS = [
     title: 'UTAMA',
     items: [
       { id: 'overview', label: 'Beranda', icon: 'dashboard' },
+      { id: 'laporan', label: 'Laporan', icon: 'trending_up' },
     ]
   },
   {

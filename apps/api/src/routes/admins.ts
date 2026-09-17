@@ -16,7 +16,7 @@ import { requirePermission } from "../lib/rbac"
 
 const router = Router()
 
-const ADMIN_ROLES = ["SUPERADMIN", "OPERATIONS", "SUPPORT"]
+const ADMIN_ROLES = ["SUPERADMIN", "OPERATIONS", "SUPPORT", "KEPALA_ARMADA", "PIC_PABRIK", "PIC_GUDANG"]
 const genTempPassword = () => crypto.randomBytes(9).toString("base64url") // ~12 chars
 
 // ── GET /api/admins ───────────────────────────────────────────

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import anime from 'animejs'
 import { env } from '../../lib/env.js'
+import { MOTION } from '../../lib/motion.js'
 import Icon from '../Icon'
 
 const images = [
@@ -31,7 +32,7 @@ export default function HeroSection() {
             targets: '.hero-carousel-image',
             opacity: (el, i) => i === currentImageIndex ? 1 : 0,
             scale: (el, i) => i === currentImageIndex ? [1.05, 1] : 1,
-            duration: 1200,
+            duration: MOTION.crossfade,
             easing: 'easeInOutQuad'
         });
     }, [currentImageIndex]);
@@ -47,50 +48,50 @@ export default function HeroSection() {
         anime.set('.hero-floating-card', { translateZ: 0, translateY: 50 });
 
         const tl = anime.timeline({
-            easing: 'spring(1, 120, 12, 0)',
-            duration: 400,
+            easing: 'easeOutCubic',
+            duration: MOTION.stagger,
         });
 
         tl.add({
             targets: '.hero-badge',
             opacity: [0, 1],
             translateY: [30, 0],
-            delay: anime.stagger(40)
+            delay: anime.stagger(30)
         })
         .add({
             targets: ['.hero-title', '.hero-desc'],
             opacity: [0, 1],
             translateY: [30, 0],
-            delay: anime.stagger(50)
-        }, '-=400')
+            delay: anime.stagger(35)
+        }, `-=${MOTION.stagger}`)
         .add({
             targets: '.hero-cta',
             opacity: [0, 1],
             translateY: [30, 0],
-            delay: anime.stagger(40)
-        }, '-=400')
+            delay: anime.stagger(30)
+        }, `-=${MOTION.stagger}`)
         .add({
             targets: '.hero-stat',
             opacity: [0, 1],
             translateY: [30, 0],
-            delay: anime.stagger(40)
-        }, '-=400')
+            delay: anime.stagger(30)
+        }, `-=${MOTION.stagger}`)
         .add({
             targets: '.hero-image-container',
             opacity: [0, 1],
             scale: [0.95, 1],
             rotateX: [10, 0],
             rotateY: [-10, 0],
-            duration: 600,
+            duration: MOTION.entrance,
             easing: 'easeOutElastic(1, 1)'
-        }, '-=500')
+        }, `-=${MOTION.stagger + 50}`)
         .add({
             targets: '.hero-floating-card',
             opacity: [0, 1],
             translateY: [50, 0],
             translateZ: [0, 40], // Antigravity 3D Depth
-            duration: 500,
-        }, '-=400');
+            duration: MOTION.entrance,
+        }, `-=${MOTION.stagger}`);
 
     }, [])
 
@@ -134,11 +135,11 @@ export default function HeroSection() {
                     {/* Left Column */}
                     <div className="flex flex-col gap-6">
                         <div className="flex flex-wrap items-center gap-3">
-                            <div className="hero-badge inline-flex w-fit items-center gap-2 rounded-full border border-primary/10 bg-white/60 backdrop-blur-sm px-4 py-1.5 text-sm font-semibold text-primary shadow-sm transition-all duration-300 hover:shadow-md hover:bg-white cursor-default will-change-transform">
+                            <div className="hero-badge inline-flex w-fit items-center gap-2 rounded-full border border-primary/10 bg-white/60 backdrop-blur-sm px-4 py-1.5 text-sm font-semibold text-primary shadow-sm transition-all duration-base hover:shadow-md hover:bg-white cursor-default will-change-transform">
                                 <Icon name="verified" size={18} className="text-secondary" />
                                 Mitra Logistik Terpercaya
                             </div>
-                            <div className="hero-badge inline-flex w-fit items-center gap-2 rounded-full border border-primary/10 bg-white/60 backdrop-blur-sm px-4 py-1.5 text-sm font-semibold text-primary shadow-sm transition-all duration-300 hover:shadow-md hover:bg-white cursor-default will-change-transform">
+                            <div className="hero-badge inline-flex w-fit items-center gap-2 rounded-full border border-primary/10 bg-white/60 backdrop-blur-sm px-4 py-1.5 text-sm font-semibold text-primary shadow-sm transition-all duration-base hover:shadow-md hover:bg-white cursor-default will-change-transform">
                                 <Icon name="location_on" size={18} className="text-secondary" />
                                 Jakarta Based
                             </div>
@@ -192,7 +193,7 @@ export default function HeroSection() {
                                 <img
                                     key={img.src}
                                     alt={`Operasional armada truk pengiriman PT Mahkota Putra Logistik - ${index + 1}`}
-                                    className={`hero-carousel-image absolute inset-0 h-full w-full object-cover ${img.pos} transition-transform duration-[2000ms] hover:scale-110`}
+                                    className={`hero-carousel-image absolute inset-0 h-full w-full object-cover ${img.pos} transition-transform duration-zoom hover:scale-110`}
                                     src={img.src}
                                     loading={index === 0 ? "eager" : "lazy"}
                                     fetchPriority={index === 0 ? "high" : "auto"}

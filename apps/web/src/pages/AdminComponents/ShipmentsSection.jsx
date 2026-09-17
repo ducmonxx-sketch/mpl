@@ -211,6 +211,10 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   // PIC_GUDANG serah-terima (Diturunkan → Selesai): Gudang Penerima note + confirm box
   const [catatanGudangPenerima, setCatatanGudangPenerima] = useState('')
   const [showGudangConfirm, setShowGudangConfirm]         = useState(false)
+  // Arrival-condition checklist, keyed by PlantCheckLku row id → { arrivedDefective, arrivalNote }.
+  // Feeds the condition-analytics chart (Overview). Ticked against units Pengurus Pabrik already
+  // recorded at plant-check — no retyping serial numbers.
+  const [gudangLkuChecks, setGudangLkuChecks] = useState({})
   // Delete-shipment confirmation box: null = closed, 'single' | 'group' = open with scope
   const [deleteScope, setDeleteScope]                     = useState(null)
 
@@ -454,7 +458,26 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     try {
       const data = await usersAPI.listAll()
       const users = data.users || data || []
-      setClientOptions(users.map(u => ({ id: u.id, label: u.companyName || u.fullName || u.email })))
+
+      // A company can have multiple PIC accounts sharing the same companyName
+      // (see User.isMainPic in schema.prisma). Collapse them to one dropdown
+      // entry per company, preferring the designated main PIC so the
+      // shipment's clientId lands on a predictable account.
+      const byCompany = new Map()
+      users.forEach(u => {
+        const key = u.companyName || u.fullName || u.email
+        const existing = byCompany.get(key)
+        if (!existing || (u.isMainPic && !existing.isMainPic)) {
+          byCompany.set(key, u)
+        }
+      })
+
+      setClientOptions(
+        Array.from(byCompany.values()).map(u => ({
+          id:    u.id,
+          label: u.companyName || u.fullName || u.email,
+        }))
+      )
     } catch (err) {
       console.error('Failed to fetch clients:', err)
     }
@@ -666,7 +689,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
 
   // ── Delete shipment ───────────────────────────────────────────
   // Regular admins may delete only Standby shipments; SUPERADMIN may delete any status.
-  const canDeleteShipment = selectedShipment && (isSuperAdmin || selectedShipment.rawStatus === 'STANDBY')
+  const canDeleteShipment = selectedShipment && (isSuperAdmin || (role === 'OPERATIONS' && selectedShipment.rawStatus === 'STANDBY'))
 
   // Open the delete confirmation box for the given scope ('single' | 'group').
   const handleDeleteShipment = (scope = 'single') => {
@@ -735,6 +758,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     setHandoverNotes('')
     setCatatanGudangPenerima('')
     setShowGudangConfirm(false)
+    setGudangLkuChecks({})
     setPabrikPage(1)
     setPcPengiriman([emptyPengirimanRow()])
     setPcLku([emptyLkuRow()])
@@ -765,6 +789,14 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
       } else {
         setPcPengiriman([emptyPengirimanRow()])
       }
+    }
+    // Seed the arrival-condition checklist from the units Pengurus Pabrik already recorded.
+    if (rawStatus === 'DITURUNKAN') {
+      const seeded = {}
+      for (const r of selectedShipment.plantCheck?.lku ?? []) {
+        seeded[r.id] = { arrivedDefective: !!r.arrivedDefective, arrivalNote: r.arrivalNote || '' }
+      }
+      setGudangLkuChecks(seeded)
     }
   }
 
@@ -829,7 +861,10 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   // Confirm-box action: PIC_GUDANG serah-terima → Selesai (DELIVERED)
   const doSubmitHandover = async () => {
     try {
-      await shipmentsAPI.handover(selectedShipment.id, { catatanGudangPenerima })
+      const lkuUpdates = Object.entries(gudangLkuChecks).map(([id, c]) => ({
+        id, arrivedDefective: c.arrivedDefective, arrivalNote: c.arrivalNote || null,
+      }))
+      await shipmentsAPI.handover(selectedShipment.id, { catatanGudangPenerima, lkuUpdates })
       showToast('Serah Terima Selesai. Status → Selesai.', 'success')
       setShowGudangConfirm(false)
       setShowStatusModal(false)
@@ -1449,6 +1484,40 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
               <span className="text-sm font-medium text-gray-500">Status saat ini:</span>
               <AdminStatusBadge status={mapStatus('DITURUNKAN')} type="shipment" />
             </div>
+            {(selectedShipment.plantCheck?.lku?.length > 0) && (
+              <div className="flex flex-col gap-2">
+                <p className="text-sm font-bold text-gray-900 text-center border-b border-gray-100 pb-2">Kondisi Unit Saat Tiba</p>
+                <div className="flex flex-col gap-2 max-h-56 overflow-y-auto custom-scrollbar pr-1">
+                  {selectedShipment.plantCheck.lku.map(r => {
+                    const check = gudangLkuChecks[r.id] || { arrivedDefective: false, arrivalNote: '' }
+                    return (
+                      <div key={r.id} className="text-xs text-gray-700 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 flex flex-col gap-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span><span className="font-bold">{r.tipeMotor || '-'}</span> · Mesin {r.noMesin || '-'} · Rangka {r.noRangka || '-'} · {r.warna || '-'}</span>
+                          <label className="flex items-center gap-1.5 shrink-0 font-bold text-red-600 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={check.arrivedDefective}
+                              onChange={e => setGudangLkuChecks(prev => ({ ...prev, [r.id]: { ...check, arrivedDefective: e.target.checked } }))}
+                            />
+                            Rusak saat tiba
+                          </label>
+                        </div>
+                        {check.arrivedDefective && (
+                          <input
+                            type="text"
+                            className="w-full bg-white border border-gray-200 rounded-md px-2 py-1 text-xs outline-none focus:border-dash-secondary"
+                            placeholder="Catatan kerusakan (opsional)"
+                            value={check.arrivalNote}
+                            onChange={e => setGudangLkuChecks(prev => ({ ...prev, [r.id]: { ...check, arrivalNote: e.target.value } }))}
+                          />
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
             <div className="flex flex-col gap-3">
               <p className="text-sm font-bold text-gray-900 text-center border-b border-gray-100 pb-2">Catatan Serah Terima Perlengkapan Motor</p>
               <div className="flex flex-col gap-1.5">

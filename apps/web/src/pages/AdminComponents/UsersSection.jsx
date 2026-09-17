@@ -1,45 +1,34 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Icon from '../../components/Icon'
 import { useToast } from '../../contexts/ToastContext'
 import AdminDataTable from './components/AdminDataTable'
-import AdminStatusBadge from './components/AdminStatusBadge'
 import AdminModal from './components/AdminModal'
 import AdminFormField from './components/AdminFormField'
-import SearchableSelect from './components/SearchableSelect'
-import { usersAPI } from '../../lib/api'
+import { adminsAPI } from '../../lib/api'
 
 const ROLE_LABELS = {
-  super_admin: 'Super Admin',
-  ops: 'Operasional',
-  finance: 'Keuangan',
-  cs: 'Layanan Pelanggan',
-  client: 'Klien',
+  SUPERADMIN: 'Super Admin',
+  OPERATIONS: 'Operasional',
+  SUPPORT: 'Layanan Pelanggan',
+  KEPALA_ARMADA: 'Kepala Armada',
+  PIC_PABRIK: 'PIC Pabrik',
+  PIC_GUDANG: 'PIC Gudang',
 }
+
+const ROLE_OPTIONS = Object.entries(ROLE_LABELS).map(([value, label]) => ({ value, label }))
 
 export default function UsersSection() {
   const { showToast } = useToast()
 
-  const [USERS, setUSERS] = useState([])
+  const [admins, setAdmins] = useState([])
   const [loading, setLoading] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
-  const [selectedUser, setSelectedUser] = useState(null)
-  const [userType, setUserType] = useState('all') // 'all' | 'internal' | 'client'
+  const [selectedAdmin, setSelectedAdmin] = useState(null)
 
   // Create form state (controlled)
   const [formName, setFormName] = useState('')
   const [formEmail, setFormEmail] = useState('')
-  const [formRole, setFormRole] = useState('')
-  const [formCompany, setFormCompany] = useState('')
-  const [formPassword, setFormPassword] = useState('')
-
-  // Magic link state
-  const [showMagicLinkSection, setShowMagicLinkSection] = useState(false)
-  const [magicLink, setMagicLink] = useState('')
-  const [magicLinkCopied, setMagicLinkCopied] = useState(false)
-  const [magicLinkCompany, setMagicLinkCompany] = useState('')
-  const [magicLinkNewCompany, setMagicLinkNewCompany] = useState('')
-  const [isNewCompanyLink, setIsNewCompanyLink] = useState(false)
-  const [companies, setCompanies] = useState([])
+  const [formRole, setFormRole] = useState('OPERATIONS')
 
   // Create success state
   const [createSuccess, setCreateSuccess] = useState(false)
@@ -48,30 +37,26 @@ export default function UsersSection() {
 
   // Reset Password Modal State
   const [showResetModal, setShowResetModal] = useState(false)
-  const [resetUser, setResetUser] = useState(null)
-  const [resetLink, setResetLink] = useState('')
-  const [resetLinkCopied, setResetLinkCopied] = useState(false)
+  const [resetTarget, setResetTarget] = useState(null)
+  const [resetPassword, setResetPassword] = useState('')
+  const [resetPasswordCopied, setResetPasswordCopied] = useState(false)
 
-  const fetchUsers = useCallback(async ({ silent = false } = {}) => {
+  const fetchAdmins = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true)
     try {
-      const data = await usersAPI.listAll()
-      // /api/users only returns User records (clients), all mapped as 'client' role
-      const mapped = (data.users || []).map(u => ({
-        id: u.id,
-        name: u.fullName,
-        email: u.email,
-        role: 'client',
-        company: u.companyName || u.fullName,
-        isActive: u.verificationStatus === 'VERIFIED',
-        lastLogin: '-',
-        createdAt: u.createdAt
-          ? new Date(u.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
+      const data = await adminsAPI.list()
+      const mapped = (data.admins || []).map(a => ({
+        id: a.id,
+        name: a.fullName,
+        email: a.email,
+        role: a.role,
+        createdAt: a.createdAt
+          ? new Date(a.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
           : '-',
       }))
-      setUSERS(mapped)
+      setAdmins(mapped)
     } catch (err) {
-      console.error('Failed to fetch users:', err)
+      console.error('Failed to fetch admins:', err)
       showToast('Gagal memuat data admin.', 'error')
     } finally {
       if (!silent) setLoading(false)
@@ -79,24 +64,10 @@ export default function UsersSection() {
   }, [showToast])
 
   useEffect(() => {
-    fetchUsers()
-    const interval = setInterval(() => fetchUsers({ silent: true }), 8000)
+    fetchAdmins()
+    const interval = setInterval(() => fetchAdmins({ silent: true }), 8000)
     return () => clearInterval(interval)
-  }, [fetchUsers])
-
-  useEffect(() => {
-    if (showCreateModal) {
-      usersAPI.getCompanies().then(res => {
-        setCompanies((res.companies || []).map(c => ({ value: c, label: c })))
-      }).catch(() => {})
-    }
-  }, [showCreateModal])
-
-  const filteredUsers = useMemo(() => {
-    if (userType === 'internal') return USERS.filter(u => u.role !== 'client')
-    if (userType === 'client') return USERS.filter(u => u.role === 'client')
-    return USERS
-  }, [userType, USERS])
+  }, [fetchAdmins])
 
   useEffect(() => {
     if (!loading) {
@@ -115,7 +86,7 @@ export default function UsersSection() {
   }, [loading])
 
   useEffect(() => {
-    if (selectedUser) {
+    if (selectedAdmin) {
       import('animejs').then(animeModule => {
         const anime = animeModule.default
         anime({
@@ -127,81 +98,55 @@ export default function UsersSection() {
         })
       })
     }
-  }, [selectedUser])
+  }, [selectedAdmin])
 
   const resetModal = () => {
     setFormName('')
     setFormEmail('')
-    setFormRole('')
-    setFormCompany('')
-    setFormPassword('')
-    setShowMagicLinkSection(false)
-    setMagicLink('')
-    setMagicLinkCopied(false)
+    setFormRole('OPERATIONS')
     setCreateSuccess(false)
     setCreatedCredentials({ email: '', password: '' })
     setCredentialsCopied(false)
   }
 
-  const handleCreateUser = async () => {
+  const handleCreateAdmin = async () => {
     if (!formName.trim() || !formEmail.trim()) {
       showToast('Nama Lengkap dan Email wajib diisi.', 'error')
       return
     }
     try {
-      const res = await usersAPI.createUser({
+      const res = await adminsAPI.create({
         fullName: formName,
         email: formEmail,
-        companyName: formCompany || undefined,
-        phoneNumber: '',
-        password: formPassword || undefined,
+        role: formRole,
       })
-      // Stay in modal, show success UI with credentials
       setCreatedCredentials({
         email: formEmail,
-        password: res.tempPassword || formPassword || '(auto-generated)',
+        password: res.tempPassword || '(auto-generated)',
       })
       setCreateSuccess(true)
-      fetchUsers()
+      fetchAdmins()
     } catch (err) {
       showToast(err.message || 'Gagal membuat admin.', 'error')
     }
   }
 
-  const handleGenerateMagicLink = async () => {
-    const finalCompany = isNewCompanyLink ? magicLinkNewCompany : magicLinkCompany
+  const handleResetPassword = async (admin) => {
     try {
-      const res = await usersAPI.generateMagicLink({ companyName: finalCompany || undefined })
-      setMagicLink(res.link)
-      setShowMagicLinkSection(true)
-      setMagicLinkCopied(false)
-    } catch (err) {
-      showToast('Gagal membuat magic link', 'error')
-    }
-  }
-
-  const handleGenerateResetLink = async (user) => {
-    try {
-      const res = await usersAPI.generateResetLink(user.id)
-      setResetLink(res.link)
-      setResetUser(user)
+      const res = await adminsAPI.resetPassword(admin.id)
+      setResetPassword(res.tempPassword || '')
+      setResetTarget(admin)
       setShowResetModal(true)
-      setResetLinkCopied(false)
-    } catch(err) {
-      showToast('Gagal membuat link reset password', 'error')
+      setResetPasswordCopied(false)
+    } catch (err) {
+      showToast(err.message || 'Gagal mereset password admin', 'error')
     }
   }
 
-  const handleCopyResetLink = () => {
-    navigator.clipboard.writeText(resetLink).catch(() => {})
-    setResetLinkCopied(true)
-    setTimeout(() => setResetLinkCopied(false), 2000)
-  }
-
-  const handleCopyMagicLink = () => {
-    navigator.clipboard.writeText(magicLink).catch(() => {})
-    setMagicLinkCopied(true)
-    setTimeout(() => setMagicLinkCopied(false), 2000)
+  const handleCopyResetPassword = () => {
+    navigator.clipboard.writeText(resetPassword).catch(() => {})
+    setResetPasswordCopied(true)
+    setTimeout(() => setResetPasswordCopied(false), 2000)
   }
 
   const handleCopyCredentials = () => {
@@ -212,12 +157,11 @@ export default function UsersSection() {
   }
 
   const handleModalSubmit = () => {
-    if (createSuccess || showMagicLinkSection) {
-      // Admin is done reviewing, close the modal
+    if (createSuccess) {
       setShowCreateModal(false)
       resetModal()
     } else {
-      handleCreateUser()
+      handleCreateAdmin()
     }
   }
 
@@ -225,17 +169,7 @@ export default function UsersSection() {
     {
       key: 'name',
       label: 'Nama',
-      render: (v, row) => (
-        <div>
-          <span className="adm-table__cell-main">{v}</span>
-          {row.role === 'client' && (
-            <div className="adm-table__cell-sub">
-              <Icon name="business" size={12} style={{ verticalAlign: 'middle', marginRight: '4px' }} />
-              {row.company}
-            </div>
-          )}
-        </div>
-      ),
+      render: (v) => <span className="adm-table__cell-main">{v}</span>,
     },
     {
       key: 'email',
@@ -250,8 +184,8 @@ export default function UsersSection() {
           style={{
             fontSize: '0.75rem',
             fontWeight: 700,
-            color: v === 'client' ? 'var(--dash-tertiary-light)' : 'var(--dash-primary)',
-            background: v === 'client' ? 'rgba(0,67,13,0.1)' : 'rgba(0,36,66,0.06)',
+            color: 'var(--dash-primary)',
+            background: 'rgba(0,36,66,0.06)',
             padding: '0.25rem 0.75rem',
             borderRadius: '12px',
           }}
@@ -261,13 +195,8 @@ export default function UsersSection() {
       ),
     },
     {
-      key: 'isActive',
-      label: 'Aktif',
-      render: (v) => <AdminStatusBadge status={v ? 'active' : 'inactive'} type="user" />,
-    },
-    {
-      key: 'lastLogin',
-      label: 'Login Terakhir',
+      key: 'createdAt',
+      label: 'Dibuat Pada',
       render: (v) => <span style={{ fontSize: '0.78rem', color: '#64748b' }}>{v}</span>,
     },
     {
@@ -278,41 +207,32 @@ export default function UsersSection() {
           <button
             className="adm-action-btn"
             title="Detail"
-            onClick={(e) => { e.stopPropagation(); setSelectedUser(row) }}
+            onClick={(e) => { e.stopPropagation(); setSelectedAdmin(row) }}
           >
             <Icon name="edit" size={16} />
           </button>
           <button
             className="adm-action-btn"
             title="Reset Password"
-            onClick={(e) => { e.stopPropagation(); handleGenerateResetLink(row) }}
+            onClick={(e) => { e.stopPropagation(); handleResetPassword(row) }}
           >
             <Icon name="key" size={16} />
           </button>
-          {row.role !== 'super_admin' && (
-            <button
-              className="adm-action-btn adm-action-btn--danger"
-              title="Nonaktifkan"
-              onClick={(e) => { e.stopPropagation(); showToast(`${row.name} telah dinonaktifkan.`, 'info') }}
-            >
-              <Icon name="block" size={16} />
-            </button>
-          )}
         </div>
       ),
     },
   ]
 
-  const statsTotalUsers = USERS.length
-  const statsActiveClients = USERS.filter(u => u.role === 'client' && u.isActive).length
-  const statsInternalTeam = USERS.filter(u => u.role !== 'client').length
+  const statsTotal = admins.length
+  const statsSuperAdmin = admins.filter(a => a.role === 'SUPERADMIN').length
+  const statsPipeline = admins.filter(a => ['KEPALA_ARMADA', 'PIC_PABRIK', 'PIC_GUDANG'].includes(a.role)).length
 
   return (
     <div className="dash-content">
       <section className="dash-header">
         <div>
           <h2 className="dash-header__title">Daftar Admin</h2>
-          <p className="dash-header__subtitle">Kelola akses staf internal dan akun klien.</p>
+          <p className="dash-header__subtitle">Kelola akses staf internal dan PIC.</p>
         </div>
         <div className="adm-section-actions">
           <button className="adm-create-btn" onClick={() => { resetModal(); setShowCreateModal(true) }}>
@@ -327,70 +247,39 @@ export default function UsersSection() {
           <div className="adm-kpi-card__icon"><Icon name="group" size={24} /></div>
           <div className="adm-kpi-card__info">
             <h3 className="adm-kpi-card__title">Total Admin</h3>
-            <p className="adm-kpi-card__value">{statsTotalUsers}</p>
+            <p className="adm-kpi-card__value">{statsTotal}</p>
           </div>
         </div>
         <div className="adm-kpi-card glass-card opacity-0">
-          <div className="adm-kpi-card__icon" style={{ color: 'var(--dash-accent, #4a6d55)', background: 'color-mix(in srgb, var(--dash-accent, #4a6d55) 10%, transparent)' }}><Icon name="verified_user" size={24} /></div>
+          <div className="adm-kpi-card__icon" style={{ color: 'var(--dash-accent, #4a6d55)', background: 'color-mix(in srgb, var(--dash-accent, #4a6d55) 10%, transparent)' }}><Icon name="local_shipping" size={24} /></div>
           <div className="adm-kpi-card__info">
-            <h3 className="adm-kpi-card__title">Klien Aktif</h3>
-            <p className="adm-kpi-card__value">{statsActiveClients}</p>
+            <h3 className="adm-kpi-card__title">Tim Pipeline (PIC)</h3>
+            <p className="adm-kpi-card__value">{statsPipeline}</p>
           </div>
         </div>
         <div className="adm-kpi-card glass-card opacity-0">
           <div className="adm-kpi-card__icon" style={{ color: 'var(--dash-primary)', background: 'color-mix(in srgb, var(--dash-primary) 10%, transparent)' }}><Icon name="admin_panel_settings" size={24} /></div>
           <div className="adm-kpi-card__info">
-            <h3 className="adm-kpi-card__title">Tim Internal</h3>
-            <p className="adm-kpi-card__value">{statsInternalTeam}</p>
+            <h3 className="adm-kpi-card__title">Super Admin</h3>
+            <p className="adm-kpi-card__value">{statsSuperAdmin}</p>
           </div>
         </div>
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-px mt-6">
-        <button
-          className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${userType === 'all' ? 'border-dash-primary text-dash-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
-          onClick={() => setUserType('all')}
-        >
-          Semua 
-          <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${userType === 'all' ? 'bg-dash-primary/10 text-dash-primary' : 'bg-gray-100 text-gray-500'}`}>
-            {USERS.length}
-          </span>
-        </button>
-        <button
-          className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${userType === 'internal' ? 'border-dash-primary text-dash-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
-          onClick={() => setUserType('internal')}
-        >
-          Internal 
-          <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${userType === 'internal' ? 'bg-dash-primary/10 text-dash-primary' : 'bg-gray-100 text-gray-500'}`}>
-            {USERS.filter(u => u.role !== 'client').length}
-          </span>
-        </button>
-        <button
-          className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${userType === 'client' ? 'border-dash-primary text-dash-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
-          onClick={() => setUserType('client')}
-        >
-          Klien 
-          <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${userType === 'client' ? 'bg-dash-primary/10 text-dash-primary' : 'bg-gray-100 text-gray-500'}`}>
-            {USERS.filter(u => u.role === 'client').length}
-          </span>
-        </button>
       </div>
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>Memuat data admin...</div>
       ) : (
         <div style={{ marginTop: '1rem' }}>
-          <AdminDataTable columns={columns} data={filteredUsers} onRowClick={setSelectedUser} />
+          <AdminDataTable columns={columns} data={admins} onRowClick={setSelectedAdmin} />
         </div>
       )}
 
       {/* Detail Panel */}
-      {selectedUser && (
+      {selectedAdmin && (
         <div className="adm-detail-panel glass-card opacity-0">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
             <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center' }}>
-              <div 
+              <div
                 style={{
                   width: '64px', height: '64px', borderRadius: '50%',
                   background: 'var(--dash-secondary)',
@@ -399,51 +288,45 @@ export default function UsersSection() {
                   flexShrink: 0
                 }}
               >
-                {(selectedUser.name || 'U').split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
+                {(selectedAdmin.name || 'A').split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
               </div>
               <div>
                 <h3 style={{ fontSize: '1.35rem', fontWeight: 900, color: 'var(--dash-primary)', margin: 0 }}>
-                  {selectedUser.name}
+                  {selectedAdmin.name}
                 </h3>
                 <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '4px 0 0' }}>
-                  {ROLE_LABELS[selectedUser.role]} • {selectedUser.company}
+                  {ROLE_LABELS[selectedAdmin.role] || selectedAdmin.role}
                 </p>
               </div>
             </div>
-            <button className="adm-action-btn" onClick={() => setSelectedUser(null)}>
+            <button className="adm-action-btn" onClick={() => setSelectedAdmin(null)}>
               <Icon name="close" size={18} />
             </button>
           </div>
           <div className="adm-detail-grid">
             <div className="adm-detail-section">
               <h4 className="adm-detail-section__title"><Icon name="account_circle" size={16} /> Informasi Akun</h4>
-              <div className="adm-detail-row"><span className="adm-detail-label">Email</span><span className="adm-detail-value">{selectedUser.email}</span></div>
-              <div className="adm-detail-row"><span className="adm-detail-label">Role</span><span className="adm-detail-value">{ROLE_LABELS[selectedUser.role]}</span></div>
-              {selectedUser.role === 'client' && (
-                <div className="adm-detail-row"><span className="adm-detail-label">Perusahaan</span><span className="adm-detail-value">{selectedUser.company}</span></div>
-              )}
-              <div className="adm-detail-row"><span className="adm-detail-label">Status</span><span className="adm-detail-value">{selectedUser.isActive ? 'Aktif' : 'Nonaktif'}</span></div>
+              <div className="adm-detail-row"><span className="adm-detail-label">Email</span><span className="adm-detail-value">{selectedAdmin.email}</span></div>
+              <div className="adm-detail-row"><span className="adm-detail-label">Role</span><span className="adm-detail-value">{ROLE_LABELS[selectedAdmin.role] || selectedAdmin.role}</span></div>
             </div>
             <div className="adm-detail-section">
               <h4 className="adm-detail-section__title"><Icon name="history" size={16} /> Aktivitas</h4>
-              <div className="adm-detail-row"><span className="adm-detail-label">Login Terakhir</span><span className="adm-detail-value">{selectedUser.lastLogin}</span></div>
-              <div className="adm-detail-row"><span className="adm-detail-label">Dibuat Pada</span><span className="adm-detail-value">{selectedUser.createdAt}</span></div>
+              <div className="adm-detail-row"><span className="adm-detail-label">Dibuat Pada</span><span className="adm-detail-value">{selectedAdmin.createdAt}</span></div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Create Modal — two modes: Manual Form | Magic Link */}
+      {/* Create Modal */}
       {showCreateModal && (
         <AdminModal
           title="Tambah Admin Baru"
-          subtitle={createSuccess ? 'Kredensial admin baru.' : (showMagicLinkSection ? 'Bagikan link pendaftaran kepada klien.' : 'Isi data akun atau gunakan magic link.')}
+          subtitle={createSuccess ? 'Kredensial admin baru.' : 'Isi data akun staf internal atau PIC.'}
           onClose={() => { setShowCreateModal(false); resetModal() }}
           onSubmit={handleModalSubmit}
-          submitLabel={createSuccess ? 'Selesai' : (showMagicLinkSection ? 'Selesai' : 'Buat Akun')}
+          submitLabel={createSuccess ? 'Selesai' : 'Buat Akun'}
         >
           {createSuccess ? (
-            /* ── Success Mode: Show credentials ── */
             <div>
               <div
                 style={{
@@ -501,8 +384,7 @@ export default function UsersSection() {
                 </button>
               </div>
             </div>
-          ) : !showMagicLinkSection ? (
-            /* ── Mode 1: Manual form ── */
+          ) : (
             <div>
               <div className="adm-form-grid">
                 <AdminFormField label="Nama Lengkap" required>
@@ -516,213 +398,34 @@ export default function UsersSection() {
                 <AdminFormField label="Email" required>
                   <input
                     type="email"
-                    placeholder="nama@perusahaan.com"
+                    placeholder="nama@mpl.com"
                     value={formEmail}
                     onChange={(e) => setFormEmail(e.target.value)}
                   />
                 </AdminFormField>
-                <AdminFormField label="Nama Perusahaan">
-                  <input
-                    type="text"
-                    placeholder="Cth: PT Sinar Jaya"
-                    value={formCompany}
-                    onChange={(e) => setFormCompany(e.target.value)}
-                  />
-                </AdminFormField>
-                <AdminFormField label="Password Sementara">
-                  <input
-                    type="text"
-                    placeholder="Kosongkan untuk auto-generate"
-                    value={formPassword}
-                    onChange={(e) => setFormPassword(e.target.value)}
-                  />
+                <AdminFormField label="Role" required>
+                  <select value={formRole} onChange={(e) => setFormRole(e.target.value)}>
+                    {ROLE_OPTIONS.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
                 </AdminFormField>
               </div>
-
-              {/* Divider */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', margin: '1.25rem 0' }}>
-                <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
-                <span style={{ fontSize: '0.78rem', color: '#94a3b8', fontWeight: 600 }}>atau</span>
-                <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'center' }}>
-                <button
-                  type="button"
-                  onClick={() => { setShowMagicLinkSection(true) }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    padding: '0.65rem 1.25rem',
-                    background: 'var(--dash-secondary)',
-                    color: 'var(--dash-primary)',
-                    border: 'none',
-                    borderRadius: '8px',
-                    fontWeight: 700,
-                    fontSize: '0.875rem',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <Icon name="link" size={18} /> Gunakan Magic Link
-                </button>
-              </div>
-            </div>
-          ) : (
-            /* ── Mode 2: Magic Link ── */
-            <div>
-              <div
-                style={{
-                  padding: '1.5rem',
-                  background: 'linear-gradient(135deg, rgba(242,184,36,0.05) 0%, rgba(242,184,36,0.15) 100%)',
-                  border: '1px solid rgba(242,184,36,0.3)',
-                  borderRadius: '16px',
-                  boxShadow: '0 8px 32px rgba(242,184,36,0.05)',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '1.25rem' }}>
-                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'var(--dash-secondary)', color: 'var(--dash-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Icon name="link" size={18} />
-                  </div>
-                  <span style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--dash-primary)' }}>
-                    Magic Link Pendaftaran
-                  </span>
-                </div>
-
-                <div style={{ marginBottom: '1rem' }}>
-                  <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.75rem' }}>
-                    <label style={{ fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                      <input type="radio" checked={!isNewCompanyLink} onChange={() => setIsNewCompanyLink(false)} />
-                      Perusahaan Tersedia
-                    </label>
-                    <label style={{ fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                      <input type="radio" checked={isNewCompanyLink} onChange={() => setIsNewCompanyLink(true)} />
-                      Perusahaan Baru
-                    </label>
-                  </div>
-                  
-                  {!isNewCompanyLink ? (
-                    <SearchableSelect
-                      options={companies}
-                      value={magicLinkCompany}
-                      onChange={setMagicLinkCompany}
-                      placeholder="Pilih Perusahaan..."
-                      searchPlaceholder="Cari perusahaan..."
-                      allLabel="-- Tanpa Perusahaan --"
-                    />
-                  ) : (
-                    <input
-                      type="text"
-                      placeholder="Nama Perusahaan Baru"
-                      value={magicLinkNewCompany}
-                      onChange={(e) => setMagicLinkNewCompany(e.target.value)}
-                      style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
-                    />
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleGenerateMagicLink}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '0.55rem 1rem',
-                    background: 'var(--dash-primary)',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: '8px',
-                    fontWeight: 600,
-                    fontSize: '0.85rem',
-                    cursor: 'pointer',
-                    marginBottom: magicLink ? '1rem' : '0',
-                  }}
-                >
-                  <Icon name="autorenew" size={16} />
-                  {magicLink ? 'Regenerate Link' : 'Generate Magic Link'}
-                </button>
-
-                {magicLink && (
-                  <div>
-                    <div
-                      style={{
-                        padding: '0.75rem',
-                        background: '#fff',
-                        border: '1px solid #e2e8f0',
-                        borderRadius: '8px',
-                        fontFamily: 'monospace',
-                        fontSize: '0.78rem',
-                        wordBreak: 'break-all',
-                        color: '#334155',
-                        marginBottom: '0.75rem',
-                        lineHeight: 1.5,
-                      }}
-                    >
-                      {magicLink}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleCopyMagicLink}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '0.5rem 1rem',
-                        background: magicLinkCopied ? '#16a34a' : '#f1f5f9',
-                        color: magicLinkCopied ? '#fff' : 'var(--dash-primary)',
-                        border: '1px solid ' + (magicLinkCopied ? '#16a34a' : '#cbd5e1'),
-                        borderRadius: '8px',
-                        fontWeight: 600,
-                        fontSize: '0.85rem',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s',
-                      }}
-                    >
-                      <Icon name={magicLinkCopied ? 'check' : 'content_copy'} size={16} />
-                      {magicLinkCopied ? 'Tersalin!' : 'Salin Link'}
-                    </button>
-                  </div>
-                )}
-
-                <p style={{ fontSize: '0.75rem', color: '#78716c', margin: '0.75rem 0 0', lineHeight: 1.6 }}>
-                  ℹ️ Link berlaku 1x pakai. Bagikan ke klien untuk registrasi mandiri.
-                </p>
-              </div>
-
-              <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-start' }}>
-                <button
-                  type="button"
-                  onClick={() => { setShowMagicLinkSection(false); setMagicLink('') }}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '0.5rem 1rem',
-                    background: 'none',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '8px',
-                    fontWeight: 600,
-                    fontSize: '0.85rem',
-                    cursor: 'pointer',
-                    color: '#64748b',
-                  }}
-                >
-                  <Icon name="arrow_back" size={16} /> Kembali ke Form Manual
-                </button>
-              </div>
+              <p style={{ fontSize: '0.75rem', color: '#78716c', margin: '1rem 0 0', lineHeight: 1.6 }}>
+                ℹ️ Password sementara akan dibuat otomatis dan ditampilkan setelah akun dibuat.
+              </p>
             </div>
           )}
         </AdminModal>
       )}
 
       {/* Reset Password Modal */}
-      {showResetModal && resetUser && (
+      {showResetModal && resetTarget && (
         <AdminModal
           title="Reset Password Admin"
-          subtitle={`Bagikan link ini ke admin (${resetUser.name}) untuk mereset password mereka.`}
-          onClose={() => { setShowResetModal(false); setResetLink(''); setResetUser(null) }}
-          onSubmit={() => { setShowResetModal(false); setResetLink(''); setResetUser(null) }}
+          subtitle={`Password baru untuk ${resetTarget.name}. Bagikan secara aman.`}
+          onClose={() => { setShowResetModal(false); setResetPassword(''); setResetTarget(null) }}
+          onSubmit={() => { setShowResetModal(false); setResetPassword(''); setResetTarget(null) }}
           submitLabel="Selesai"
         >
           <div
@@ -739,7 +442,7 @@ export default function UsersSection() {
                 <Icon name="key" size={18} />
               </div>
               <span style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--dash-primary)' }}>
-                Link Reset Password
+                Password Sementara
               </span>
             </div>
 
@@ -751,26 +454,26 @@ export default function UsersSection() {
                   border: '1px solid #e2e8f0',
                   borderRadius: '8px',
                   fontFamily: 'monospace',
-                  fontSize: '0.78rem',
+                  fontSize: '0.82rem',
                   wordBreak: 'break-all',
                   color: '#334155',
                   marginBottom: '0.75rem',
                   lineHeight: 1.5,
                 }}
               >
-                {resetLink}
+                {resetPassword}
               </div>
               <button
                 type="button"
-                onClick={handleCopyResetLink}
+                onClick={handleCopyResetPassword}
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '6px',
                   padding: '0.5rem 1rem',
-                  background: resetLinkCopied ? '#16a34a' : '#f1f5f9',
-                  color: resetLinkCopied ? '#fff' : 'var(--dash-primary)',
-                  border: '1px solid ' + (resetLinkCopied ? '#16a34a' : '#cbd5e1'),
+                  background: resetPasswordCopied ? '#16a34a' : '#f1f5f9',
+                  color: resetPasswordCopied ? '#fff' : 'var(--dash-primary)',
+                  border: '1px solid ' + (resetPasswordCopied ? '#16a34a' : '#cbd5e1'),
                   borderRadius: '8px',
                   fontWeight: 600,
                   fontSize: '0.85rem',
@@ -778,12 +481,12 @@ export default function UsersSection() {
                   transition: 'all 0.2s',
                 }}
               >
-                <Icon name={resetLinkCopied ? 'check' : 'content_copy'} size={16} />
-                {resetLinkCopied ? 'Tersalin!' : 'Salin Link'}
+                <Icon name={resetPasswordCopied ? 'check' : 'content_copy'} size={16} />
+                {resetPasswordCopied ? 'Tersalin!' : 'Salin Password'}
               </button>
             </div>
             <p style={{ fontSize: '0.75rem', color: '#78716c', margin: '0.75rem 0 0', lineHeight: 1.6 }}>
-              ℹ️ Link ini hanya berlaku 1x pakai.
+              ℹ️ Admin harus mengganti password ini setelah login pertama.
             </p>
           </div>
         </AdminModal>

@@ -1,6 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import anime from 'animejs'
 import { Truck, Warehouse, Package, Ship, FileText, Award } from 'lucide-react'
+import { MOTION } from '../../lib/motion.js'
+import { useScrollTriggeredTimeline } from '../../hooks/useScrollTriggeredTimeline'
 
 const services = [
     {
@@ -35,11 +37,11 @@ const bottomServices = [
 
 function ServiceCard({ icon: IconComponent, title, desc }) {
     return (
-        <div className="services-card group relative flex h-full flex-col overflow-hidden rounded-2xl border border-white/60 bg-white/60 p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_30px_60px_rgba(27,59,95,0.08)]">
+        <div className="services-card group relative flex h-full flex-col overflow-hidden rounded-2xl border border-white/60 bg-white/60 p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl transition-all duration-slow hover:-translate-y-2 hover:shadow-[0_30px_60px_rgba(27,59,95,0.08)]">
             {/* Subtle hover gradient sweep */}
-            <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/40 to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
+            <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/40 to-transparent opacity-0 transition-opacity duration-slow group-hover:opacity-100" />
             
-            <div className="relative z-10 mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/5 text-primary transition-all duration-500 group-hover:scale-110 group-hover:bg-primary group-hover:text-secondary group-hover:shadow-md">
+            <div className="relative z-10 mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/5 text-primary transition-all duration-slow group-hover:scale-110 group-hover:bg-primary group-hover:text-secondary group-hover:shadow-md">
                 <IconComponent size={32} strokeWidth={1.5} />
             </div>
             
@@ -50,43 +52,31 @@ function ServiceCard({ icon: IconComponent, title, desc }) {
 }
 
 export default function ServicesSection() {
-    const sectionRef = useRef(null)
-    const animatedRef = useRef(false)
-
     useEffect(() => {
         // Initial hidden state
         anime.set('.services-header-elem', { opacity: 0, translateY: 20 })
         anime.set('.services-card', { opacity: 0, translateY: 40 })
-
-        const observer = new IntersectionObserver(
-            (entries) => {
-                entries.forEach((entry) => {
-                    if (entry.isIntersecting && !animatedRef.current) {
-                        animatedRef.current = true
-
-                        const tl = anime.timeline({ easing: 'spring(1, 120, 12, 0)', duration: 400 })
-
-                        tl.add({
-                            targets: '.services-header-elem',
-                            opacity: [0, 1],
-                            translateY: [20, 0],
-                            delay: anime.stagger(50),
-                        })
-                        .add({
-                            targets: '.services-card',
-                            opacity: [0, 1],
-                            translateY: [40, 0],
-                            delay: anime.stagger(60),
-                        }, '-=400')
-                    }
-                })
-            },
-            { threshold: 0.1 }
-        )
-
-        if (sectionRef.current) observer.observe(sectionRef.current)
-        return () => observer.disconnect()
     }, [])
+
+    const sectionRef = useScrollTriggeredTimeline(() => {
+        const tl = anime.timeline({ easing: 'easeOutCubic', duration: MOTION.stagger })
+
+        tl.add({
+            targets: '.services-header-elem',
+            opacity: [0, 1],
+            translateY: [20, 0],
+            delay: anime.stagger(35),
+        })
+        .add({
+            targets: '.services-card',
+            opacity: [0, 1],
+            translateY: [40, 0],
+            delay: anime.stagger(40),
+            // Slower slide-up than the rest of the entrance sequence — the
+            // service cards read better with a bit more travel time.
+            duration: MOTION.entrance,
+        }, `-=${MOTION.stagger}`)
+    }, { threshold: 0.1 })
 
     return (
         <section className="relative w-full overflow-hidden bg-background-light py-24" id="services" ref={sectionRef}>
@@ -118,12 +108,12 @@ export default function ServicesSection() {
 
                     {/* Tablet Filler Card */}
                     <div 
-                        className="services-card hidden md:flex lg:hidden relative overflow-hidden flex-col items-center justify-center p-8 rounded-2xl shadow-md transition-all duration-500 hover:-translate-y-2 hover:shadow-xl border border-primary/20 h-full group bg-primary"
+                        className="services-card hidden md:flex lg:hidden relative overflow-hidden flex-col items-center justify-center p-8 rounded-2xl shadow-md transition-all duration-slow hover:-translate-y-2 hover:shadow-xl border border-primary/20 h-full group bg-primary"
                     >
-                        <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-white/5 blur-2xl transition-transform duration-700 group-hover:scale-150"></div>
-                        <div className="absolute -bottom-8 -left-8 h-32 w-32 rounded-full bg-secondary/10 blur-2xl transition-transform duration-700 group-hover:scale-150"></div>
+                        <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-white/5 blur-2xl transition-transform duration-slow group-hover:scale-150"></div>
+                        <div className="absolute -bottom-8 -left-8 h-32 w-32 rounded-full bg-secondary/10 blur-2xl transition-transform duration-slow group-hover:scale-150"></div>
                         
-                        <div className="relative z-10 mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 text-secondary shadow-inner transition-transform duration-500 group-hover:rotate-12 group-hover:scale-110">
+                        <div className="relative z-10 mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 text-secondary shadow-inner transition-transform duration-slow group-hover:rotate-12 group-hover:scale-110">
                             <Award size={36} strokeWidth={1.5} />
                         </div>
 

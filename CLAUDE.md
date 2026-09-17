@@ -16,6 +16,10 @@ before editing** → append a dated **Session Log** entry (§5) before finishing
 implications for follow-up instead. Don't break shared contracts (schema, shared
 routes, `api.js`, `AuthContext`, `TrackingSection`). Never force-push `main`.
 
+> **Temporary exception (2026-09-15, user-approved):** landing-page SEO work
+> (robots.txt, sitemap.xml, meta tags) in `apps/web` is in scope until this
+> exception is removed. All other client-facing-side restrictions still apply.
+
 ## Coding standards & review agents (from ECC, curated)
 Follow the coding/security standards in **[.claude/rules/](.claude/rules/)** for TypeScript
 (`typescript/`), React (`react/`), and cross-cutting (`common/`) work.
@@ -27,3 +31,29 @@ Specialist review subagents live in `.claude/agents/` — invoke them for focuse
 Config-hygiene scan (agent setup, secrets, MCP): `npm run security:scan` (runs AgentShield).
 This is NOT app-security — rate limiting / helmet / input validation / `npm audit` are
 separate deployment-hardening tasks.
+
+## Frontend/design skills (migrated from Antigravity, curated)
+Skills below live in **[.claude/skills/](.claude/skills/)** (each a `SKILL.md`) and are
+auto-loaded by name/description match, or invoke explicitly via the Skill tool. They
+apply to **admin dashboard UI work only** — scope in §"Start here" still governs; do not
+use them to touch the client-facing landing page.
+
+- **Structure & standards:** `frontend-design` → `frontend-dev-guidelines` →
+  `senior-frontend` → `frontend-developer` — layout/architecture decisions and
+  React/Next/TS conventions for new components or pages.
+- **Visual, components & motion:** `ui-ux-pro-max` → `ui-ux-designer` →
+  `antigravity-design-expert` → `animejs-animation` → `shadcn` — color/typography/
+  component choices and micro-interactions. Cross-reference dashboard color tokens
+  (`--dash-primary` `#002442`, `--dash-secondary` `#fec330`, defined in
+  `apps/web/src/index.css`) rather than inventing new hex values.
+- **Scaffolding:** `frontend-mobile-development-component-scaffold` — generating a new
+  component with tests/types already wired up.
+- **Validation:** `ui-visual-validator` — pixel/accessibility check after a UI change,
+  before calling it done.
+- **Meta:** `antigravity-skill-orchestrator` — use when a task might need several of the
+  above and you want help picking which, instead of loading all of them.
+
+**Out of scope here:** `seo-audit`, `seo-aeo-landing-page-writer`,
+`seo-aeo-meta-description-generator`, `seo-aeo-schema-generator` target the public
+landing page, not the dashboard. Don't invoke them for dashboard work; note SEO
+implications for follow-up instead, per the client-facing-side rule above.

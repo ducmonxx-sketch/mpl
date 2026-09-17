@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import anime from 'animejs'
 import { env } from '../../lib/env.js'
+import { MOTION } from '../../lib/motion.js'
 
 const NAV_ITEMS = [
     { label: 'Beranda', href: '#home' },
@@ -41,12 +42,24 @@ export default function Header() {
         return () => { document.body.style.overflow = '' }
     }, [menuOpen])
 
-    // Scroll state for background blur
+    // Scroll state for background blur.
+    // Uses hysteresis (different enter/exit thresholds) instead of one fixed
+    // value: the header's own height change (h-24 -> h-16) shifts the layout
+    // below it, and the browser's scroll-anchoring nudges scrollY back to
+    // compensate. With a single threshold that nudge lands on the other side
+    // of it, flipping isScrolled back, which undoes the height change, which
+    // nudges scrollY again — an infinite bounce right at the boundary.
     useEffect(() => {
+        const SCROLLED_ENTER_THRESHOLD = 40
+        const SCROLLED_EXIT_THRESHOLD = 10
+
         const handleScroll = () => {
             const currentScroll = window.scrollY;
-            setIsScrolled(currentScroll > 20);
-            
+            setIsScrolled((prev) => {
+                if (prev) return currentScroll > SCROLLED_EXIT_THRESHOLD
+                return currentScroll > SCROLLED_ENTER_THRESHOLD
+            });
+
             const isBottom = Math.abs(
                 (document.documentElement.scrollHeight || document.body.scrollHeight) - 
                 (currentScroll + window.innerHeight)
@@ -89,7 +102,7 @@ export default function Header() {
                 translateY: [30, 0],
                 delay: anime.stagger(50, { start: 100 }),
                 easing: 'easeOutExpo',
-                duration: 600
+                duration: MOTION.entrance
             })
         } else {
             anime({
@@ -97,7 +110,7 @@ export default function Header() {
                 opacity: 0,
                 translateY: -20,
                 easing: 'easeOutExpo',
-                duration: 300
+                duration: MOTION.base
             })
         }
     }, [menuOpen])
@@ -121,22 +134,28 @@ export default function Header() {
 
     return (
         <>
-            <header 
-                className={`sticky top-0 z-50 w-full text-white transition-all duration-300 ease-in-out ${
-                    isScrolled 
-                    ? 'bg-[#0B1121]/90 backdrop-blur-md border-b border-white/10 shadow-lg' 
+            <header
+                className={`sticky top-0 z-50 w-full text-white transition-all duration-base ease-in-out [overflow-anchor:none] ${
+                    isScrolled
+                    ? 'bg-[#0B1121]/90 backdrop-blur-md border-b border-white/10 shadow-lg'
                     : 'bg-[#0B1121]'
                 }`}
             >
-                <div className={`mx-auto flex items-center justify-between px-6 lg:px-8 transition-all duration-300 ${
+                <div className={`mx-auto flex items-center justify-between px-6 lg:px-8 transition-all duration-base ${
                     isScrolled ? 'h-16' : 'h-24'
                 }`}>
                     {/* Logo */}
                     <div className="flex items-center gap-3 group cursor-pointer relative z-50" onClick={() => window.scrollTo({top: 0, behavior: 'smooth'})}>
                         <img
-                            src="/mpl_logo_proto.svg"
+                            src="/mpl_logo.webp"
                             alt="PT Mahkota Putra Logistik Logo"
-                            className="h-10 w-10 rounded-lg object-contain transition-transform group-hover:scale-105 bg-white/5 p-1 border border-white/10"
+                            className={`object-contain transition-all duration-base group-hover:scale-105 ${
+                                isScrolled ? 'h-10 w-10' : 'h-14 w-14'
+                            }`}
+                            width="56"
+                            height="56"
+                            decoding="async"
+                            fetchPriority="high"
                         />
                         <h1 className="text-lg sm:text-xl font-display font-bold leading-tight tracking-wide text-white">
                             <span className="hidden xl:inline">PT Mahkota Putra Logistik</span>
@@ -149,7 +168,7 @@ export default function Header() {
                         {NAV_ITEMS.map(({ label, href }) => (
                             <a
                                 key={href}
-                                className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${
+                                className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-fast ${
                                     activeSection === href 
                                     ? 'bg-white/10 text-secondary font-bold' 
                                     : 'hover:bg-white/5 hover:text-white text-white/70'
@@ -166,15 +185,15 @@ export default function Header() {
                     <div className="hidden lg:flex items-center gap-4 relative z-50">
                         <a
                             href={env.VITE_WHATSAPP_LINK}
-                            target="_blank" 
+                            target="_blank"
                             rel="noopener noreferrer"
-                            className="flex h-10 items-center justify-center rounded-xl bg-secondary px-5 text-sm font-bold text-primary transition-all duration-300 hover:-translate-y-[2px] hover:bg-[#ffe066] hover:shadow-[0_0_20px_rgba(242,184,36,0.3)]"
+                            className="flex h-10 items-center justify-center rounded-xl bg-secondary px-5 text-sm font-bold text-primary transition-all duration-base hover:-translate-y-[2px] hover:bg-[#ffe066] hover:shadow-[0_0_20px_rgba(242,184,36,0.3)]"
                         >
                             Hubungi Kami
                         </a>
                         <Link
                             to="/client"
-                            className="flex h-10 items-center justify-center rounded-xl border border-white/20 bg-white/5 backdrop-blur-sm px-5 text-sm font-bold text-white transition-all duration-300 hover:bg-white/10 hover:border-white/40 hover:-translate-y-[2px]"
+                            className="flex h-10 items-center justify-center rounded-xl border border-white/20 bg-white/5 backdrop-blur-sm px-5 text-sm font-bold text-white transition-all duration-base hover:bg-white/10 hover:border-white/40 hover:-translate-y-[2px]"
                         >
                             Register / Log In
                         </Link>
@@ -187,9 +206,9 @@ export default function Header() {
                         aria-label={menuOpen ? 'Close menu' : 'Open menu'}
                         aria-expanded={menuOpen}
                     >
-                        <span className={`block h-[2px] w-6 bg-white transition-transform duration-300 ease-in-out ${menuOpen ? 'translate-y-[8px] rotate-45' : 'group-hover:bg-secondary'}`} />
-                        <span className={`block h-[2px] w-6 bg-white transition-opacity duration-300 ease-in-out ${menuOpen ? 'opacity-0' : 'group-hover:bg-secondary'}`} />
-                        <span className={`block h-[2px] w-6 bg-white transition-transform duration-300 ease-in-out ${menuOpen ? '-translate-y-[8px] -rotate-45' : 'group-hover:bg-secondary'}`} />
+                        <span className={`block h-[2px] w-6 bg-white transition-transform duration-base ease-in-out ${menuOpen ? 'translate-y-[8px] rotate-45' : 'group-hover:bg-secondary'}`} />
+                        <span className={`block h-[2px] w-6 bg-white transition-opacity duration-base ease-in-out ${menuOpen ? 'opacity-0' : 'group-hover:bg-secondary'}`} />
+                        <span className={`block h-[2px] w-6 bg-white transition-transform duration-base ease-in-out ${menuOpen ? '-translate-y-[8px] -rotate-45' : 'group-hover:bg-secondary'}`} />
                     </button>
                 </div>
             </header>
@@ -197,7 +216,7 @@ export default function Header() {
             {/* Mobile Full-Screen Overlay */}
             <div
                 ref={overlayRef}
-                className={`fixed inset-0 z-40 bg-[#0B1121]/95 backdrop-blur-3xl transition-opacity duration-500 lg:hidden ${
+                className={`fixed inset-0 z-40 bg-[#0B1121]/95 backdrop-blur-3xl transition-opacity duration-slow lg:hidden ${
                     menuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
                 }`}
             >
@@ -206,7 +225,7 @@ export default function Header() {
                         {NAV_ITEMS.map(({ label, href }) => (
                             <a
                                 key={href}
-                                className={`mobile-link-item text-3xl font-display font-bold tracking-tight transition-colors duration-200 ${
+                                className={`mobile-link-item text-3xl font-display font-bold tracking-tight transition-colors duration-fast ${
                                     activeSection === href 
                                     ? 'text-secondary' 
                                     : 'text-white hover:text-white/80'
@@ -223,13 +242,13 @@ export default function Header() {
                                 href={env.VITE_WHATSAPP_LINK}
                                 target="_blank" 
                                 rel="noopener noreferrer"
-                                className="mobile-link-item flex h-14 items-center justify-center rounded-xl bg-secondary px-6 text-lg font-bold text-primary shadow-[0_0_20px_rgba(242,184,36,0.2)] transition-all duration-300"
+                                className="mobile-link-item flex h-14 items-center justify-center rounded-xl bg-secondary px-6 text-lg font-bold text-primary shadow-[0_0_20px_rgba(242,184,36,0.2)] transition-all duration-base"
                             >
                                 Hubungi Kami
                             </a>
                             <Link
                                 to="/client"
-                                className="mobile-link-item flex h-14 items-center justify-center rounded-xl border border-white/20 bg-white/5 backdrop-blur-sm px-6 text-lg font-bold text-white transition-all duration-300"
+                                className="mobile-link-item flex h-14 items-center justify-center rounded-xl border border-white/20 bg-white/5 backdrop-blur-sm px-6 text-lg font-bold text-white transition-all duration-base"
                             >
                                 Register / Log In
                             </Link>

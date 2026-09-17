@@ -195,6 +195,10 @@ export const usersAPI = {
   reject: (userId) =>
     api.patch(`/api/users/${userId}/reject`),
 
+  /** Superadmin: designate a client account as the main PIC for its company */
+  setMainPic: (userId) =>
+    api.patch(`/api/users/${userId}/set-main-pic`),
+
   /** Admin: update a user/client account */
   updateUser: (userId, data) =>
     api.patch(`/api/users/${userId}`, data),
@@ -240,6 +244,14 @@ export const shipmentsAPI = {
   /** Dashboard stats by period */
   getStats: (period = 'monthly') =>
     api.get('/api/shipments/stats', { period }),
+
+  /** Admin: monthly-bucketed perfect-vs-defective unit counts (month|quarter|ytd; all|Unit|Cargo|Container) */
+  getConditionAnalytics: (range = 'month', category = 'all') =>
+    api.get('/api/shipments/condition-analytics', { range, category }),
+
+  /** Admin: drill-down — shipments behind one chart point (period = YYYY-MM-DD or YYYY-MM) */
+  getConditionDetail: (period, category = 'all') =>
+    api.get('/api/shipments/condition-analytics/detail', { period, category }),
 
   /** Single shipment detail */
   getById: (id) =>
@@ -380,6 +392,14 @@ export const adminsAPI = {
   /** List admin accounts */
   list: () =>
     api.get('/api/admins'),
+
+  /** Create an admin account. Returns { admin, tempPassword }. */
+  create: (data) =>
+    api.post('/api/admins', data),
+
+  /** Reset an admin's password. Returns a one-time temp password. */
+  resetPassword: (id) =>
+    api.post(`/api/admins/${id}/reset-password`),
 }
 
 // ─── Admin Notifications API ────────────────────────────────

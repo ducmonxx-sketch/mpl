@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /client
+Disallow: /auth
+Disallow: /api
+
+Sitemap: https://www.mahkotaputralogistik.id/sitemap.xml

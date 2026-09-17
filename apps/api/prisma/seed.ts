@@ -1,6 +1,5 @@
 import "dotenv/config"
 import { PrismaClient } from "../src/generated/prisma/client"
-import type { ShipmentStatus } from "../src/generated/prisma/enums"
 import { Pool } from "pg"
 import { PrismaPg } from "@prisma/adapter-pg"
 import bcrypt from "bcrypt"
@@ -70,42 +69,6 @@ async function main() {
     },
   })
   console.log("✅ Admins: admin@mpl.com (SUPERADMIN), admin2@mpl.com (OPERATIONS), armada@mpl.com (KEPALA_ARMADA), pabrik@mpl.com (PIC_PABRIK), gudang@mpl.com (PIC_GUDANG)")
-
-  // ════════════════════════════════════════════════════════════
-  // CLIENTS (10): 8 tracked-in-shipments (idx 0–7) + 2 idle (idx 8–9).
-  //   idx 0 = the whitelist login client (client@mpl.com)
-  //   idx 6 = special: 1 active + 2 failed shipments
-  //   idx 7 = special: 1 failed shipment
-  // ════════════════════════════════════════════════════════════
-  const clientPassword = await bcrypt.hash("client1234", 10)
-  const clientSeed = [
-    { fullName: "Whitelist Client", companyName: "MPL Whitelist Corp",     email: "client@mpl.com",         phoneNumber: "081200000001", city: "Jakarta Pusat",  address: "Jl. Sudirman No. 1, DKI Jakarta",       npwp: "01.234.567.8-901.000" },
-    { fullName: "Andi Wijaya",      companyName: "PT Maju Jaya Logistik",  email: "majujaya@client.com",    phoneNumber: "081234500001", city: "Jakarta Barat",  address: "Jl. Daan Mogot No. 12, Jakarta Barat",  npwp: "02.111.222.3-456.000" },
-    { fullName: "Siti Rahayu",      companyName: "CV Sentosa Abadi",       email: "sentosa@client.com",     phoneNumber: "081234500002", city: "Surabaya",       address: "Jl. Ahmad Yani No. 88, Surabaya",       npwp: "03.222.333.4-567.000" },
-    { fullName: "Bambang Sutrisno", companyName: "PT Bahari Nusantara",    email: "bahari@client.com",      phoneNumber: "081234500003", city: "Makassar",       address: "Jl. Pelabuhan No. 5, Makassar",         npwp: "04.333.444.5-678.000" },
-    { fullName: "Dewi Lestari",     companyName: "PT Cahaya Timur",        email: "cahayatimur@client.com", phoneNumber: "081234500004", city: "Medan",          address: "Jl. Gatot Subroto No. 21, Medan",       npwp: "05.444.555.6-789.000" },
-    { fullName: "Hendra Gunawan",   companyName: "UD Berkah Mandiri",      email: "berkah@client.com",      phoneNumber: "081234500005", city: "Bandung",        address: "Jl. Asia Afrika No. 17, Bandung",       npwp: "06.555.666.7-890.000" },
-    { fullName: "Rina Marlina",     companyName: "PT Sinar Gagal Jaya",    email: "sinargagal@client.com",  phoneNumber: "081234500006", city: "Semarang",       address: "Jl. Pandanaran No. 9, Semarang",        npwp: "07.666.777.8-901.000" },
-    { fullName: "Yusuf Hidayat",    companyName: "CV Gagal Sekali",        email: "gagalsekali@client.com", phoneNumber: "081234500007", city: "Yogyakarta",     address: "Jl. Malioboro No. 3, Yogyakarta",       npwp: "08.777.888.9-012.000" },
-    { fullName: "Maya Putri",       companyName: "PT Diam Diam Saja",      email: "idle1@client.com",       phoneNumber: "081234500008", city: "Denpasar",       address: "Jl. Sunset Road No. 1, Denpasar",       npwp: "09.888.999.0-123.000" },
-    { fullName: "Doni Saputra",     companyName: "UD Belum Kirim",         email: "idle2@client.com",       phoneNumber: "081234500009", city: "Balikpapan",     address: "Jl. Jenderal Sudirman No. 7, Balikpapan", npwp: "10.999.000.1-234.000" },
-  ]
-  const clients = []
-  for (const c of clientSeed) {
-    const user = await prisma.user.upsert({
-      where: { email: c.email },
-      update: {},
-      create: {
-        ...c,
-        passwordHash: clientPassword,
-        verificationStatus: "VERIFIED",
-        verifiedByAdminId: admin.id,
-        settings: { create: {} },
-      },
-    })
-    clients.push(user)
-  }
-  console.log(`✅ ${clients.length} clients (8 tracked, 2 idle)`)
 
   // ════════════════════════════════════════════════════════════
   // DRIVERS (12) — liveish fleet. Statuses are SYNCED to their ongoing shipment below:
@@ -236,89 +199,10 @@ async function main() {
   console.log(`✅ paired ${vehicles.length} vehicles to drivers (${drivers.length - vehicles.length} substitute drivers spare)`)
 
   // ════════════════════════════════════════════════════════════
-  // MOCK SHIPMENTS — all UNIT type (Asal from the pickup-plant list, Tujuan "Gudang MPL").
-  // Two sets:
-  //  • 6 ONGOING — one per engaged driver, fleet-SYNCED (driver/vehicle statuses above match):
-  //      driver1→STANDBY, driver2→STANDBY, driver3→DITUGASKAN, driver4→AT_PLANT,
-  //      driver5→TRANSIT, driver6→DITERIMA.
-  //  • 10 SELESAI (DELIVERED) — completed history; terminal, so they hold no fleet.
-  //    Spread across all 12 drivers (a driver's past trip; doesn't affect current status).
-  // NOTE: Cargo/Container flows are not defined yet — these mocks are Unit only.
+  // MOCK SHIPMENTS removed along with client seeds — Shipment.clientId is required,
+  // so shipment mocks can't be seeded without a client to attach them to.
   // ════════════════════════════════════════════════════════════
-  await prisma.shipment.deleteMany({})  // fresh mock set each seed (events cascade)
-  const plantLabel = (p: typeof plants[number]) => `${p.manufacturer} - ${p.name}${p.code ? ` (${p.code})` : ""}`
-
-  // di = index into drivers[] / vehicles[] (the paired 1:1 sets). Ongoing rows drive the fleet sync.
-  const ongoing = [
-    { status: "STANDBY",    di: 0 },
-    { status: "STANDBY",    di: 1 },
-    { status: "DITUGASKAN", di: 2 },
-    { status: "AT_PLANT",   di: 3 },
-    { status: "TRANSIT",    di: 4 },
-    { status: "DITERIMA",   di: 5 },
-  ]
-  // 10 completed history rows, cycling drivers 1–9 (paired sets, have a vehicle to reference).
-  const history = Array.from({ length: 10 }, (_, k) => ({ status: "DELIVERED", di: k % vehicles.length }))
-  const shipmentSpecs = [...ongoing, ...history]
-
-  // Plant check exists once the shipment has departed the plant (TRANSIT onward).
-  const MOTOR_TYPES = ["Honda Vario 160", "Honda BeAT", "Honda PCX 160", "Honda Scoopy"]
-  const PLANT_CHECK_STATUSES = ["TRANSIT", "DITERIMA", "DITURUNKAN", "DELIVERED"]
-  const makePlantCheck = (i: number) => {
-    const t1 = MOTOR_TYPES[i % MOTOR_TYPES.length]
-    const t2 = MOTOR_TYPES[(i + 1) % MOTOR_TYPES.length]
-    const seq = String(i + 1).padStart(4, "0")
-    return {
-      checkedByAdminId: admin.id,
-      pengiriman: { create: [
-        { tipeMotor: t1, noShipping: `SHP-${seq}-A`, jumlah: 5, satuan: "Unit", keterangan: "Kondisi baik" },
-        { tipeMotor: t2, noShipping: `SHP-${seq}-B`, jumlah: 3, satuan: "Unit", keterangan: i % 2 === 0 ? "Terpal basah" : "-" },
-      ] },
-      lku: { create: [
-        { tipeMotor: t1, noMesin: `ENG-${seq}-001`, noRangka: `RNG-${seq}-001`, warna: "Merah", itemDefect: i % 3 === 0 ? "Lecet body kiri" : "" },
-      ] },
-      ksu: { create: [t1, t2].map((t) => ({
-        tipeMotor: t, helm: "OK", accu: "OK", spion: "OK", toolkit: "OK",
-        bsBp: "OK", kKontak: "OK", fuse: "OK", platNo: "Ada", sticker: "Ada",
-      })) },
-    }
-  }
-
-  for (let i = 0; i < shipmentSpecs.length; i++) {
-    const { status, di } = shipmentSpecs[i]
-    const plant = plants[i % plants.length]
-    const isDone = status === "DELIVERED"
-    // Ongoing rows MUST be today/future — the field-layout "Selesai" tab is a past-pickup-date
-    // view, so a past date would drop an in-progress shipment into Selesai. History = past.
-    const pickupOffset = isDone ? -(10 + i * 3) : i
-    await prisma.shipment.create({
-      data: {
-        id:                  `#MPL-${String(i + 1).padStart(5, "0")}-JKT`,
-        packageType:         "Kendaraan",
-        weightKg:            500,
-        units:               10,
-        serviceLevel:        "Darat",
-        shippingCategory:    "Unit",
-        originLocation:      plantLabel(plant),
-        destinationLocation: "Gudang MPL",
-        status:              status as ShipmentStatus,
-        pickupDate:          daysFromNow(pickupOffset),
-        pickupPlantId:       plant.id,
-        clientId:            clients[i % clients.length].id,
-        driverId:            drivers[di].id,
-        vehicleId:           vehicles[di].id,
-        createdByAdminId:    admin.id,
-        // Completed rows: stamp when they were closed (drives the "Selesai" sort) + serah-terima note.
-        ...(isDone && {
-          completionDate:        daysFromNow(-(i - 5)),
-          catatanGudangPenerima: "Semua unit diterima lengkap dan sesuai. Perlengkapan motor cocok.",
-        }),
-        // Plant check (relational): present once the shipment has left the plant.
-        ...(PLANT_CHECK_STATUSES.includes(status) && { plantCheck: { create: makePlantCheck(i) } }),
-      },
-    })
-  }
-  console.log(`✅ ${shipmentSpecs.length} mock UNIT shipments (6 ongoing + 10 Selesai; plant-check on TRANSIT+; serah-terima on Selesai)`)
+  await prisma.shipment.deleteMany({})  // clear any shipments left from a prior seed run
 
   console.log("\n🌱 Seed complete.")
 }

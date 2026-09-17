@@ -1,6 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import anime from 'animejs'
 import Icon from '../Icon'
+import { MOTION } from '../../lib/motion.js'
+import { useScrollTriggeredTimeline } from '../../hooks/useScrollTriggeredTimeline'
 
 const features = [
     { icon: 'schedule', title: 'Tepat Waktu', desc: 'Jadwal pengiriman yang terencana dan disiplin untuk setiap kebutuhan bisnis Anda.' },
@@ -10,66 +12,51 @@ const features = [
 ]
 
 export default function AboutSection() {
-    const sectionRef = useRef(null)
-    const animatedRef = useRef(false)
-
     useEffect(() => {
         // Set initial hidden states
         anime.set(['.about-label', '.about-heading', '.about-body'], { opacity: 0, translateY: 30 })
         anime.set('.about-feature-card', { opacity: 0, translateY: 40 })
         anime.set('.about-image-container', { opacity: 0, scale: 0.95, rotateX: 8, rotateY: 12 })
         anime.set('.about-floating-card', { opacity: 0, translateY: 60 })
-
-        const observer = new IntersectionObserver(
-            (entries) => {
-                entries.forEach((entry) => {
-                    if (entry.isIntersecting && !animatedRef.current) {
-                        animatedRef.current = true
-
-                        const tl = anime.timeline({ easing: 'spring(1, 120, 12, 0)', duration: 400 })
-
-                        tl.add({
-                            targets: '.about-label',
-                            opacity: [0, 1],
-                            translateY: [20, 0],
-                        })
-                        .add({
-                            targets: '.about-heading',
-                            opacity: [0, 1],
-                            translateY: [30, 0],
-                        }, '-=400')
-                        .add({
-                            targets: '.about-body',
-                            opacity: [0, 1],
-                            translateY: [20, 0],
-                        }, '-=400')
-                        .add({
-                            targets: '.about-feature-card',
-                            opacity: [0, 1],
-                            translateY: [40, 0],
-                            delay: anime.stagger(40),
-                        }, '-=350')
-                        .add({
-                            targets: '.about-image-container',
-                            opacity: [0, 1],
-                            scale: [0.95, 1],
-                            rotateX: [8, 0],
-                            rotateY: [12, 0],
-                        }, '-=400')
-                        .add({
-                            targets: '.about-floating-card',
-                            opacity: [0, 1],
-                            translateY: [60, 0],
-                        }, '-=400')
-                    }
-                })
-            },
-            { threshold: 0.15 }
-        )
-
-        if (sectionRef.current) observer.observe(sectionRef.current)
-        return () => observer.disconnect()
     }, [])
+
+    const sectionRef = useScrollTriggeredTimeline(() => {
+        const tl = anime.timeline({ easing: 'easeOutCubic', duration: MOTION.stagger })
+
+        tl.add({
+            targets: '.about-label',
+            opacity: [0, 1],
+            translateY: [20, 0],
+        })
+        .add({
+            targets: '.about-heading',
+            opacity: [0, 1],
+            translateY: [30, 0],
+        }, `-=${MOTION.stagger}`)
+        .add({
+            targets: '.about-body',
+            opacity: [0, 1],
+            translateY: [20, 0],
+        }, `-=${MOTION.stagger}`)
+        .add({
+            targets: '.about-feature-card',
+            opacity: [0, 1],
+            translateY: [40, 0],
+            delay: anime.stagger(30),
+        }, `-=${MOTION.stagger - 25}`)
+        .add({
+            targets: '.about-image-container',
+            opacity: [0, 1],
+            scale: [0.95, 1],
+            rotateX: [8, 0],
+            rotateY: [12, 0],
+        }, `-=${MOTION.stagger}`)
+        .add({
+            targets: '.about-floating-card',
+            opacity: [0, 1],
+            translateY: [60, 0],
+        }, `-=${MOTION.stagger}`)
+    }, { threshold: 0.15 })
 
     return (
         <section id="about" ref={sectionRef} className="relative w-full overflow-hidden bg-primary py-24">
@@ -103,9 +90,9 @@ export default function AboutSection() {
                             {features.map((f) => (
                                 <div
                                     key={f.icon}
-                                    className="about-feature-card group flex items-start gap-4 rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:bg-white/10 hover:border-white/20 cursor-default"
+                                    className="about-feature-card group flex items-start gap-4 rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-sm transition-all duration-base hover:-translate-y-1 hover:bg-white/10 hover:border-white/20 cursor-default"
                                 >
-                                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-secondary/15 text-secondary transition-transform duration-300 group-hover:scale-110">
+                                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-secondary/15 text-secondary transition-transform duration-base group-hover:scale-110">
                                         <Icon name={f.icon} size={22} />
                                     </div>
                                     <div>
@@ -124,7 +111,7 @@ export default function AboutSection() {
                             <div className="relative h-full w-full overflow-hidden rounded-[2.5rem] shadow-[0_30px_80px_rgba(0,0,0,0.4)]">
                                 <img
                                     alt="Container shipping port PT Mahkota Putra Logistik"
-                                    className="h-full w-full object-cover transition-transform duration-[2000ms] hover:scale-105"
+                                    className="h-full w-full object-cover transition-transform duration-zoom hover:scale-105"
                                     src="/2.webp"
                                     loading="lazy"
                                     width="600"

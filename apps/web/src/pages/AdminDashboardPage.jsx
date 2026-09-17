@@ -11,6 +11,7 @@ import AdminTopbar from './AdminComponents/layout/AdminTopbar'
 
 // Admin sections
 import OverviewSection from './AdminComponents/OverviewSection'
+import ReportSection from './AdminComponents/ReportSection'
 import ShipmentsSection from './AdminComponents/ShipmentsSection'
 import ClientsSection from './AdminComponents/ClientsSection'
 import DriversSection from './AdminComponents/DriversSection'
@@ -237,8 +238,12 @@ export default function AdminDashboardPage() {
   const renderSection = () => {
     switch (activeNav) {
       case 'overview': return <OverviewSection onChangeNav={handleNavChange} onNavigateToShipment={navigateToShipment} userRole={displayRole} />
+      case 'laporan':
+        return ['KEPALA_ARMADA', 'PIC_PABRIK', 'PIC_GUDANG'].includes(displayRole)
+          ? <OverviewSection onChangeNav={handleNavChange} onNavigateToShipment={navigateToShipment} userRole={displayRole} />
+          : <ReportSection onNavigateToShipment={navigateToShipment} />
       case 'shipments': return <ShipmentsSection onTrackFull={navigateToTracking} highlightShipmentId={shipmentHighlightId} userRole={displayRole} />
-      case 'clients': return <ClientsSection />
+      case 'clients': return <ClientsSection userRole={displayRole} />
       case 'drivers': return <DriversSection userRole={displayRole} />
       case 'armada': return <ArmadaSection userRole={displayRole} />
       case 'users': return <UsersSection />

@@ -98,7 +98,7 @@ export default function VerificationPage() {
               {/* Background image inside circle */}
               <img
                 className="verify-illustration__circle-bg"
-                src="/2.JPG.jpeg"
+                src="/2.webp"
                 alt=""
                 loading="eager"
               />
