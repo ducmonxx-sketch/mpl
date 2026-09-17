@@ -352,7 +352,9 @@ Velocity/safety investments, separate from feature work. Tier-2 primitives overl
       constraint: office **upload bandwidth** is the ceiling for every remote PIC and client.
 - [ ] **Tune the pg connection pool** — pooling already exists (`@prisma/adapter-pg` + `pg.Pool`);
       size it *down* for a 16 GB box (each Postgres connection costs RAM).
-- [ ] **Cache only the aggregation endpoints** — `condition-analytics` + `/shipments/stats`.
+- [ ] **Analytics rollup table** for `condition-analytics` — see the design section below. This
+      supersedes "just cache it": caching hides the cost, a rollup removes it *and* makes the graph
+      data permanent. Plain caching is still fine for `/shipments/stats`.
       Do **not** cache live operational reads; an admin panel needs fresh shipment status.
 - [ ] **Reduce dashboard polling** — see "higher-impact additions" below.
 
@@ -390,7 +392,65 @@ Velocity/safety investments, separate from feature work. Tier-2 primitives overl
 
 ### Recommended order
 pagination → DB indexes (incl. FKs) → image pipeline → payload compression → polling interval →
-cache the two analytics endpoints. Everything after that is polish.
+analytics rollup table. Everything after that is polish.
+
+## Analytics rollup table — permanent graph data (designed 2026-09-17)
+> Part of **pre-launch / first deployment** work. (Note: DEPLOYMENT-NAS.md has its own Phase 0–5
+> numbering — those are *infra & security* phases. App-level pre-launch work is tracked here.)
+
+**Requirement (user, 2026-09-17):** the data behind the condition graph must survive **as long as MPL
+exists** (30+ years), independent of any retention policy later applied to raw shipments or images.
+
+**Plain English:** a "rollup table" is just a notebook. Instead of re-counting every receipt each time
+someone opens the chart, a nightly job writes **one line per day** — *"2026-09-15, Unit: 328 OK, 12
+defective"* — and the chart reads those lines. Same picture, **~1,000 rows instead of ~3,000,000.**
+
+**Why — in priority order:**
+1. 🔴 **The current endpoint doesn't scale.** `GET /api/shipments/condition-analytics` fetches every
+   DELIVERED shipment in range **with all nested LKU rows**, then aggregates in JavaScript. At 130k
+   shipments/yr a YTD query pulls ~119k shipments × ~25 units ≈ **3M nested objects into Node memory,
+   per request** — on a polled dashboard, on an N100. A rollup makes it O(buckets) instead of O(rows).
+2. **Constant cost as data grows** — a year is always ~365 rows, in year 1 or year 30. Raw
+   aggregation gets slower every single year.
+3. **Survives archiving/deletion** — the actual requirement. Numbers remain even if raw shipments or
+   images are ever archived (DEPLOYMENT-NAS.md §2.4).
+4. **Survives schema churn** — over 30 years the raw tables get refactored repeatedly (already
+   several times this year). A fixed, dumb rollup shape is immune.
+5. **Tiny** — a few MB over 30 years, vs ~135 GB of raw rows.
+
+**Schema sketch**
+```prisma
+AnalyticsShipmentDaily
+  date              DateTime @db.Date   // DAY granularity — deliberate, see below
+  shippingCategory  String              // ┐ dimensions: be generous, they
+  serviceLevel      String              // │ cannot be added retroactively
+  pickupPlantId     String?             // ┘
+  shipmentCount     Int                 // ┐
+  unitsTotal        Int                 // │ measures
+  unitsPerfect      Int                 // │
+  unitsDefective    Int                 // ┘
+  @@unique([date, shippingCategory, serviceLevel, pickupPlantId])
+```
+Size: worst case 365 × 3 × ~5 × 7 ≈ 38k rows/yr, sparse in practice → a few thousand rows/yr
+(~1–8 MB/yr, **< 250 MB over 30 years**).
+
+⚠️ **Day granularity is deliberate.** Days can always be summed into weeks/months/years on read; a
+month can **never** be split back into days. Same logic applies to dimensions — a `date × category`
+rollup can never answer *"defect rate by plant"* later, and by then the raw data may be archived.
+
+**Job + correctness**
+- Nightly job upserts the **last ~7 days**, not just yesterday — handovers are often recorded days
+  late, which changes a past day's counts.
+- **Idempotent upsert** on the composite unique key, so re-running is always safe.
+- Ship a **backfill script** to seed history from existing raw data (it also proves the rollup is
+  reproducible, which is what makes it trustworthy).
+- Read path: query the rollup and sum buckets up to the requested range (day → month → YTD).
+- ❌ **Not a materialized view** for the permanent record — a matview must be refreshed *from raw*, so
+  it dies the moment raw is archived. Fine as an interim perf fix; wrong as the 30-year archive.
+
+**Hybrid, not a replacement:** keep raw data indefinitely as well (only ~4.5 GB/yr). Raw serves
+drill-down (`condition-analytics/detail` already exists) and lets the rollup be recomputed or re-cut
+along new dimensions. The rollup is a cache that *becomes* the archive.
 
 ## Full roadmap (the friend + user's original list — reference)
 **Backend (focus):**

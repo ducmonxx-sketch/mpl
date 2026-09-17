@@ -363,6 +363,12 @@ server-side · CORS single-origin · `/api/files` unlimited · IDOR sweep outsta
 
 ## 5. Phased rollout (no code in this phase)
 
+> **Scope note:** Phases 0–5 below are **infra & security** phases. They are *not* the same as the
+> "grand scheme" first-deployment milestone — app-level pre-launch work (pagination, FK indexes, the
+> image pipeline, the **analytics rollup table**) is tracked in
+> **[DEV-PLAN.md](DEV-PLAN.md) → "Performance & scale checklist"** and the rollup design section.
+> Both must land before going live; they're just tracked in the doc where they belong.
+
 - **Phase 0 — Decisions + procurement** (§7): buy the mini PC + UPS; create the Cloudflare account
   (2FA on, 2 admins); **migrate DNS from Domainesia to Cloudflare** (export *all* records first —
   MX/SPF/DKIM/DMARC — then diff, set the landing page to DNS-only, flip nameservers in a quiet
@@ -373,8 +379,9 @@ server-side · CORS single-origin · `/api/files` unlimited · IDOR sweep outsta
   uploads**, automated backups **with a restore test**.
 - **Phase 2 — 🔴 Identity hardening (BLOCKS admin exposure):** cookie auth + CSRF, admin 2FA,
   login lockout, password policy, server-side session revocation.
-- **Phase 3 — App hardening:** Zod, Redis-backed rate limits, `trust proxy`, CORS/CSP, pagination,
-  error hygiene, production secret rotation.
+- **Phase 3 — App hardening:** Zod, Redis-backed rate limits, `trust proxy`, CORS allowlist, CSP,
+  pagination + FK indexes, IDOR sweep, Turnstile server-side verification, the **analytics rollup
+  table** (DEV-PLAN.md), error hygiene, production secret rotation.
 - **Phase 4 — Monitoring:** fail2ban/CrowdSec, Sentry, uptime checks, log pipeline, incident doc.
 - **Phase 5 — Pre-launch verification:** `/security-review`, `npm audit`, `npm run security:scan`,
   `deploy-preflight`, restore drill, **external port scan of the NAS**, and confirm the NAS admin UI
