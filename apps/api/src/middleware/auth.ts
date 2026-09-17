@@ -44,9 +44,11 @@ export const adminOnly = (
   next()
 }
 
-// Specific admin roles
+// Specific admin roles. SUPERADMIN is a superuser — it bypasses every role gate,
+// so it can perform any action regardless of the required-role list.
 export const requireRole = (...roles: string[]) => {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
+    if (req.user?.role === "SUPERADMIN") return next()
     if (!req.user || !roles.includes(req.user.role)) {
       return res.status(403).json({
         message: `Access denied. Required role: ${roles.join(" or ")}`,

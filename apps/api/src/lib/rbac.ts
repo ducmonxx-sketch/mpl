@@ -30,6 +30,7 @@ const ROLE_PERMISSIONS: Record<string, Permission[]> = {
 
 export function roleHas(role: string | undefined, perm: Permission): boolean {
   if (!role) return false
+  if (role === "SUPERADMIN") return true // superuser — holds every permission, current and future
   return ROLE_PERMISSIONS[role]?.includes(perm) ?? false
 }
 
