@@ -401,6 +401,10 @@ analytics rollup table. Everything after that is polish.
 **Requirement (user, 2026-09-17):** the data behind the condition graph must survive **as long as MPL
 exists** (30+ years), independent of any retention policy later applied to raw shipments or images.
 
+🔴 **This is now the *only* permanent record.** Per DEPLOYMENT-NAS.md §2.4, **all images — including
+thumbnails — are purged at 14 days** (client requirement), so no visual record survives. The rollup
+table and the raw shipment rows are the entire long-term history. Build it before old data ages out.
+
 **Plain English:** a "rollup table" is just a notebook. Instead of re-counting every receipt each time
 someone opens the chart, a nightly job writes **one line per day** — *"2026-09-15, Unit: 328 OK, 12
 defective"* — and the chart reads those lines. Same picture, **~1,000 rows instead of ~3,000,000.**

@@ -127,14 +127,12 @@ retention with an off-server archive; thumbnails kept permanently):
 | Tier | Per photo | Per shipment (4) | Per day | Retained | Steady-state |
 |---|---|---|---|---|---|
 | **Full-size WebP** (no downscale) | ~2.5 MB | ~10 MB | ~3.6 GB | **14 days** | **~50 GB** |
-| **Thumbnails (400 px)** | ~30 KB | ~120 KB | ~43 MB | **permanent** | **~16 GB/year** |
+| **Thumbnails (400 px)** | ~30 KB | ~120 KB | ~43 MB | **14 days** | **~0.6 GB** |
 
-📌 Two notes on why this works:
-- **14-day retention is what makes skipping the resize affordable.** Unbounded full-res growth would
-  be ~1.3 TB/yr; a 14-day window makes it a flat ~50 GB. The trade-off is that the **off-server
-  archive becomes load-bearing** (§2.4).
-- **Thumbnails are now a permanent record** (they feed the graph detail report), so they're the one
-  image tier that grows forever — keep them small (~30 KB); don't let them drift up.
+📌 **All image storage is now a flat ~51 GB that never grows.** Every image is purged at 14 days
+(client requirement), so nothing accumulates. That's what makes skipping the resize affordable —
+unbounded full-res growth would be ~1.3 TB/yr, but a fixed window makes it a constant. The trade-off
+is that the **off-server admin archive is the only long-term copy** (§2.4).
 
 **Totals — mini PC, ~1 TB RAID 1 usable:**
 
@@ -143,14 +141,12 @@ retention with an off-server archive; thumbnails kept permanently):
 | OS + Docker | 30 GB | 30 GB | 30 GB |
 | Postgres rows (~4.5 GB/yr, kept forever) | 5 GB | 23 GB | 135 GB |
 | Logs (rotated) + local `pg_dump` history | 50 GB | 50 GB | 50 GB |
-| **Full-size images** — flat, 14-day window | 50 GB | 50 GB | 50 GB |
-| **Thumbnails** — permanent, ~16 GB/yr | 16 GB | 80 GB | 470 GB |
-| **Total** | **~150 GB** | **~233 GB** | **~735 GB** |
+| **All images** — flat 14-day window (full-size + thumbs) | 51 GB | 51 GB | 51 GB |
+| **Total** | **~136 GB** | **~154 GB** | **~266 GB** |
 
-**Conclusion: ~1 TB comfortably covers a 30-year horizon.** The 14-day window makes full-size images
-a *flat* cost rather than a growing one, so the only item that grows indefinitely is thumbnails —
-which is why keeping them ~30 KB matters. Revisit storage if thumbnails drift larger or the photo
-count per shipment grows well beyond 4.
+**Conclusion: storage is a solved problem.** With every image purged at 14 days, the only component
+that grows at all is Postgres (~4.5 GB/yr). ~1 TB covers **well beyond 30 years** — no further
+storage decision is needed for the foreseeable future.
 
 Files stay on the **filesystem, not in Postgres `bytea`** ✅ (already true). The storage adapter is
 pluggable to S3/Supabase, so photos can later move to object storage and decouple growth from NAS capacity.
@@ -176,14 +172,15 @@ a working precedent. Add it to `apps/api` and produce **two** outputs inside `sa
 // 1. full-size — format conversion only, NO downscale (evidence fidelity)
 sharp(file.buffer).rotate().webp({ quality: 82 }).toBuffer()
 
-// 2. thumbnail — permanent record + graph detail report (§2.4)
+// 2. thumbnail — list/report performance inside the 14-day window (§2.4)
 sharp(file.buffer).rotate()
   .resize({ width: 400, fit: "inside", withoutEnlargement: true })
   .webp({ quality: 70 }).toBuffer()
 ```
 
-Override the stored extension/mime to `webp` for both. Store the thumbnail under a separate key so
-the 14-day purge can delete the full-size while leaving the thumbnail untouched.
+Override the stored extension/mime to `webp` for both. Both tiers share the same 14-day retention
+(§2.4), so the thumbnail exists purely to keep lists and reports fast — never fetch a 2.5 MB original
+just to render a table row.
 
 ⚠️ **Bandwidth consequence of skipping the resize:** full-res WebP is ~2.5 MB vs ~250 KB resized —
 **10× more** on every upload *and* every view. Since the office uplink is the throughput ceiling
@@ -210,7 +207,7 @@ concurrency only if bulk uploads are ever allowed.
 |---|---|---|
 | **Shipment rows + events + plant-check/LKU** | **Keep — no deletion** | Only ~4.5 GB/yr. Deleting at 2 yrs would save ~14 GB on a 1 TB disk (noise) while permanently capping the **condition-analytics reporting** (`ShipmentConditionChart`, `ServiceLineSummary`) to a 2-year window. |
 | **Full-size images** | **14 days**, then purge per-day | Admins archive originals **off-server on upload**, so the server copy is only a working window. Keeps full-res on disk flat at ~50 GB. |
-| **Thumbnails (400 px)** | **Keep permanently** | They feed the **graph detail report**, so they are part of the permanent analytics record (alongside the rollup table in DEV-PLAN.md). ~16 GB/yr. |
+| **Thumbnails (400 px)** | **14 days** — purged with the originals | **Client requirement: *all* images deleted after 2 weeks.** Thumbnails are still generated, but only as a performance measure inside the window (§2.3). |
 | **Audit log** | **Never auto-delete** | It is the forensic / compliance trail. |
 
 **Off-server archive — manual, by design (decided 2026-09-17).** Admins copy originals to separate
@@ -220,8 +217,12 @@ storage at upload time. This is a deliberate manual process; no automation plann
 truth — **the admin archive is the record**. Anything asked after day 14 (e.g. an invoice dispute on
 30/60/90-day terms) is answered from the archive, not from the app. Accepted.
 
-Implication for the purge job: it only ever deletes the **full-size** file. Thumbnails stay, so the
-app always retains a visual reference for every delivery even once originals are off-server.
+⚠️ **Two consequences to handle in code:**
+1. **No image of any kind survives past 14 days**, so the **graph detail report cannot show images
+   for older periods.** It must degrade gracefully ("image no longer available") rather than render
+   broken thumbnails.
+2. The **analytics rollup table (DEV-PLAN.md) is now the *only* permanent record** of this data —
+   there is no surviving visual record at all. That raises its importance rather than lowering it.
 
 🔴 **Legal check before deleting anything:** Indonesian tax rules commonly require bookkeeping and
 supporting documents be retained **~10 years**, and shipment records may qualify. **Confirm with your
@@ -229,10 +230,10 @@ accountant.** A policy that deletes records you are legally required to keep is 
 than a full disk.
 
 **Requirements for the 14-day image purge job:**
-- **Delete the full-size key only** — never the thumbnail. The two tiers now have different
-  retention, so they must be stored under separate keys (§2.3).
-- **Clear / repoint the DB reference** (`serahTerimaUrl`, etc.) so the UI falls back to the thumbnail
-  rather than rendering a broken image.
+- **Delete both tiers** (full-size + thumbnail) — retention is uniform, so no key-splitting is
+  required for retention purposes.
+- **Clear the DB reference** (`serahTerimaUrl`, etc.) so the UI renders an explicit "no longer
+  available" state instead of a broken image.
 - **Dry-run first, and keep it idempotent.** RAID 1 mirrors a bad delete to both disks instantly, so
   run it in report-only mode until the file set it selects looks correct.
 - ⚠️ **Edge case to decide: purge by upload date vs shipment completion.** "14 days from upload"
