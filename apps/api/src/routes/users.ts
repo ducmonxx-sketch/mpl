@@ -18,6 +18,7 @@ import { authenticate, adminOnly, clientManagerOnly, requireRole, AuthRequest } 
 import { uploadImageField, saveUpload, deleteUpload } from "../lib/upload"
 import { getStorage } from "../lib/storage"
 import { requireTurnstile } from "../lib/turnstile"
+import { isRecordNotFound } from "../lib/prismaErrors"
 
 const router = Router()
 
@@ -284,6 +285,7 @@ router.patch("/:id/verify", authenticate, clientManagerOnly, async (req: AuthReq
 
     res.json({ message: `${user.fullName} has been verified.`, user })
   } catch (err) {
+    if (isRecordNotFound(err)) return res.status(404).json({ message: "Client not found." })
     console.error(err)
     res.status(500).json({ message: "Failed to verify user." })
   }
@@ -331,6 +333,7 @@ router.patch("/:id/set-main-pic", authenticate, requireRole("SUPERADMIN"), async
 
     res.json({ message: `${user.fullName} is now the main PIC.`, user })
   } catch (err) {
+    if (isRecordNotFound(err)) return res.status(404).json({ message: "Client not found." })
     console.error(err)
     res.status(500).json({ message: "Failed to set main PIC." })
   }
@@ -357,6 +360,7 @@ router.patch("/:id/reject", authenticate, clientManagerOnly, async (req: AuthReq
 
     res.json({ message: `${user.fullName} has been rejected.`, user })
   } catch (err) {
+    if (isRecordNotFound(err)) return res.status(404).json({ message: "Client not found." })
     console.error(err)
     res.status(500).json({ message: "Failed to reject user." })
   }
@@ -683,6 +687,7 @@ router.patch("/:id", authenticate, clientManagerOnly, async (req: AuthRequest, r
 
     res.json({ message: "Client updated.", user })
   } catch (err) {
+    if (isRecordNotFound(err)) return res.status(404).json({ message: "Client not found." })
     console.error(err)
     res.status(500).json({ message: "Failed to update client." })
   }
@@ -733,6 +738,7 @@ router.delete("/:id", authenticate, clientManagerOnly, async (req: AuthRequest, 
 
     res.json({ message: "Client deleted." })
   } catch (err) {
+    if (isRecordNotFound(err)) return res.status(404).json({ message: "Client not found." })
     console.error(err)
     res.status(500).json({ message: "Failed to delete client." })
   }

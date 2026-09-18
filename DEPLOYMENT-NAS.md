@@ -411,11 +411,16 @@ Point-in-time verification against the actual codebase, recorded so these don't 
 | `requireRole` | 🔧 **Fixed.** Asserted only `role`, never `type === "admin"`. Not exploitable today (client tokens carry role `"user"`), but safe only by accident — and `requirePermission` had always checked the type. |
 | Client-management authorization | 🔧 **Fixed.** See Layer 4 — `adminOnly` let pipeline roles delete client accounts. |
 
-**🚨 Still open:** `PATCH /api/users/:id` returns **500** on a nonexistent id (unhandled Prisma
-`P2025`) where it should be 404 — an instance of the Layer 4 "error hygiene" item. Also open: whether
-**PIC_PABRIK should be restricted to its own bound plant** — a PIC bound to Plant A can currently
-plant-check a shipment at Plant B. That is a business rule, not a leak, so it needs your call rather
-than a unilateral fix.
+**Resolved since:**
+- [x] **`P2025` → 404 (fixed 2026-09-18).** `PATCH /api/users/:id`, `/:id/verify` and `/:id/reject`
+  returned **500** for a nonexistent id, because Prisma's "record not found" fell into a blanket
+  `catch`. Now 404 via `lib/prismaErrors.ts`. (`DELETE` and `/:id/set-main-pic` already had their own
+  existence checks; the guard is redundant there, which is fine.)
+- [x] **PIC_PABRIK plant scoping — DECIDED 2026-09-18: do NOT restrict.** The user's call: *"they
+  will work more dynamically more than you think."* So a PIC bound to Plant A acting on a Plant B
+  shipment is **intended behaviour**, and `Admin.pickupPlantId` stays what its schema comment already
+  says — a soft default for the Lokasi Plant filter, not an authorization boundary. Don't "fix" this
+  later thinking it's an oversight.
 
 ---
 
