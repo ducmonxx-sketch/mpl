@@ -403,12 +403,9 @@ until this leg is built, which is why the decision is queued here rather than in
       EXISTS), `[driverId, status, createdAt]` and `[vehicleId, status, createdAt]` (fleet's
       active-shipment includes, which match that shape exactly and run on every 8s poll),
       `[pickupPlantId]` (FK + PIC Pabrik filter), `[createdAt]` (admin default ORDER BY + date ranges).
-      ⚠️ **Not verifiable at 16 dev rows** — Postgres correctly seq-scans a tiny table, so the plans
-      prove nothing yet. Needs a scale benchmark to confirm.
-      📌 **Known limit indexes can't fix:** `?sort=priority` orders by a CASE over status (the per-role
-      `STATUS_SORT_RANK`), and Postgres can't use an index for an arbitrary CASE sort. Filtered views
-      stay cheap; an unfiltered "Semua" page sorts the whole matching set. The fix, if it ever bites,
-      is a persisted rank column — not another index.
+      ✅ **Benchmarked at 200,000 rows** in a throwaway DB (2026-09-18) — see the results table below.
+      The benchmark caught a real defect in the first design and changed it; the numbers are measured,
+      not estimated.
 - [ ] **Image resize + WebP on upload** — spec in DEPLOYMENT-NAS.md §2.3 (`sharp`, inside `lib/upload.ts` → `saveUpload`).
 - [ ] **Compress API payloads** — `compression` middleware at the origin. Lands directly on the real
       constraint: office **upload bandwidth** is the ceiling for every remote PIC and client.
@@ -460,6 +457,48 @@ until this leg is built, which is why the decision is queued here rather than in
    `effective_cache_size` for a 16 GB host.
 3. **`trust proxy` + Redis-backed rate limits** — DEPLOYMENT-NAS.md §3 Layer 4. Security rather than
    performance, but essential once the endpoints are public.
+
+### Benchmark — 200,000 shipments, measured 2026-09-18
+Run in a throwaway `mpl_logistics_bench` DB built from the real migration chain (dev DB untouched,
+scratch DB dropped afterwards). 300 drivers, 300 vehicles, 20 clients, 7 plants, 2 years of history.
+`EXPLAIN (ANALYZE)`, median of 9. **`ANALYZE` after bulk insert is mandatory** — without table
+statistics the planner's choices are meaningless.
+
+| Query | Time | |
+|---|---|---|
+| Fleet driver include *(runs per driver on an 8s poll)* | **0.02 ms** | ✅ |
+| Fleet vehicle include | **0.02 ms** | ✅ |
+| Client dashboard list | **0.03 ms** | ✅ |
+| Admin list, default sort | **0.03 ms** | ✅ |
+| PIC Pabrik plant filter | 0.21 ms | ✅ |
+| Driver-delete FK path | 0.41 ms | ✅ |
+| `/version` `MAX(updatedAt)` | **0.02 ms** | ✅ |
+| `/version` `COUNT(*)` | 36 ms | 🟢 |
+| Deep offset (page 4000) | 34 ms | 🟢 |
+| Priority sort, unfiltered | 90 ms | 🟢 |
+| `list-meta` groupBy status | 141 ms | 🟡 |
+| Priority sort + status tab / lifecycle | ~140 ms | 🟡 |
+| **Search `ILIKE '%…%'`** | **157 ms** | 🟡 |
+
+Size: 29 MB heap + 30 MB indexes = **59 MB for 200k rows** (→ ~190 MB at 650k).
+
+**🔴 The finding that mattered.** The first index design made the fleet include **63.8 ms**, *slower
+than having no index at all* (7.5 ms). `[createdAt]` lures the planner into walking that index
+backwards expecting an early match under `ORDER BY createdAt DESC LIMIT 1`; for a driver with **no**
+active shipment there is no match, so it scans the whole table (`Rows Removed by Filter: 200000`).
+Fixed with **partial indexes** on the active-status subset → **0.02 ms (3000×)**. Rejected
+alternatives, both measured: dropping `[createdAt]` fixes fleet but costs 39.6 ms on the admin list
+and 137 ms on a date range; `[driverId, status, createdAt]` is equally fast but 7.4 MB vs 1.2 MB.
+⚠️ The partial indexes live **only in the migration** — Prisma has no syntax for an index `WHERE`
+clause. Verified Prisma does *not* report them as drift (a probe migration came back empty).
+
+**Still open, in priority order:**
+- 🟡 **Search is the weakest query** (157 ms, a seq scan — `%foo%` can't use a btree). At 650k that's
+  ~500 ms, and with the 350 ms debounce the user waits ~850 ms. Fix if it bites: a `pg_trgm` GIN index.
+- 🟡 The ~140 ms scan-bound queries land around ~450 ms at 650k. Usable, not great.
+- 📌 `?sort=priority` orders by a CASE over status, which **no index can satisfy**. Measured 90 ms
+  unfiltered at 200k — bounded, not the disaster it could have been. Fix if needed: a persisted rank
+  column, not another index.
 
 ### Recommended order
 pagination → DB indexes (incl. FKs) → image pipeline → payload compression → polling interval →

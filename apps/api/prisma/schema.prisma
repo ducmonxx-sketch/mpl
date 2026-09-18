@@ -374,21 +374,37 @@ model Shipment {
   // column also serves the FK and list-meta's "clients that have shipments" EXISTS.
   @@index([clientId, createdAt])
 
-  // Fleet's "current active shipment" includes, which run on every /fleet/* call — and those
-  // poll every 8s. Shape is exactly WHERE driverId = ? AND status IN (...) ORDER BY
-  // createdAt DESC LIMIT 1, so the 3-column form serves filter, order and limit together.
-  // Also covers the updateMany({ where: { driverId } }) on driver/vehicle removal.
-  @@index([driverId, status, createdAt])
-  @@index([vehicleId, status, createdAt])
+  // FK access path: the updateMany({ where: { driverId } }) that runs when a driver or
+  // vehicle is removed, plus the constraint check itself. Benchmarked at 200k rows: without
+  // these that lookup is 41ms (seq scan); with them 0.08ms.
+  //
+  // ⚠️ These are deliberately NOT [driverId, status, createdAt]. Fleet's hot query is served
+  // instead by a PARTIAL index declared in the migration (Prisma's schema language cannot
+  // express `WHERE`) — see the note at the bottom of this block. The 3-column form measured
+  // identically but cost 7.4 MB each vs 1.5 MB here.
+  @@index([driverId])
+  @@index([vehicleId])
 
   @@index([pickupPlantId])                   // FK + PIC Pabrik's Lokasi Plant filter
   @@index([createdAt])                        // admin list default ORDER BY + ?from/?to ranges
 
-  // 📌 Known limit that indexes cannot fix: the admin table's ?sort=priority ordering is a
-  // CASE expression over status (the per-role STATUS_SORT_RANK), and Postgres cannot use an
-  // index to satisfy an arbitrary CASE sort. Filtered views (status tab, lifecycle) stay
-  // cheap, but an unfiltered "Semua" page sorts the whole matching set. If that becomes slow
-  // at scale, the fix is a persisted rank column, not another index.
+  // ⚠️ TWO PARTIAL INDEXES LIVE ONLY IN THE MIGRATION, not here — Prisma has no syntax for
+  // a `WHERE` clause on an index:
+  //     shipments_active_driver_idx  (driverId, createdAt)  WHERE status IN (STANDBY, DITUGASKAN, TRANSIT)
+  //     shipments_active_vehicle_idx (vehicleId, createdAt) WHERE status IN (...)
+  // They are not a micro-optimisation. Benchmarked at 200k rows, fleet's
+  //   WHERE driverId = ? AND status IN (...) ORDER BY createdAt DESC LIMIT 1
+  // took **63.8ms** without them, because [createdAt] lures the planner into walking that
+  // index backwards expecting an early match — and for a driver with no active shipment it
+  // scans the entire table ("Rows Removed by Filter: 200000"). With the partial index: 0.02ms.
+  // That query runs per driver/vehicle on a list that polls every 8s.
+  // Do not drop them, and if you run `prisma migrate dev` check it has not proposed removing
+  // them as drift.
+  //
+  // 📌 Known limit no index can fix: ?sort=priority orders by a CASE over status (the
+  // per-role STATUS_SORT_RANK), and Postgres cannot satisfy an arbitrary CASE sort from an
+  // index. Measured at 200k rows: ~69–144ms unfiltered, ~49–153ms with a status tab. Fine
+  // today; if it bites at 650k the fix is a persisted rank column, not another index.
   @@map("shipments")
 }
 
