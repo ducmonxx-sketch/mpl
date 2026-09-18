@@ -230,6 +230,10 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [linkMode, setLinkMode]               = useState(false) // create modal opened via "Hubungkan Pengiriman"
   const [linkTargetId, setLinkTargetId]       = useState('')    // existing trip the new shipment binds to
+  // Server-sourced (see the fetch effects below). Both used to be filtered out of the
+  // loaded SHIPMENTS array, which stops being correct once that list is paginated.
+  const [linkableTrips, setLinkableTrips]     = useState([])
+  const [linkedSiblings, setLinkedSiblings]   = useState([])
   const [clientOptions, setClientOptions]     = useState([])
   const [formClientId, setFormClientId]               = useState('')
   const [formService, setFormService]                 = useState('Darat')
@@ -286,30 +290,18 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     ? fleetVehicles.find(v => v.id === selectedShipment.vehicleId)
     : null
 
-  // Other PENDING shipments for the Link Shipment option
+  // Other PENDING shipments for the Link Shipment option.
+  // Still list-derived, and therefore only correct while the list is unpaginated — safe
+  // for now because its only render site is behind LINK_SHIPMENT_ENABLED (= false). If
+  // that flag is ever turned back on, this needs the same server-side treatment as
+  // linkableTrips / linkedSiblings below (`GET /api/shipments?status=PENDING`).
   const menungguShipments = selectedShipment
     ? SHIPMENTS.filter(s => s.rawStatus === 'PENDING' && s.id !== selectedShipment.id)
     : []
 
-  // Existing STANDBY trips a new shipment can be linked into (Hubungkan Pengiriman).
-  // One entry per physical trip = per driver+armada pairing: a pairing that appears on
-  // several shipments (incl. an existing link group, which shares one driver+armada) is
-  // the same truck, shown once. Any member resolves to the same trip on the backend.
-  const linkableTrips = (() => {
-    const seen = new Set()
-    return SHIPMENTS.filter(s => {
-      if (!s.driverId || s.rawStatus !== 'STANDBY') return false
-      const key = `${s.driverId}::${s.vehicleId}`
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
-  })()
-
-  // Siblings of the open shipment (same trip, excluding itself)
-  const linkedSiblings = selectedShipment?.linkGroupId
-    ? SHIPMENTS.filter(s => s.linkGroupId === selectedShipment.linkGroupId && s.id !== selectedShipment.id)
-    : []
+  // `linkableTrips` and `linkedSiblings` are now fetched from the API — see the effects
+  // below. They used to be filtered out of SHIPMENTS, which silently returned the wrong
+  // answer as soon as the relevant row fell outside the loaded page.
 
   // Status options for SUPERADMIN status picker
   const statusOptions = selectedShipment ? availableStatusOptions(user?.role, selectedShipment.rawStatus) : []
@@ -377,6 +369,50 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     const interval = setInterval(() => fetchShipments({ silent: true }), 8000)
     return () => clearInterval(interval)
   }, [fetchShipments])
+
+  // Linkable STANDBY trips ("Hubungkan Pengiriman"). Deliberately NOT part of the 8s poll —
+  // it only gates a button and is refreshed when the create modal opens.
+  const fetchLinkableTrips = useCallback(async () => {
+    if (role !== 'KEPALA_ARMADA') return
+    try {
+      const res = await shipmentsAPI.getLinkableTrips()
+      setLinkableTrips(res.trips || [])
+    } catch (err) {
+      console.error('Failed to fetch linkable trips:', err)
+      setLinkableTrips([])
+    }
+  }, [role])
+
+  useEffect(() => { fetchLinkableTrips() }, [fetchLinkableTrips])
+
+  // Siblings of the open shipment. Fetched per selection rather than filtered out of
+  // SHIPMENTS: a sibling can sit outside the loaded page, and an empty sibling set
+  // downgrades the delete UI from "Hapus Semua Terhubung" to a single delete — so getting
+  // this wrong silently changes what a destructive action does.
+  useEffect(() => {
+    if (!selectedShipment?.linkGroupId) {
+      setLinkedSiblings([])
+      return
+    }
+    let cancelled = false
+    const shipmentId = selectedShipment.id
+    ;(async () => {
+      try {
+        const res = await shipmentsAPI.getById(shipmentId)
+        if (!cancelled) setLinkedSiblings((res.siblings || []).map(mapShipment))
+      } catch (err) {
+        console.error('Failed to fetch linked siblings:', err)
+        if (!cancelled) {
+          setLinkedSiblings([])
+          // Surfaced, not swallowed: without siblings the panel offers a single delete on
+          // what is actually a linked shipment.
+          showToast('Gagal memuat pengiriman yang terhubung. Muat ulang sebelum menghapus.', 'error')
+        }
+      }
+    })()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedShipment?.id, selectedShipment?.linkGroupId])
 
   // PIC Pabrik: load plant list for the filter + default it to the account's bound plant (soft, changeable).
   useEffect(() => {
@@ -518,6 +554,9 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     if (role === 'KEPALA_ARMADA') {
       fetchFleet()
       fetchPickupPlants()
+      // Refresh here rather than on the 8s poll — the trip list only matters while this
+      // modal is open, and it must reflect dispatches made since the page loaded.
+      fetchLinkableTrips()
     }
     resetCreateForm()
     setLinkMode(link === true)

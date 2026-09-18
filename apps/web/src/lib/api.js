@@ -253,9 +253,16 @@ export const shipmentsAPI = {
   getConditionDetail: (period, category = 'all') =>
     api.get('/api/shipments/condition-analytics/detail', { period, category }),
 
-  /** Single shipment detail */
+  /** Single shipment detail. Also returns `siblings` — the other members of the same
+   *  linked trip — which must come from the server, not be filtered out of a loaded
+   *  list, since a sibling can sit outside the current page. */
   getById: (id) =>
     api.get(`/api/shipments/${encodeURIComponent(id)}`),
+
+  /** Admin: one entry per STANDBY trip a new shipment can be linked into
+   *  ("Hubungkan Pengiriman"), deduped server-side by driver+armada. */
+  getLinkableTrips: () =>
+    api.get('/api/shipments/linkable-trips'),
 
   /** Create a new shipment */
   create: (data) =>
