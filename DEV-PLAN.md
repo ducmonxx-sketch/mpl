@@ -1,7 +1,7 @@
 # DEV-PLAN — resume point
 
 > **Resuming?** Read this first, then [RUNBOOK.md](RUNBOOK.md) (sync + audit) and [CLAUDE.md](CLAUDE.md) (scope).
-> Last updated: **2026-08-07**. Newest work at the top; RUNBOOK §6 has per-session detail.
+> Last updated: **2026-09-18**. Newest work at the top; RUNBOOK §6 has per-session detail.
 
 ## 🔜 NEXT SESSION — planned (not built yet), queued 2026-08-07
 Continue client-onboarding / admin work. Three items the user queued:

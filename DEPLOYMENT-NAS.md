@@ -1,9 +1,14 @@
 # DEPLOYMENT-NAS — self-hosted deployment topology + security plan
 <!-- Filename kept for stable links; hardware decision is a mini PC + Linux (§2.1), not a NAS. -->
 
-> **Status: PLAN ONLY (nothing implemented).** Created 2026-09-17.
+> **Status: infrastructure still unbuilt, but much of the APPLICATION work is now done.**
+> Created 2026-09-17. Shipped since (see §3 Layer 4 for detail): pagination · query indexes ·
+> `trust proxy` · CORS allowlist · rate-limit gaps · access-control sweep · **signed file URLs** ·
+> **image pipeline** · Turnstile verification (backend). Still to do: the auth rehaul + admin 2FA
+> (needs client-side coordination), Redis-backed limits, and all of the Phase 0–5 infra itself.
 > **DECIDED 2026-09-17: Option B — Cloudflare Tunnel + Cloudflare Access ("fullscale"), plus a LAN
-> fallback for on-site staff.** Scale basis: **130k shipments/year, 5-year horizon** (§2.2).
+> fallback for on-site staff.** Scale basis: **130k shipments/year**, now a **30-year** storage
+> horizon (§2.2 — the 14-day image purge made the original 5-year framing moot).
 > **Supersedes [DEPLOYMENT.md](DEPLOYMENT.md) §1 (topology) and §2 (access model)** — the LAN-only
 > admin model is void. §3 (auth rehaul) and §5 (rate-limit hardening) still apply and are now
 > **blocking**, not deferred. Companion: [SECURITY-MAGICLINK.md](SECURITY-MAGICLINK.md).
@@ -95,9 +100,11 @@ no egress cost; simpler. Trade-off: resilience and backups become your responsib
 | Storage | **2 × 1 TB NVMe in RAID 1** (`mdadm` / ZFS mirror) → **~1 TB usable** |
 | Power | **UPS required** — power loss mid-write can corrupt Postgres (`nut` / `apcupsd`) |
 
-**Capacity verdict: ~1 TB usable covers the full 5-year horizon** — *provided* the image pipeline in
-§2.3 is in place. Per §2.2: ~130 GB for OS/DB/logs/backups + ~145 GB/year of images →
-**≈ 5.8 years of headroom**, so no retention deletion is needed inside the planning window (§2.4).
+**Capacity verdict: ~1 TB usable covers 30+ years.** Per §2.2, the 14-day image purge makes image
+storage a **flat ~51 GB that never grows**, so the only component that accumulates is Postgres at
+~4.5 GB/yr → ~136 GB at year 1, ~154 GB at year 5, ~266 GB at year 30.
+*(An earlier revision of this section claimed "≈5.8 years of headroom" from ~145 GB/year of images —
+that predated the 14-day retention decision and is superseded.)*
 
 ⚠️ **RAID 1 is redundancy, not backup.** A mirror replicates deletion and corruption *instantly* to
 both disks. Offsite backups remain mandatory (§3 Layer 5).
@@ -113,7 +120,7 @@ go that route, note only x86 models support Container Manager (the "j"/ARM model
 at all). **Deployment is identical either way** — cloudflared + Docker Compose — so this choice does
 not lock in the architecture.*
 
-### 2.2 Storage sizing — 130k shipments/year, 5-year horizon
+### 2.2 Storage sizing — 130k shipments/year, 30-year horizon
 
 Basis: **650k shipments** total (~356/day).
 
@@ -509,12 +516,12 @@ Point-in-time verification against the actual codebase, recorded so these don't 
 **Decided 2026-09-17**
 - [x] Access model: **Option B — Cloudflare Tunnel + Cloudflare Access**, plus a **LAN fallback** for on-site staff
 - [x] Hardware: **mini PC + Linux, 2 × 1 TB NVMe RAID 1 (~1 TB usable)** + UPS
-- [x] **Image pipeline (§2.3): resize 1600 px + WebP q75 + 320 px thumbnail on upload** — this is what makes 1 TB last ≈5.8 years
-- [x] **Retention (§2.4): keep shipment data; keep images ~5 yrs locally; no deletion cron for now** (earlier 2-yr/1-month plan dropped as unnecessary + risky)
+- [x] **Image pipeline (§2.3) — ✅ IMPLEMENTED 2026-09-18.** Final shape: **no resize** for evidence (full-res WebP q82 + 400 px thumbnail), 512 px for avatars. *(Supersedes the original "resize 1600 px + q75 + 320 px thumb" decision — the resize was dropped once 14-day retention made full resolution affordable.)*
+- [x] **Retention (§2.4): keep shipment data forever; purge ALL images — including thumbnails — at 14 days** (client requirement), with admins archiving originals off-server. *(Supersedes the earlier "~5 yrs locally, no deletion cron" line.)*
 - [x] Object storage is **optional** — not needed for capacity; recommended only as the offsite backup target
 - [x] Registrar/DNS: currently **Domainesia** → migrate the zone to Cloudflare (landing page can stay hosted at Domainesia)
 - [x] Access login: **Cloudflare email OTP** to start with an MPL-branded Access page; Google Workspace SSO is the upgrade path
-- [x] Scale basis: **130k shipments/year, 5-year horizon** (§2.2)
+- [x] Scale basis: **130k shipments/year**; storage horizon now **30 years** (§2.2)
 - [x] Defaults accepted: `app.` + `admin.` subdomains · client web app on a cloud static host ·
       disable open client sign-up (invite-only) · backups 30 daily + 12 weekly, encrypted ·
       fresh production secrets generated at deploy time
