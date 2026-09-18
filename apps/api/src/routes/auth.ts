@@ -11,6 +11,7 @@ import bcrypt from "bcrypt"
 import jwt from "jsonwebtoken"
 import prisma from "../lib/prisma"
 import { authenticate, adminOnly, AuthRequest } from "../middleware/auth"
+import { requireTurnstile } from "../lib/turnstile"
 import { uploadImageField, saveUpload, deleteUpload } from "../lib/upload"
 import { getStorage } from "../lib/storage"
 
@@ -20,7 +21,7 @@ const generateToken = (id: string, role: string, type: "user" | "admin") =>
   jwt.sign({ id, role, type }, process.env.JWT_SECRET!, { expiresIn: "7d" })
 
 // ── POST /api/auth/register ──────────────────────────────────
-router.post("/register", async (req: Request, res: Response) => {
+router.post("/register", requireTurnstile, async (req: Request, res: Response) => {
   try {
     const { fullName, companyName, email, password, phoneNumber } = req.body
 
@@ -66,7 +67,7 @@ router.post("/register", async (req: Request, res: Response) => {
 })
 
 // ── POST /api/auth/login ─────────────────────────────────────
-router.post("/login", async (req: Request, res: Response) => {
+router.post("/login", requireTurnstile, async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body
 
@@ -131,7 +132,7 @@ router.post("/registration-status", async (req: Request, res: Response) => {
 })
 
 // ── POST /api/auth/admin/login ───────────────────────────────
-router.post("/admin/login", async (req: Request, res: Response) => {
+router.post("/admin/login", requireTurnstile, async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body
 

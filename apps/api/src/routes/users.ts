@@ -17,6 +17,7 @@ import prisma from "../lib/prisma"
 import { authenticate, adminOnly, clientManagerOnly, requireRole, AuthRequest } from "../middleware/auth"
 import { uploadImageField, saveUpload, deleteUpload } from "../lib/upload"
 import { getStorage } from "../lib/storage"
+import { requireTurnstile } from "../lib/turnstile"
 
 const router = Router()
 
@@ -445,7 +446,7 @@ router.get("/magic-link/:token", async (req: AuthRequest, res: Response) => {
 })
 
 // ── POST /api/users/magic-link/:token/register ───────────────
-router.post("/magic-link/:token/register", async (req: AuthRequest, res: Response) => {
+router.post("/magic-link/:token/register", requireTurnstile, async (req: AuthRequest, res: Response) => {
   try {
     const { fullName, email: bodyEmail, password, confirmPassword } = req.body
 
@@ -597,7 +598,7 @@ router.get("/reset-password/:token", async (req: AuthRequest, res: Response) => 
 })
 
 // ── POST /api/users/reset-password/:token ────────────────────
-router.post("/reset-password/:token", async (req: AuthRequest, res: Response) => {
+router.post("/reset-password/:token", requireTurnstile, async (req: AuthRequest, res: Response) => {
   try {
     const { password, confirmPassword } = req.body
 

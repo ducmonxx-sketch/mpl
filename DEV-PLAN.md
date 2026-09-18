@@ -377,6 +377,40 @@ Options — decide here, with real end-to-end lead times in hand:
 The deciding input is the **end-to-end lead time for the full journey**; that number doesn't exist
 until this leg is built, which is why the decision is queued here rather than in the deployment plan.
 
+## 🔵 Client-side handoff — wire Turnstile to the forms (backend DONE 2026-09-18)
+> Backend verification shipped on `feat/turnstile-verify`. The remaining half is **client-facing**
+> (out of scope here per CLAUDE.md), so it needs the friend's agent.
+
+**What we found.** Turnstile was **not** merely "missing server-side verification" — it was wired to
+the wrong places entirely:
+- `HomePage.jsx` renders the widget with **no props at all**, so its token is generated and discarded.
+- `DeactivateModal.jsx` (client dashboard) uses the token only to enable a button — trivially bypassed.
+- **No login, registration or password-reset form uses it**, i.e. none of the endpoints that can
+  actually be attacked. `CloudflareTurnstile.jsx` still carries the original
+  `// TODO: Send this token to your backend`.
+
+So adding `siteverify` alone protected nothing: no attackable endpoint received a token.
+
+**What now exists (backend).** `apps/api/src/lib/turnstile.ts` — `verifyTurnstileToken()` plus a
+`requireTurnstile` middleware, applied to the 5 public endpoints: `POST /api/auth/register`,
+`/api/auth/login`, `/api/auth/admin/login`, `/api/users/magic-link/:token/register`,
+`/api/users/reset-password/:token`. It reads `captchaToken` / `turnstileToken` from the body or the
+`cf-turnstile-response` header. **A token that is supplied is always verified** (bad token → 403),
+so it can never be cosmetic for a caller that sends one.
+
+**Needed from the client side:**
+1. Render `<CloudflareTurnstile onVerify={setCaptchaToken} />` on the **client login**,
+   **magic-link registration** and **password-reset** forms.
+2. Send the token as `captchaToken` in those request bodies.
+3. ⚠️ **Reset the widget after every failed submit.** Turnstile tokens are **single-use and expire in
+   ~300s**, so a retry after e.g. a wrong password will fail verification with
+   `timeout-or-duplicate` unless `window.turnstile.reset(widgetId)` is called. The current component
+   has no `reset` path — it needs one exposed.
+4. Decide what to do with the decorative `HomePage.jsx` widget (remove it, or give it a purpose).
+5. 🔴 Then set **`TURNSTILE_ENFORCE=true`** — until then a *missing* token is allowed through, which
+   is deliberate (failing closed today would break client registration and password reset) but means
+   the protection is optional and therefore not yet real.
+
 ## Performance & scale checklist — internet-facing, 130k shipments/yr
 > Added 2026-09-17. Each item was checked against the real stack, not assumed. Sizing basis:
 > [DEPLOYMENT-NAS.md](DEPLOYMENT-NAS.md) §2.2.

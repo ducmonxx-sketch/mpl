@@ -329,10 +329,15 @@ than a full disk.
   correct today (`GET /api/shipments/:id` rejects a client whose `clientId` doesn't match), but every
   route taking an `:id` needs the same check. At multi-client scale, one miss = cross-client data
   leak. *(This is the API-layer equivalent of Postgres RLS — see §3.8.)*
-- 🔴 **Verify Turnstile server-side.** `CloudflareTurnstile.jsx` renders the widget and
-  `VITE_TURNSTILE_SITE_KEY` is wired, but **nothing in `apps/api` calls `siteverify`** — so the bot
-  protection is currently **cosmetic** (bypassed by any direct `curl`). Validate the token against
-  the secret key on the auth/registration endpoints.
+- [x] 🟠 **Turnstile — backend DONE 2026-09-18, frontend handoff outstanding.** The problem was worse
+  than "no `siteverify` call": the widget was wired to the wrong places entirely — decorative on
+  `HomePage` (no props, token discarded), button-gating only in the client `DeactivateModal`, and
+  **absent from every login / registration / reset form**. So no attackable endpoint even received a
+  token. `lib/turnstile.ts` now verifies properly and is applied to the 5 public endpoints; a token
+  that *is* sent is always validated (bad → 403). ⚠️ **A missing token is still allowed through until
+  `TURNSTILE_ENFORCE=true`** — deliberate, since failing closed today would break client registration
+  and password reset. **Not real protection until the client forms send tokens and that flag is
+  flipped** — see DEV-PLAN.md → "Client-side handoff".
 - [x] ✅ **Pagination — DONE 2026-09-18** (`GET /api/shipments`, 25/page, server-side filters + the
   role-priority ordering). `/users` and `/fleet/*` were measured and deliberately left unpaginated —
   see DEV-PLAN.md. **Still open:** indexes on the columns actually filtered/sorted (`status`,
