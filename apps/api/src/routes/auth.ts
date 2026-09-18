@@ -12,6 +12,7 @@ import jwt from "jsonwebtoken"
 import prisma from "../lib/prisma"
 import { authenticate, adminOnly, AuthRequest } from "../middleware/auth"
 import { requireTurnstile } from "../lib/turnstile"
+import { validateBody, registerSchema, loginSchema, emailOnlySchema, changePasswordSchema } from "../lib/validate"
 import { uploadImageField, saveUpload, deleteUpload, ImageProcessingError } from "../lib/upload"
 import { getStorage } from "../lib/storage"
 
@@ -21,7 +22,7 @@ const generateToken = (id: string, role: string, type: "user" | "admin") =>
   jwt.sign({ id, role, type }, process.env.JWT_SECRET!, { expiresIn: "7d" })
 
 // ── POST /api/auth/register ──────────────────────────────────
-router.post("/register", requireTurnstile, async (req: Request, res: Response) => {
+router.post("/register", requireTurnstile, validateBody(registerSchema), async (req: Request, res: Response) => {
   try {
     const { fullName, companyName, email, password, phoneNumber } = req.body
 
@@ -67,7 +68,7 @@ router.post("/register", requireTurnstile, async (req: Request, res: Response) =
 })
 
 // ── POST /api/auth/login ─────────────────────────────────────
-router.post("/login", requireTurnstile, async (req: Request, res: Response) => {
+router.post("/login", requireTurnstile, validateBody(loginSchema), async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body
 
@@ -114,7 +115,7 @@ router.post("/login", requireTurnstile, async (req: Request, res: Response) => {
 // Public: lets the verification page poll whether a pending account has been
 // approved (sessionless — pending users hold no token). Returns the account's
 // verification status by email, or "NONE" if there's no such account.
-router.post("/registration-status", async (req: Request, res: Response) => {
+router.post("/registration-status", validateBody(emailOnlySchema), async (req: Request, res: Response) => {
   try {
     const { email } = req.body
     if (!email) {
@@ -132,7 +133,7 @@ router.post("/registration-status", async (req: Request, res: Response) => {
 })
 
 // ── POST /api/auth/admin/login ───────────────────────────────
-router.post("/admin/login", requireTurnstile, async (req: Request, res: Response) => {
+router.post("/admin/login", requireTurnstile, validateBody(loginSchema), async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body
 
@@ -211,7 +212,7 @@ router.post("/admin/me/avatar", authenticate, adminOnly, uploadImageField(), asy
 // ── PATCH /api/auth/admin/me/password ────────────────────────
 // Admin changes their OWN password (any role — self-service). Verifies the
 // current password before setting the new one.
-router.patch("/admin/me/password", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+router.patch("/admin/me/password", authenticate, adminOnly, validateBody(changePasswordSchema), async (req: AuthRequest, res: Response) => {
   try {
     const { currentPassword, newPassword } = req.body
 

@@ -19,6 +19,8 @@ import { uploadImageField, saveUpload, deleteUpload, ImageProcessingError } from
 import { getStorage } from "../lib/storage"
 import { requireTurnstile } from "../lib/turnstile"
 import { isRecordNotFound } from "../lib/prismaErrors"
+import { validateBody, createClientSchema, magicLinkSchema, magicLinkRegisterSchema,
+         resetPasswordSchema, updateMeSchema, updateClientSchema } from "../lib/validate"
 
 const router = Router()
 
@@ -61,7 +63,7 @@ router.get("/", authenticate, adminOnly, async (req: AuthRequest, res: Response)
 // since an admin vouches for it.
 // TODO (Option B): once email (Resend/Nodemailer) is wired up, email the
 // temporary password to the client instead of returning it in the response.
-router.post("/", authenticate, clientManagerOnly, async (req: AuthRequest, res: Response) => {
+router.post("/", authenticate, clientManagerOnly, validateBody(createClientSchema), async (req: AuthRequest, res: Response) => {
   try {
     const {
       fullName,
@@ -181,7 +183,7 @@ router.get("/me", authenticate, async (req: AuthRequest, res: Response) => {
 })
 
 // ── PATCH /api/users/me ───────────────────────────────────────
-router.patch("/me", authenticate, async (req: AuthRequest, res: Response) => {
+router.patch("/me", authenticate, validateBody(updateMeSchema), async (req: AuthRequest, res: Response) => {
   try {
     const { fullName, companyName, phoneNumber } = req.body
 
@@ -386,7 +388,7 @@ router.get("/companies", authenticate, adminOnly, async (req: AuthRequest, res: 
 })
 
 // ── POST /api/users/magic-link ───────────────────────────────
-router.post("/magic-link", authenticate, clientManagerOnly, async (req: AuthRequest, res: Response) => {
+router.post("/magic-link", authenticate, clientManagerOnly, validateBody(magicLinkSchema), async (req: AuthRequest, res: Response) => {
   try {
     const { companyName, email, accountType } = req.body
     if (!companyName) {
@@ -453,7 +455,7 @@ router.get("/magic-link/:token", async (req: AuthRequest, res: Response) => {
 })
 
 // ── POST /api/users/magic-link/:token/register ───────────────
-router.post("/magic-link/:token/register", requireTurnstile, async (req: AuthRequest, res: Response) => {
+router.post("/magic-link/:token/register", requireTurnstile, validateBody(magicLinkRegisterSchema), async (req: AuthRequest, res: Response) => {
   try {
     const { fullName, email: bodyEmail, password, confirmPassword } = req.body
 
@@ -605,7 +607,7 @@ router.get("/reset-password/:token", async (req: AuthRequest, res: Response) => 
 })
 
 // ── POST /api/users/reset-password/:token ────────────────────
-router.post("/reset-password/:token", requireTurnstile, async (req: AuthRequest, res: Response) => {
+router.post("/reset-password/:token", requireTurnstile, validateBody(resetPasswordSchema), async (req: AuthRequest, res: Response) => {
   try {
     const { password, confirmPassword } = req.body
 
@@ -643,7 +645,7 @@ router.post("/reset-password/:token", requireTurnstile, async (req: AuthRequest,
 // ── PATCH /api/users/:id ──────────────────────────────────────
 // Admin updates a client's profile fields.
 // NOTE: registered AFTER /me and /me/settings so those take precedence.
-router.patch("/:id", authenticate, clientManagerOnly, async (req: AuthRequest, res: Response) => {
+router.patch("/:id", authenticate, clientManagerOnly, validateBody(updateClientSchema), async (req: AuthRequest, res: Response) => {
   try {
     const { fullName, companyName, email, phoneNumber, city, address, npwp } = req.body
 

@@ -24,6 +24,34 @@ import { startAlertScheduler } from "./services/alertScheduler"
 const app  = express()
 const PORT = process.env.PORT || 3001
 
+// ── Production secret guard ──────────────────────────────────
+// "Rotate secrets at launch" was a §7 checklist line, which is the kind of item that gets
+// ticked from memory. This makes it enforced instead: in production the app refuses to boot
+// on a placeholder or too-short JWT_SECRET, rather than running with a dev value that lets
+// anyone who has seen .env.example mint admin tokens.
+if (process.env.NODE_ENV === "production") {
+  const secret = process.env.JWT_SECRET ?? ""
+  const problems: string[] = []
+  if (!secret) problems.push("JWT_SECRET is not set")
+  else {
+    if (/CHANGE_ME|changeme|secret|example|test/i.test(secret)) {
+      problems.push("JWT_SECRET still looks like a placeholder")
+    }
+    if (secret.length < 32) problems.push("JWT_SECRET is shorter than 32 characters")
+  }
+  if (!process.env.CLIENT_URL && !process.env.ADMIN_URL && !process.env.CORS_ORIGINS) {
+    problems.push("no CORS origin configured (CLIENT_URL / ADMIN_URL / CORS_ORIGINS)")
+  }
+  if (problems.length > 0) {
+    console.error(
+      "\n[boot] refusing to start in production:\n" +
+      problems.map((p) => `  • ${p}`).join("\n") +
+      "\n  Generate one with: openssl rand -hex 64\n",
+    )
+    process.exit(1)
+  }
+}
+
 // ── Proxy awareness ──────────────────────────────────────────
 // Behind Cloudflare Tunnel the real client IP arrives in X-Forwarded-For. Without this,
 // every rate limiter keys on the proxy's IP, so all traffic shares one bucket and a single
