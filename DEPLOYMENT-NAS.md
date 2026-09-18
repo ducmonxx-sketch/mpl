@@ -259,10 +259,17 @@ accountant.** A policy that deletes records you are legally required to keep is 
 than a full disk.
 
 **Requirements for the 14-day image purge job:**
-- 🔴 **Scope it by category prefix — do NOT purge everything under the uploads root.** Storage keys
-  are `<category>/<entityId>/<uuid>.webp`, and **`avatars/` is permanent profile data, not evidence**.
-  A purge that walks the whole upload root would delete every profile picture every 14 days. Only the
-  shipment-photo categories are in scope.
+- [x] ✅ **Stubbed 2026-09-18 in `lib/retention.ts`** — policy and safety rails built and tested; the
+  category allowlist is **empty**, so it currently purges nothing. Deliberately not scheduled.
+  🔴 **The trap it guards against:** keys are `<category>/<entityId>/<uuid>.webp`, and `avatars/` is
+  permanent profile data, not evidence — so the instinctive "walk the uploads root, delete anything
+  older than 14 days" would **delete every profile picture every 14 days**. The sweep is therefore
+  allowlist-driven, and `avatars` sits in `PROTECTED_CATEGORIES`, which is refused *even if someone
+  adds it to the allowlist* (verified: a 90-day-old avatar survived a real, non-dry-run sweep with
+  `avatars` forced into the allowlist). `dryRun` defaults to **true**.
+  **Left to do when the photo features land:** fill in the real categories, and clear the DB
+  references for purged keys (there's a TODO at the exact spot — it can't be written until those
+  photo columns exist).
 - **Delete both tiers** (full-size + `*.thumb.webp`) — retention is uniform, and `thumbKeyFor()` in
   `lib/upload.ts` derives one key from the other.
 - **Clear the DB reference** (`serahTerimaUrl`, etc.) so the UI renders an explicit "no longer

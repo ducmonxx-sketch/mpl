@@ -10,6 +10,13 @@
 import { Readable } from "node:stream"
 import { LocalStorageAdapter } from "./local"
 
+export interface StoredObject {
+  key: string
+  /** Last-modified time. Files are never rewritten, so this is the upload time. */
+  modifiedAt: Date
+  bytes: number
+}
+
 export interface StorageAdapter {
   /** Persist bytes under `key`. */
   save(key: string, body: Buffer, contentType: string): Promise<void>
@@ -19,6 +26,12 @@ export interface StorageAdapter {
   getStream(key: string): Promise<Readable>
   /** Remove `key` (no error if absent). */
   delete(key: string): Promise<void>
+  /**
+   * Enumerate everything under `prefix`. Needed by the retention sweep (lib/retention.ts).
+   * An S3 adapter maps this to ListObjectsV2 with the same prefix, using LastModified for
+   * `modifiedAt`.
+   */
+  list(prefix: string): Promise<StoredObject[]>
 }
 
 let adapter: StorageAdapter | null = null
