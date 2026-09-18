@@ -377,6 +377,52 @@ Options — decide here, with real end-to-end lead times in hand:
 The deciding input is the **end-to-end lead time for the full journey**; that number doesn't exist
 until this leg is built, which is why the decision is queued here rather than in the deployment plan.
 
+## 🚧 Next planned — Per-staff admin notifications (DESIGN ONLY, discuss before building)
+> Raised 2026-09-18 during the access-control sweep. **Not locked — to be discussed on a later day.**
+
+**Current state.** `AdminNotification` has **no `adminId` and no role field** — it is one shared
+noticeboard. `GET /api/admin-notifications` returns the latest 50 to every admin, and `unreadCount`
+is a global count. That is why `PATCH /:id/read` has no ownership check: there is no owner. *(Cleared
+as a non-vulnerability in DEPLOYMENT-NAS.md §3.8 — it's a product gap, not a security one.)*
+
+**The problem, in two separable halves:**
+1. **Read state is global.** One admin marking an alert read makes it vanish for everyone. An expiring
+   STNK could be dismissed by whoever saw it first and never reach the person responsible.
+2. **No targeting.** Every admin sees every notification regardless of whether it concerns their job.
+
+**What's wanted:** notifications unique per staff member, routed by role.
+
+### Where they come from (all three sites need to choose recipients)
+| Source | `category` | Who actually cares |
+|---|---|---|
+| `lib/expiry.ts` | `compliance` | STNK / KIR / driver-licence expiry → **KEPALA_ARMADA** (+ SUPERADMIN) |
+| `routes/shipments.ts` (~821) | `assignment` | Driver workload >3 active shipments → **KEPALA_ARMADA** (+ SUPERADMIN) |
+| `services/alertScheduler.ts` | `alert` | Scheduled document alerts → **KEPALA_ARMADA** (+ SUPERADMIN) |
+
+📌 Worth noting: **all three current sources are fleet-facing.** So today PIC Pabrik, PIC Gudang,
+Operations and Support are shown notifications that are none of their business — targeting alone would
+already be a visible improvement, before any read-state work.
+
+### Two ways to model it (pick when we discuss)
+- **A — one row per recipient.** Add `adminId` to `AdminNotification`; write one row per intended
+  admin. Simplest queries and read state is trivially per-person. Costs N rows per event — but with a
+  handful of admins that's nothing, and role targeting shrinks it further. **Probably right at this scale.**
+- **B — event + read receipts.** Keep one row per event, add `targetRoles String[]` and a separate
+  `AdminNotificationRead { notificationId, adminId, readAt }`. One row per event (nicer for audit),
+  but the unread count needs a `NOT EXISTS` join. More machinery than this app needs yet.
+
+### ⚠️ Gotcha that will bite whichever option we choose
+`lib/expiry.ts` and `alertScheduler.ts` both **de-duplicate before inserting** — `findFirst` on the
+same title within the last 24h, to avoid spamming the same alert daily. With per-recipient rows that
+check must become **per-admin**, or the first recipient's row suppresses everyone else's and only one
+person ever gets the alert. This is the same bug as the current shared read state, just relocated.
+
+### Blast radius
+Schema + migration (shared contract) · `routes/adminNotifications.ts` (all three handlers) · the three
+creation sites · `AdminDashboardPage.jsx` topbar bell (the only consumer — uses `.list()`,
+`.markAllRead()`, `.markRead(id)`). Admin-scope; client notifications (`routes/notifications.ts`) are
+a separate model and already correctly per-user.
+
 ## 🔵 Client-side handoff — wire Turnstile to the forms (backend DONE 2026-09-18)
 > Backend verification shipped on `feat/turnstile-verify`. The remaining half is **client-facing**
 > (out of scope here per CLAUDE.md), so it needs the friend's agent.
