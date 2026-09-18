@@ -1,6 +1,7 @@
 // src/routes/shipments.ts
 //
 //   GET    /api/shipments            → list shipments (client: own, admin: all)
+//                                      opt-in pagination: ?limit&offset, plus ?search / ?linkGroupId
 //   GET    /api/shipments/stats      → dashboard stats by period
 //   GET    /api/shipments/:id        → single shipment detail
 //   POST   /api/shipments            → create shipment request
@@ -15,6 +16,10 @@ import { canChangeStatus, isReversal, isValidStatus } from "../lib/statusFlow"
 import { findTransitConflict, mirrorFleetStatus, releaseFleetIfUnused } from "../lib/shipmentStatus"
 
 const router = Router()
+
+// Upper bound on `?limit=` for the list route, so a caller can't request the whole table
+// back with ?limit=999999 and undo pagination.
+const MAX_PAGE_SIZE = 200
 
 // ── Helper: generate shipment ID ─────────────────────────────
 // Format: #MPL-00001-JKT
@@ -38,36 +43,80 @@ router.get("/pickup-plants", authenticate, async (req: AuthRequest, res: Respons
 })
 
 // ── GET /api/shipments ────────────────────────────────────────
+//   ?status=<ShipmentStatus>  · ?from=&to= (createdAt range)
+//   ?linkGroupId=<id>         — all members of one linked trip (see note below)
+//   ?search=<q>               — case-insensitive match on shipment id or client name/company
+//   ?limit=<n>&offset=<n>     — pagination (max 200)
+//
+// ⚠️ Pagination is OPT-IN: without `limit` the route returns every matching row, exactly as
+// before. This is deliberate — `GET /api/shipments` is a SHARED route and 6 of its 11 callers
+// are client-facing (ClientDashboardPage, pages/dashboard/*, TrackingSection). Defaulting to a
+// page size here would silently truncate the client dashboard and its stats. The admin table
+// opts in; migrating the client callers is a client-side follow-up (see DEV-PLAN).
+//
+// `total` is always returned so a caller can tell whether it received a complete set.
 router.get("/", authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { status, from, to } = req.query
+    const { status, from, to, linkGroupId, search } = req.query
     const isAdmin = req.user?.type === "admin"
 
-    const shipments = await prisma.shipment.findMany({
-      where: {
-        ...(!isAdmin && { clientId: req.user!.id }),
-        ...(status && { status: status as any }),
-        ...(from || to
-          ? {
-              createdAt: {
-                ...(from && { gte: new Date(from as string) }),
-                ...(to   && { lte: new Date(to as string) }),
-              },
-            }
-          : {}),
-      },
-      include: {
-        client:         { select: { fullName: true, companyName: true } },
-        driver:         { select: { fullName: true, phoneNumber: true } },
-        vehicle:        { select: { type: true, licensePlate: true, primaryDriverId: true } },
-        pickupPlant:    { select: { name: true, code: true, manufacturer: true } },
-        createdByAdmin: { select: { fullName: true } },
-        plantCheck:     { include: { pengiriman: true, lku: true, ksu: true } },
-      },
-      orderBy: { createdAt: "desc" },
-    })
+    // Pagination is applied only when `limit` is supplied — see the note above.
+    const rawLimit = Number(req.query.limit)
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0
+      ? Math.min(Math.trunc(rawLimit), MAX_PAGE_SIZE)
+      : undefined
+    const rawOffset = Number(req.query.offset)
+    const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? Math.trunc(rawOffset) : 0
 
-    res.json({ shipments })
+    const q = typeof search === "string" ? search.trim() : ""
+
+    const where = {
+      ...(!isAdmin && { clientId: req.user!.id }),
+      ...(status && { status: status as any }),
+      ...(linkGroupId && { linkGroupId: linkGroupId as string }),
+      ...(from || to
+        ? {
+            createdAt: {
+              ...(from && { gte: new Date(from as string) }),
+              ...(to   && { lte: new Date(to as string) }),
+            },
+          }
+        : {}),
+      // Mirrors the admin table's client-side search (id or client name/company) so moving
+      // search server-side does not change which rows match.
+      ...(q
+        ? {
+            OR: [
+              { id:     { contains: q, mode: "insensitive" as const } },
+              { client: { fullName:    { contains: q, mode: "insensitive" as const } } },
+              { client: { companyName: { contains: q, mode: "insensitive" as const } } },
+            ],
+          }
+        : {}),
+    }
+
+    const [shipments, total] = await Promise.all([
+      prisma.shipment.findMany({
+        where,
+        include: {
+          client:         { select: { fullName: true, companyName: true } },
+          driver:         { select: { fullName: true, phoneNumber: true } },
+          vehicle:        { select: { type: true, licensePlate: true, primaryDriverId: true } },
+          pickupPlant:    { select: { name: true, code: true, manufacturer: true } },
+          createdByAdmin: { select: { fullName: true } },
+          plantCheck:     { include: { pengiriman: true, lku: true, ksu: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        ...(limit !== undefined && { take: limit, skip: offset }),
+      }),
+      prisma.shipment.count({ where }),
+    ])
+
+    res.json({
+      shipments,
+      total,
+      ...(limit !== undefined && { limit, offset }),
+    })
   } catch (err) {
     console.error(err)
     res.status(500).json({ message: "Failed to fetch shipments." })
