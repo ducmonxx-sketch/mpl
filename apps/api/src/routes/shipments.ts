@@ -307,6 +307,56 @@ router.get("/condition-analytics/detail", authenticate, adminOnly, async (req: A
   }
 })
 
+// ── GET /api/shipments/linkable-trips ─────────────────────────
+// Admin-only. One entry per physical STANDBY trip (driver+armada pairing) that a new
+// shipment can be linked into via "Hubungkan Pengiriman".
+//
+// ⚠️ Must stay registered ABOVE /:id, or Express matches "linkable-trips" as an :id.
+//
+// Previously derived on the client by filtering the full shipment list. That only worked
+// while the list was unpaginated — once paginated, a linkable trip sitting on another page
+// would silently disappear from the picker. Deduped server-side by driver+vehicle: one
+// pairing appearing on several shipments (including an existing link group, which shares a
+// single driver+armada) is the same truck, so it is returned once. Any member resolves to
+// the same trip on the backend.
+router.get("/linkable-trips", authenticate, adminOnly, async (_req: AuthRequest, res: Response) => {
+  try {
+    const standby = await prisma.shipment.findMany({
+      // STANDBY = created but not yet dispatched, so this set is bounded by how many trips
+      // are staged at once, not by history. The cap is a guard, not real pagination.
+      where: { status: "STANDBY", driverId: { not: null } },
+      select: {
+        id:        true,
+        driverId:  true,
+        vehicleId: true,
+        driver:    { select: { fullName: true } },
+        vehicle:   { select: { type: true, licensePlate: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 500,
+    })
+
+    const seen = new Set<string>()
+    const trips = standby
+      .filter((s) => {
+        const key = `${s.driverId}::${s.vehicleId}`
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      .map((s) => ({
+        id:          s.id,
+        driverName:  s.driver?.fullName ?? null,
+        vehicleName: s.vehicle ? `${s.vehicle.type} • ${s.vehicle.licensePlate}` : null,
+      }))
+
+    res.json({ trips })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to fetch linkable trips." })
+  }
+})
+
 // ── GET /api/shipments/:id ────────────────────────────────────
 router.get("/:id", authenticate, async (req: AuthRequest, res: Response) => {
   try {
@@ -332,7 +382,31 @@ router.get("/:id", authenticate, async (req: AuthRequest, res: Response) => {
       return res.status(403).json({ message: "Access denied." })
     }
 
-    res.json({ shipment })
+    // Members of the same linked trip, excluding this one. Returned from the server rather
+    // than derived on the client from the full list: under pagination a sibling can fall on
+    // another page and would silently vanish. The detail panel uses this both for the "Trip
+    // yang sama" links AND to choose the delete scope ("Hapus Pengiriman Ini" vs "Hapus
+    // Semua Terhubung") — a wrong sibling set would mean a wrong destructive action.
+    //
+    // Same include shape as the list route: clicking a sibling makes it the selected
+    // shipment, so it has to be a fully-populated row. Link groups hold 2–3 shipments, so
+    // the extra fields cost nothing.
+    const siblings = shipment.linkGroupId
+      ? await prisma.shipment.findMany({
+          where: { linkGroupId: shipment.linkGroupId, id: { not: shipment.id } },
+          include: {
+            client:         { select: { fullName: true, companyName: true } },
+            driver:         { select: { fullName: true, phoneNumber: true } },
+            vehicle:        { select: { type: true, licensePlate: true, primaryDriverId: true } },
+            pickupPlant:    { select: { name: true, code: true, manufacturer: true } },
+            createdByAdmin: { select: { fullName: true } },
+            plantCheck:     { include: { pengiriman: true, lku: true, ksu: true } },
+          },
+          orderBy: { createdAt: "asc" },
+        })
+      : []
+
+    res.json({ shipment, siblings })
   } catch (err) {
     console.error(err)
     res.status(500).json({ message: "Failed to fetch shipment." })
