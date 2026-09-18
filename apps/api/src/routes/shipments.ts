@@ -10,6 +10,7 @@
 
 import { Router, Response } from "express"
 import { Prisma } from "../generated/prisma/client"
+import { ShipmentStatus } from "../generated/prisma/enums"
 import prisma from "../lib/prisma"
 import { authenticate, adminOnly, AuthRequest } from "../middleware/auth"
 import { sendWhatsApp } from "../services/whatsapp"
@@ -36,6 +37,12 @@ const STATUS_SORT_RANK: Record<string, Record<string, number>> = {
 }
 // Mirrors the client's `RANK[status] ?? 99` — FAILED is legacy and unranked.
 const UNRANKED_RANK = 99
+
+// Closed statuses — the field roles' "Selesai" view; everything else is "Dalam Proses".
+// ⚠️ Mirrors TERMINAL_STATUSES in ShipmentsSection.jsx.
+const TERMINAL_STATUSES = ["DELIVERED", "CANCELLED", "FAILED"]
+
+const VALID_STATUSES: readonly string[] = Object.values(ShipmentStatus)
 
 // The row shape the admin table and the linked-sibling list both render. Shared so the
 // ordered-ids path, the default path and the sibling query cannot drift apart.
@@ -87,8 +94,33 @@ router.get("/pickup-plants", authenticate, async (req: AuthRequest, res: Respons
 // `total` is always returned so a caller can tell whether it received a complete set.
 router.get("/", authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { status, from, to, linkGroupId, search, sort } = req.query
+    const { status, from, to, linkGroupId, search, sort, serviceLevel, pickupPlantId, clientName, lifecycle } = req.query
     const isAdmin = req.user?.type === "admin"
+
+    // `status` accepts a comma-separated list because the UI's "Dibatalkan" tab covers two
+    // enum values (CANCELLED + the legacy FAILED) — mapStatus collapses both.
+    const statusList = typeof status === "string" && status
+      ? status.split(",").map((s) => s.trim()).filter(Boolean)
+      : []
+    // lifecycle=active|done mirrors the field-role "Dalam Proses" / "Selesai" split, which
+    // keys off TERMINAL_STATUSES rather than a date.
+    const lifecycleMode = lifecycle === "active" || lifecycle === "done" ? lifecycle : ""
+    // The client filter is picked from display names (companyName || fullName), so match
+    // either column rather than an id.
+    const clientNameQ = typeof clientName === "string" ? clientName.trim() : ""
+
+    // Reject unknown status values explicitly. Left unvalidated the two query paths
+    // disagreed: Prisma threw (500) while the raw path compared status::text and quietly
+    // returned rows as if no filter had been asked for — the worse of the two failures.
+    const badStatuses = statusList.filter((s) => !VALID_STATUSES.includes(s))
+    if (badStatuses.length > 0) {
+      return res.status(400).json({ message: `Unknown status: ${badStatuses.join(", ")}` })
+    }
+
+    const statusAnd: any[] = []
+    if (statusList.length > 0)        statusAnd.push({ status: { in: statusList } })
+    if (lifecycleMode === "done")     statusAnd.push({ status: { in: TERMINAL_STATUSES } })
+    else if (lifecycleMode === "active") statusAnd.push({ status: { notIn: TERMINAL_STATUSES } })
 
     // Pagination is applied only when `limit` is supplied — see the note above.
     const rawLimit = Number(req.query.limit)
@@ -102,7 +134,15 @@ router.get("/", authenticate, async (req: AuthRequest, res: Response) => {
 
     const where = {
       ...(!isAdmin && { clientId: req.user!.id }),
-      ...(status && { status: status as any }),
+      // status and lifecycle must AND, not overwrite each other: field roles drive the
+      // status dropdown AND the Dalam Proses / Selesai view at the same time. Collected
+      // into AND[] so neither clobbers the other's `status` key.
+      ...(statusAnd.length > 0 && { AND: statusAnd }),
+      ...(serviceLevel  && { serviceLevel:  serviceLevel as string }),
+      ...(pickupPlantId && { pickupPlantId: pickupPlantId as string }),
+      ...(clientNameQ && {
+        client: { OR: [{ fullName: clientNameQ }, { companyName: clientNameQ }] },
+      }),
       ...(linkGroupId && { linkGroupId: linkGroupId as string }),
       ...(from || to
         ? {
@@ -136,10 +176,23 @@ router.get("/", authenticate, async (req: AuthRequest, res: Response) => {
     const sortMode = typeof sort === "string" ? sort : ""
     if (isAdmin && (sortMode === "priority" || sortMode === "completion")) {
       const conds: Prisma.Sql[] = [Prisma.sql`TRUE`]
-      if (status)      conds.push(Prisma.sql`s."status"::text = ${String(status)}`)
-      if (linkGroupId) conds.push(Prisma.sql`s."linkGroupId" = ${String(linkGroupId)}`)
-      if (from)        conds.push(Prisma.sql`s."createdAt" >= ${new Date(String(from))}`)
-      if (to)          conds.push(Prisma.sql`s."createdAt" <= ${new Date(String(to))}`)
+      // Defensive: this branch is admin-gated above, but keep the client scope with the
+      // filter so removing that gate can never widen what a client sees.
+      if (!isAdmin) conds.push(Prisma.sql`s."clientId" = ${req.user!.id}`)
+      if (statusList.length > 0) {
+        conds.push(Prisma.sql`s."status"::text IN (${Prisma.join(statusList.map((v) => Prisma.sql`${v}`), ", ")})`)
+      }
+      if (lifecycleMode === "done") {
+        conds.push(Prisma.sql`s."status"::text IN (${Prisma.join(TERMINAL_STATUSES.map((v) => Prisma.sql`${v}`), ", ")})`)
+      } else if (lifecycleMode === "active") {
+        conds.push(Prisma.sql`s."status"::text NOT IN (${Prisma.join(TERMINAL_STATUSES.map((v) => Prisma.sql`${v}`), ", ")})`)
+      }
+      if (serviceLevel)  conds.push(Prisma.sql`s."serviceLevel" = ${String(serviceLevel)}`)
+      if (pickupPlantId) conds.push(Prisma.sql`s."pickupPlantId" = ${String(pickupPlantId)}`)
+      if (clientNameQ)   conds.push(Prisma.sql`(u."fullName" = ${clientNameQ} OR u."companyName" = ${clientNameQ})`)
+      if (linkGroupId)   conds.push(Prisma.sql`s."linkGroupId" = ${String(linkGroupId)}`)
+      if (from)          conds.push(Prisma.sql`s."createdAt" >= ${new Date(String(from))}`)
+      if (to)            conds.push(Prisma.sql`s."createdAt" <= ${new Date(String(to))}`)
       if (q) {
         const like = `%${q}%`
         conds.push(Prisma.sql`(s."id" ILIKE ${like} OR u."fullName" ILIKE ${like} OR u."companyName" ILIKE ${like})`)
@@ -398,6 +451,67 @@ router.get("/condition-analytics/detail", authenticate, adminOnly, async (req: A
   } catch (err) {
     console.error(err)
     res.status(500).json({ message: "Failed to fetch condition analytics detail." })
+  }
+})
+
+// ── GET /api/shipments/list-meta ──────────────────────────────
+// Admin-only. The two things the shipments filter bar needs that are NOT derivable from a
+// single page: the full client dropdown, and the per-status tab counts.
+//
+// ⚠️ Must stay registered ABOVE /:id.
+//
+// Both were computed from the loaded shipment array, so under pagination the dropdown
+// would only list clients that happened to be on the current page and every tab badge
+// would count that page instead of the whole set.
+//
+//   ?clientName= & ?serviceLevel=  — counts honour these (they mirror the UI's "baseSet",
+//                                    which excludes the status tab itself so each tab can
+//                                    show its own total). The client list ignores them:
+//                                    you need every option available to pick from.
+router.get("/list-meta", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+  try {
+    const { clientName, serviceLevel } = req.query
+    const clientNameQ = typeof clientName === "string" ? clientName.trim() : ""
+
+    const countWhere = {
+      ...(serviceLevel && { serviceLevel: serviceLevel as string }),
+      ...(clientNameQ && {
+        client: { OR: [{ fullName: clientNameQ }, { companyName: clientNameQ }] },
+      }),
+    }
+
+    const [clientRows, grouped] = await Promise.all([
+      // Only clients that actually have shipments — matches the old behaviour of deriving
+      // the list from the shipment rows themselves.
+      prisma.user.findMany({
+        where: { shipments: { some: {} } },
+        select: { fullName: true, companyName: true },
+      }),
+      prisma.shipment.groupBy({
+        by: ["status"],
+        where: countWhere,
+        _count: { _all: true },
+      }),
+    ])
+
+    // Display name is companyName || fullName, same as the table renders.
+    const clients = Array.from(
+      new Set(clientRows.map((c) => c.companyName || c.fullName).filter(Boolean))
+    ).sort((a, b) => a.localeCompare(b))
+
+    // Raw enum counts; the caller maps them onto its tab ids (FAILED + CANCELLED both
+    // render as "Dibatalkan", so the mapping is the caller's business, not ours).
+    const counts: Record<string, number> = {}
+    let total = 0
+    for (const g of grouped) {
+      counts[g.status] = g._count._all
+      total += g._count._all
+    }
+
+    res.json({ clients, counts, total })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to fetch shipment list metadata." })
   }
 })
 
