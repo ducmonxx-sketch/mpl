@@ -493,8 +493,47 @@ Point-in-time verification against the actual codebase, recorded so these don't 
   tunnel, Cloudflare Access policy on `admin.`, **LAN fallback path** (firewalled, not
   port-forwarded) on a single HTTPS hostname, Postgres isolated on NVMe, **object-storage bucket for
   uploads**, automated backups **with a restore test**.
-- **Phase 2 — 🔴 Identity hardening (BLOCKS admin exposure):** cookie auth + CSRF, admin 2FA,
-  login lockout, password policy, server-side session revocation.
+- **Phase 2 — 🔴 Identity hardening (BLOCKS admin exposure)** — planned in detail 2026-09-18, see
+  **§5.2** below. Password policy is already done (Zod, min 8 + caps).
+
+<!-- ─────────────────────────────────────────────────────────────────────────────────────── -->
+
+### §5.2 Phase 2 plan — identity hardening
+> Written 2026-09-18. **Nothing built yet.** Audited state at time of writing:
+>
+> | Prerequisite | State |
+> |---|---|
+> | `GET /api/auth/admin/me` | ✅ exists — one of the two gaps DEPLOYMENT.md §3 flagged is closed |
+> | `api.js` sending cookies | ❌ **zero** `credentials:` occurrences — the other gap is open |
+> | Session table · login lockout · TOTP fields | ❌ none of them exist |
+> | Current auth | 7-day JWT in `localStorage`, `Authorization: Bearer` |
+> | Password policy | ✅ done (Zod: min 8, length caps) |
+
+**Ordering is the whole trick: 2a is deliberately non-breaking, so 2a–2e can all land before the
+friend's agent touches anything.** By the time 2f runs, the backend already accepts both auth styles,
+so the cutover is one small PR instead of a big-bang migration.
+
+| # | Step | Owner | Breaking? |
+|---|---|---|---|
+| **2a** | **Session table + dual-read.** Login sets an httpOnly cookie **and** still returns the body token; `authenticate` reads the cookie first and falls back to Bearer. This is the enabler for everything else. | admin-side | **No** |
+| **2b** | **CSRF** — use `csrf-csrf` (double-submit); `csurf` is deprecated. Only needed once a cookie carries auth. | admin-side | No |
+| **2c** | **Login lockout** — per-account **and** per-IP (Layer 3 requires both). Independent of cookies, can land any time. | admin-side | No |
+| **2d** | **Admin 2FA (TOTP)** — `totpSecret` / `totpEnabledAt` on `Admin`, enrolment + verify-at-login. Needs `otplib` + `qrcode`. The admin enrolment UI is in scope. | admin-side | No (opt-in first) |
+| **2e** | **Session lifetime + revocation** — short absolute + idle timeout, revoke on role change / account removal, and an admin view to kill active sessions. | admin-side | No |
+| **2f** | **Frontend cutover** — `credentials: 'include'` in `api.js`, drop the localStorage token, `AuthContext`, client login forms. | 🔵 **friend's agent** | **Yes** |
+
+**Decisions to settle before 2a:**
+
+| Decision | Recommendation | Why |
+|---|---|---|
+| Server-side sessions **vs** JWT-in-cookie | **Sessions** | Instant revocation is the entire point for an internet-facing admin panel — a JWT cannot be un-issued. DEPLOYMENT.md §3 already leaned this way. |
+| Is 2FA mandatory on day one? | **Opt-in during rollout, enforced before the panel goes public** | Mandatory from the first deploy risks locking someone out mid-migration. |
+| Admin session lifetime | **~8h absolute + ~30min idle** | Currently **7 days**, which is far too long for a publicly reachable admin panel. |
+| Cookie domain / `SameSite` | **Build it env-driven; set values once domains are chosen** | ⚠️ Ties to the LAN-fallback constraint in §1 — admin must resolve under **one** HTTPS hostname from both the LAN and the tunnel, or `Secure`/`SameSite` behaviour diverges between the two paths. |
+
+⚠️ **Phase 2 cannot be *completed* until the domain decision in §7 is made** — `Secure` cookies need
+HTTPS and `SameSite` depends on whether client and admin share a registrable domain. But 2a–2e do not
+depend on it: they can be built now and will sit working over Bearer until 2f flips the frontend.
 - **Phase 3 — App hardening:** Zod, Redis-backed rate limits, `trust proxy`, CORS allowlist, CSP,
   pagination + FK indexes, IDOR sweep, Turnstile server-side verification, the **analytics rollup
   table** (DEV-PLAN.md), error hygiene, production secret rotation.
