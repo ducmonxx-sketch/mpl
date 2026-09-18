@@ -12,7 +12,7 @@ import jwt from "jsonwebtoken"
 import prisma from "../lib/prisma"
 import { authenticate, adminOnly, AuthRequest } from "../middleware/auth"
 import { requireTurnstile } from "../lib/turnstile"
-import { uploadImageField, saveUpload, deleteUpload } from "../lib/upload"
+import { uploadImageField, saveUpload, deleteUpload, ImageProcessingError } from "../lib/upload"
 import { getStorage } from "../lib/storage"
 
 const router = Router()
@@ -200,6 +200,9 @@ router.post("/admin/me/avatar", authenticate, adminOnly, uploadImageField(), asy
 
     res.json({ message: "Foto profil diperbarui.", avatarUrl: url })
   } catch (err) {
+    if (err instanceof ImageProcessingError) {
+      return res.status(400).json({ message: "Gambar tidak dapat diproses. Pastikan file tidak rusak." })
+    }
     console.error(err)
     res.status(500).json({ message: "Gagal mengunggah foto profil." })
   }

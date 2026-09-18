@@ -486,7 +486,12 @@ so it can never be cosmetic for a caller that sends one.
       ✅ **Benchmarked at 200,000 rows** in a throwaway DB (2026-09-18) — see the results table below.
       The benchmark caught a real defect in the first design and changed it; the numbers are measured,
       not estimated.
-- [ ] **Image resize + WebP on upload** — spec in DEPLOYMENT-NAS.md §2.3 (`sharp`, inside `lib/upload.ts` → `saveUpload`).
+- [x] **Image pipeline** ✅ **DONE 2026-09-18** — `sharp` in `lib/upload.ts` → `saveUpload`, as two
+      profiles: `evidence` (full-res WebP + 400px thumb) and `avatar` (512px, no thumb, because
+      avatars are permanent while evidence is purged at 14 days). HEIC/HEIF verified working, so the
+      iPhone question is moot. `MAX_BYTES` 5 MB → 25 MB — the old cap **rejected most phone photos**
+      before any processing ran, so a driver uploading proof would just fail. Measured at 12MP:
+      2.41 MB/photo vs the 2.5 MB the storage plan assumed.
 - [ ] **Compress API payloads** — `compression` middleware at the origin. Lands directly on the real
       constraint: office **upload bandwidth** is the ceiling for every remote PIC and client.
 - [ ] **Tune the pg connection pool** — pooling already exists (`@prisma/adapter-pg` + `pg.Pool`);

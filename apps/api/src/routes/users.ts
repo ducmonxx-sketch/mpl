@@ -15,7 +15,7 @@ import bcrypt from "bcrypt"
 import crypto from "crypto"
 import prisma from "../lib/prisma"
 import { authenticate, adminOnly, clientManagerOnly, requireRole, AuthRequest } from "../middleware/auth"
-import { uploadImageField, saveUpload, deleteUpload } from "../lib/upload"
+import { uploadImageField, saveUpload, deleteUpload, ImageProcessingError } from "../lib/upload"
 import { getStorage } from "../lib/storage"
 import { requireTurnstile } from "../lib/turnstile"
 import { isRecordNotFound } from "../lib/prismaErrors"
@@ -225,6 +225,9 @@ router.post("/me/avatar", authenticate, uploadImageField(), async (req: AuthRequ
 
     res.json({ message: "Foto profil diperbarui.", avatarUrl: url })
   } catch (err) {
+    if (err instanceof ImageProcessingError) {
+      return res.status(400).json({ message: "Gambar tidak dapat diproses. Pastikan file tidak rusak." })
+    }
     console.error(err)
     res.status(500).json({ message: "Gagal mengunggah foto profil." })
   }

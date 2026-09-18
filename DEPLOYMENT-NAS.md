@@ -153,7 +153,29 @@ pluggable to S3/Supabase, so photos can later move to object storage and decoupl
 
 ---
 
-### 2.3 Image pipeline — WebP + thumbnail on upload 🔴 **required**
+### 2.3 Image pipeline — ✅ **IMPLEMENTED 2026-09-18** (`lib/upload.ts`)
+
+> Built as **two profiles**, because the two kinds of image have opposite requirements:
+>
+> | Profile | Processing | Why |
+> |---|---|---|
+> | **`evidence`** | full resolution, WebP q82, **+ 400px thumbnail** q70 | zooming into a scratch is the point; affordable because these are purged at 14 days |
+> | **`avatar`** | downscaled to **512px**, WebP q82, no thumbnail | ⚠️ avatars are **permanent** (not covered by the purge), so storing a 4 MB phone photo to render a 128px circle would be forever-bloat. At 512px it already *is* a thumbnail. |
+>
+> Verified at 12MP against the §2.2 assumptions: full-size **2.41 MB** (assumed 2.5), **3.36 GB/day**
+> (assumed 3.6), **47 GB** for the 14-day window (assumed ~51). The sizing holds.
+>
+> ✅ **HEIC/HEIF confirmed working** — this sharp build (libvips 8.18.6) reports `heif input=yes`, and
+> both `image/heic` and `image/heif` round-trip to WebP. So the open "does any PIC use an iPhone?"
+> question is **moot**: iPhone uploads work either way.
+>
+> Also done: `.rotate()` (verified — a 1800×1200 JPEG tagged orientation=6 stores as 341×512
+> portrait, so phone photos are not saved sideways) · `MAX_BYTES` 5 MB → **25 MB** · EXIF/GPS stripped
+> by re-encoding · corrupt input returns **400**, not 500 · `deleteUpload` removes both tiers.
+>
+> The original spec below is kept as the record of what was decided.
+
+### 2.3 (original spec) — WebP + thumbnail on upload 🔴 **required**
 
 > **Revised 2026-09-17: the resize was dropped.** Originals stay at **full resolution** — being able
 > to zoom into a scratch is the whole point of defect evidence, and 14-day retention (§2.4) plus an
@@ -230,8 +252,12 @@ accountant.** A policy that deletes records you are legally required to keep is 
 than a full disk.
 
 **Requirements for the 14-day image purge job:**
-- **Delete both tiers** (full-size + thumbnail) — retention is uniform, so no key-splitting is
-  required for retention purposes.
+- 🔴 **Scope it by category prefix — do NOT purge everything under the uploads root.** Storage keys
+  are `<category>/<entityId>/<uuid>.webp`, and **`avatars/` is permanent profile data, not evidence**.
+  A purge that walks the whole upload root would delete every profile picture every 14 days. Only the
+  shipment-photo categories are in scope.
+- **Delete both tiers** (full-size + `*.thumb.webp`) — retention is uniform, and `thumbKeyFor()` in
+  `lib/upload.ts` derives one key from the other.
 - **Clear the DB reference** (`serahTerimaUrl`, etc.) so the UI renders an explicit "no longer
   available" state instead of a broken image.
 - **Dry-run first, and keep it idempotent.** RAID 1 mirrors a bad delete to both disks instantly, so
@@ -349,7 +375,7 @@ than a full disk.
   see DEV-PLAN.md. **Still open:** indexes on the columns actually filtered/sorted (`status`,
   `createdAt`, `clientId`, `driverId`, plus `originLocation`/`pickupDate` for the new ORDER BY).
   `Shipment` currently has only `@@index([linkGroupId])` and `@@index([status, completionDate])`.
-- 🔴 **Server-side WebP + thumbnail on upload — LAUNCH BLOCKER (capacity).** Full spec in **§2.3**.
+- [x] ✅ **Server-side WebP + thumbnail on upload — DONE 2026-09-18.** See **§2.3** for what shipped and the measured numbers.
 - File uploads: enforce type + size limits, store outside the web root, never serve executable.
 - **Error hygiene** — never return stack traces or DB errors to clients.
 - **Secrets**: env files with tight permissions, never in git; **rotate `JWT_SECRET`, CSRF secret and
@@ -500,7 +526,7 @@ Point-in-time verification against the actual codebase, recorded so these don't 
 - [ ] Mini-PC purchase (N100/N305-class, 16 GB RAM, 1–2 TB NVMe; 2nd slot for a mirror?)
 - [ ] **Offsite backup target**: Backblaze B2 / Cloudflare R2 / external drive *(object storage is no longer needed for capacity — only for offsite)*
 - [ ] **Accountant check** on the legal retention period for shipment records (§2.4)
-- [ ] Does any PIC use an **iPhone**? (decides whether HEIC support is needed — §2.3 gotcha 3)
+- [x] ~~Does any PIC use an **iPhone**?~~ **Moot** — HEIC/HEIF support is implemented and verified working, so iPhone uploads work regardless.
 - [ ] Offsite/DB backup target + retention confirmation
 - [ ] SMTP provider for magic-link / notification email
 - [ ] **OpenWA (WhatsApp gateway) host** — same box, or its own?
