@@ -94,6 +94,9 @@ const TAB_TO_STATUSES = {
 const ITEMS_PER_PAGE = 25
 // Search hits the API now, so hold off until typing settles.
 const SEARCH_DEBOUNCE_MS = 350
+// Kept at 8s: the tick is now a ~50-byte fingerprint check, not a page refetch, so the
+// original refresh feel costs almost nothing.
+const POLL_INTERVAL_MS = 8000
 
 // Table sort: each role prioritises the statuses it acts on first. Rows then sort by
 // origin (Asal) then earliest created date within a status. Falls back to DEFAULT.
@@ -440,11 +443,36 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
 
   useEffect(() => { fetchListMeta() }, [fetchListMeta])
 
+  // The 8s tick polls a change fingerprint (count + maxUpdatedAt) and only refetches when
+  // it actually moves. The data changes ~15 times an hour while this ticks ~450 times, so
+  // the old behaviour re-transferred an identical page on ~97% of ticks.
+  const lastVersionRef = useRef(null)
+
+  const pollForChanges = useCallback(async () => {
+    try {
+      const v = await shipmentsAPI.getVersion()
+      const sig = `${v.count}:${v.maxUpdatedAt ?? ''}`
+      if (lastVersionRef.current === sig) return // unchanged — no page fetch at all
+      const isFirstPoll = lastVersionRef.current === null
+      lastVersionRef.current = sig
+      // On the first tick just record the baseline; the initial load already has the data.
+      if (!isFirstPoll) {
+        fetchShipments({ silent: true })
+        fetchListMeta()
+      }
+    } catch (err) {
+      // Fall back to a real refresh — a failing fingerprint endpoint must not silently
+      // freeze the table on stale data.
+      console.error('Version poll failed, falling back to a full refresh:', err)
+      fetchShipments({ silent: true })
+    }
+  }, [fetchShipments, fetchListMeta])
+
   useEffect(() => {
     fetchShipments()
-    const interval = setInterval(() => fetchShipments({ silent: true }), 8000)
+    const interval = setInterval(pollForChanges, POLL_INTERVAL_MS)
     return () => clearInterval(interval)
-  }, [fetchShipments])
+  }, [fetchShipments, pollForChanges])
 
   // Linkable STANDBY trips ("Hubungkan Pengiriman"). Deliberately NOT part of the 8s poll —
   // it only gates a button and is refreshed when the create modal opens.

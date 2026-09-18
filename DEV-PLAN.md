@@ -408,7 +408,12 @@ until this leg is built, which is why the decision is queued here rather than in
       supersedes "just cache it": caching hides the cost, a rollup removes it *and* makes the graph
       data permanent. Plain caching is still fine for `/shipments/stats`.
       Do **not** cache live operational reads; an admin panel needs fresh shipment status.
-- [ ] **Reduce dashboard polling** — see "higher-impact additions" below.
+- [x] **Reduce dashboard polling** ✅ **DONE 2026-09-18 for ShipmentsSection** (`feat/shipment-updated-at`):
+      added `Shipment.updatedAt` + `@@index([updatedAt])` and `GET /api/shipments/version`, a
+      `{ count, maxUpdatedAt }` fingerprint. The 8s tick now polls **54 B** instead of refetching a
+      **37 KB** page, and only refetches when the fingerprint moves. Measured: **674 MB/day →
+      23.5 MB/day (97% less)** at 5 admins over an 8h day, with the 8s freshness unchanged.
+      ⏭️ **The other four sections still poll full payloads** — see below.
 
 ### 🟡 Nice-to-have (hardening pass)
 - [ ] Audit for **N+1 queries** (`await prisma.*` inside loops; Prisma's `include` itself batches fine)
@@ -434,9 +439,13 @@ until this leg is built, which is why the decision is queued here rather than in
   the effective rate limits).
 
 ### Higher-impact additions (weren't on the original list)
-1. 🔴 **Dashboard polling is the biggest self-inflicted load.** `ClientsSection` (and peers) run
-   `setInterval(fetch…, 8000)` — every section × every logged-in admin, continuously, worsening as
-   tables grow. Raise to 15–30 s, poll only the visible section, or add ETag/304 conditional requests.
+1. 🟡 **Dashboard polling** — `ShipmentsSection` fixed (see above). **Four sections still refetch their
+   whole payload every 8s:** `ArmadaSection`, `ClientsSection`, `DriversSection`, `UsersSection`.
+   Cheap today (~5–8 KB each), but vehicles/drivers grow toward ~200 KB at ~300 assets. The same
+   `/version` pattern would apply — each needs an `updatedAt` on its model. Lower priority than the
+   shipments one was, since those payloads don't grow with history.
+   💡 Now that the shipments tick is 54 B, `API_MAX` (1500/15min, raised *because* of this polling)
+   can likely come down — which also tightens the rate limit as a security control.
 2. **Postgres config tuning** — defaults are very conservative; set `shared_buffers` / `work_mem` /
    `effective_cache_size` for a 16 GB host.
 3. **`trust proxy` + Redis-backed rate limits** — DEPLOYMENT-NAS.md §3 Layer 4. Security rather than
@@ -496,7 +505,8 @@ rollup can never answer *"defect rate by plant"* later, and by then the raw data
 
 **Job + correctness**
 - Nightly job upserts the **last ~7 days**, not just yesterday — handovers are often recorded days
-  late, which changes a past day's counts.
+  late, which changes a past day's counts. ✅ `Shipment.updatedAt` now exists (added 2026-09-18) so
+  the job can find changed rows; `createdAt` alone could not tell it.
 - **Idempotent upsert** on the composite unique key, so re-running is always safe.
 - Ship a **backfill script** to seed history from existing raw data (it also proves the rollup is
   reproducible, which is what makes it trustworthy).

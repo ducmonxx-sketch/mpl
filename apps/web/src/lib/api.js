@@ -264,6 +264,11 @@ export const shipmentsAPI = {
   getLinkableTrips: () =>
     api.get('/api/shipments/linkable-trips'),
 
+  /** Cheap change fingerprint — { count, maxUpdatedAt }. Poll this instead of refetching a
+   *  page every 8s; refetch only when it moves. */
+  getVersion: () =>
+    api.get('/api/shipments/version'),
+
   /** Admin: filter-bar metadata that describes the whole set rather than one page —
    *  the client dropdown options and the per-status tab counts.
    *  Counts honour { clientName, serviceLevel }; the client list does not. */

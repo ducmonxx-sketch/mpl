@@ -455,6 +455,41 @@ router.get("/condition-analytics/detail", authenticate, adminOnly, async (req: A
   }
 })
 
+// ── GET /api/shipments/version ────────────────────────────────
+// Cheap change-fingerprint for the dashboard poll.
+//
+// The admin sections refresh every 8s while the data actually changes ~15 times an hour, so
+// roughly 97% of polls used to re-transfer an identical page. Polling this (~50 bytes) and
+// refetching only when it moves keeps the same 8s freshness for a fraction of the traffic.
+// Unlike a websocket/push setup it also cannot go stale: it is still pull-based, so there is
+// no emit to forget on a new mutation path and no missed event to catch up on.
+//
+// count + maxUpdatedAt together cover all three mutation kinds:
+//   insert → both move · update → maxUpdatedAt moves · delete → count moves
+// @updatedAt does not fire on delete, which is precisely why count is in the fingerprint.
+//
+// ⚠️ Must stay registered ABOVE /:id.
+router.get("/version", authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const isAdmin = req.user?.type === "admin"
+    // Admins (the pollers) get an unscoped fingerprint, which lets MAX("updatedAt") run as
+    // an index-only scan on shipments_updatedAt_idx. A client's is scoped to their own
+    // rows; that cannot use the index alone, but it is a small set and the client dashboard
+    // is not the polling load we are fixing here.
+    const where = { ...(!isAdmin && { clientId: req.user!.id }) }
+
+    const [count, agg] = await Promise.all([
+      prisma.shipment.count({ where }),
+      prisma.shipment.aggregate({ where, _max: { updatedAt: true } }),
+    ])
+
+    res.json({ count, maxUpdatedAt: agg._max.updatedAt })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to fetch shipment version." })
+  }
+})
+
 // ── GET /api/shipments/list-meta ──────────────────────────────
 // Admin-only. The two things the shipments filter bar needs that are NOT derivable from a
 // single page: the full client dropdown, and the per-status tab counts.

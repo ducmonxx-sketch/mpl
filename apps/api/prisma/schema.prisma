@@ -313,6 +313,14 @@ model Shipment {
   pickupDate             DateTime?
   completionDate         DateTime?
   createdAt              DateTime       @default(now())
+  // Change marker. Two consumers:
+  //   1. GET /api/shipments/version — the dashboard polls a cheap { count, maxUpdatedAt }
+  //      fingerprint every 8s and only refetches the page when it moves.
+  //   2. the analytics rollup's "recompute the last N days" job, which needs to know which
+  //      rows changed — createdAt cannot tell it.
+  // Maintained by Prisma on write (@updatedAt), so it does not see raw SQL writes; there
+  // are none today (the only raw statement is a SELECT for the list ordering).
+  updatedAt              DateTime       @updatedAt
 
   // --- New fields for pipeline roles ---
   shippingCategory       String?        // 'Unit', 'Cargo', 'Container'
@@ -354,6 +362,10 @@ model Shipment {
 
   @@index([linkGroupId])
   @@index([status, completionDate])
+  // Required, not optional: the version endpoint runs MAX("updatedAt") on every poll, and
+  // unindexed that is a full table scan every 8s per admin — worse than the payload it
+  // replaces.
+  @@index([updatedAt])
   @@map("shipments")
 }
 
