@@ -9,6 +9,7 @@
 //   PATCH  /api/shipments/:id/status → admin updates status & progress
 
 import { Router, Response } from "express"
+import { Prisma } from "../generated/prisma/client"
 import prisma from "../lib/prisma"
 import { authenticate, adminOnly, AuthRequest } from "../middleware/auth"
 import { sendWhatsApp } from "../services/whatsapp"
@@ -20,6 +21,32 @@ const router = Router()
 // Upper bound on `?limit=` for the list route, so a caller can't request the whole table
 // back with ?limit=999999 and undo pagination.
 const MAX_PAGE_SIZE = 200
+
+// Role-specific status priority for the admin table's default ordering.
+//
+// ⚠️ MUST mirror STATUS_SORT_RANK in
+//    apps/web/src/pages/AdminComponents/ShipmentsSection.jsx.
+// The client used to sort the whole list in memory. Once the list is paginated the sort
+// decides *which* rows land on page 1, so it has to happen in the query instead.
+const STATUS_SORT_RANK: Record<string, Record<string, number>> = {
+  KEPALA_ARMADA: { STANDBY: 0, DITUGASKAN: 1, AT_PLANT: 2, TRANSIT: 3, DITERIMA: 4, DITURUNKAN: 5, DELIVERED: 6, CANCELLED: 7, PENDING: 8 },
+  PIC_PABRIK:    { DITUGASKAN: 0, AT_PLANT: 1, STANDBY: 2, TRANSIT: 3, DITERIMA: 4, DITURUNKAN: 5, DELIVERED: 6, CANCELLED: 7, PENDING: 8 },
+  PIC_GUDANG:    { TRANSIT: 0, DITERIMA: 1, DITURUNKAN: 2, DELIVERED: 3, STANDBY: 4, DITUGASKAN: 5, AT_PLANT: 6, CANCELLED: 7, PENDING: 8 },
+  DEFAULT:       { PENDING: 0, STANDBY: 1, DITUGASKAN: 2, AT_PLANT: 3, TRANSIT: 4, DITERIMA: 5, DITURUNKAN: 6, DELIVERED: 7, CANCELLED: 8 },
+}
+// Mirrors the client's `RANK[status] ?? 99` — FAILED is legacy and unranked.
+const UNRANKED_RANK = 99
+
+// The row shape the admin table and the linked-sibling list both render. Shared so the
+// ordered-ids path, the default path and the sibling query cannot drift apart.
+const LIST_INCLUDE = {
+  client:         { select: { fullName: true, companyName: true } },
+  driver:         { select: { fullName: true, phoneNumber: true } },
+  vehicle:        { select: { type: true, licensePlate: true, primaryDriverId: true } },
+  pickupPlant:    { select: { name: true, code: true, manufacturer: true } },
+  createdByAdmin: { select: { fullName: true } },
+  plantCheck:     { include: { pengiriman: true, lku: true, ksu: true } },
+} as const
 
 // ── Helper: generate shipment ID ─────────────────────────────
 // Format: #MPL-00001-JKT
@@ -47,6 +74,9 @@ router.get("/pickup-plants", authenticate, async (req: AuthRequest, res: Respons
 //   ?linkGroupId=<id>         — all members of one linked trip (see note below)
 //   ?search=<q>               — case-insensitive match on shipment id or client name/company
 //   ?limit=<n>&offset=<n>     — pagination (max 200)
+//   ?sort=priority|completion — admin-only orderings for the admin table (see below).
+//                               Omitted → createdAt desc, i.e. unchanged for every
+//                               existing caller including the client dashboard.
 //
 // ⚠️ Pagination is OPT-IN: without `limit` the route returns every matching row, exactly as
 // before. This is deliberate — `GET /api/shipments` is a SHARED route and 6 of its 11 callers
@@ -57,7 +87,7 @@ router.get("/pickup-plants", authenticate, async (req: AuthRequest, res: Respons
 // `total` is always returned so a caller can tell whether it received a complete set.
 router.get("/", authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { status, from, to, linkGroupId, search } = req.query
+    const { status, from, to, linkGroupId, search, sort } = req.query
     const isAdmin = req.user?.type === "admin"
 
     // Pagination is applied only when `limit` is supplied — see the note above.
@@ -95,17 +125,81 @@ router.get("/", authenticate, async (req: AuthRequest, res: Response) => {
         : {}),
     }
 
+    // ── Custom-ordered path (?sort=priority | completion) ─────────────────────────────
+    // Admin-only. Prisma's `orderBy` cannot express "order by this status priority map"
+    // or "order by COALESCE(...)", so the ORDER BY has to be raw. Raw SQL is confined to
+    // producing the ordered page of ids plus the matching count — every field/relation
+    // selection still goes through Prisma below, so there is one definition of the shape.
+    //
+    // ⚠️ The conditions here must stay in sync with the `where` object above. They are two
+    // spellings of the same filter; if you add one, add it in both.
+    const sortMode = typeof sort === "string" ? sort : ""
+    if (isAdmin && (sortMode === "priority" || sortMode === "completion")) {
+      const conds: Prisma.Sql[] = [Prisma.sql`TRUE`]
+      if (status)      conds.push(Prisma.sql`s."status"::text = ${String(status)}`)
+      if (linkGroupId) conds.push(Prisma.sql`s."linkGroupId" = ${String(linkGroupId)}`)
+      if (from)        conds.push(Prisma.sql`s."createdAt" >= ${new Date(String(from))}`)
+      if (to)          conds.push(Prisma.sql`s."createdAt" <= ${new Date(String(to))}`)
+      if (q) {
+        const like = `%${q}%`
+        conds.push(Prisma.sql`(s."id" ILIKE ${like} OR u."fullName" ILIKE ${like} OR u."companyName" ILIKE ${like})`)
+      }
+      const whereSql = Prisma.join(conds, " AND ")
+
+      // "completion" = the Selesai view: most recently closed first. Mirrors the client's
+      // closedAt = completionDate || pickupDate || createdAt.
+      // "priority"   = status rank → origin → earliest date, mirroring the client sort.
+      let orderSql: Prisma.Sql
+      if (sortMode === "completion") {
+        orderSql = Prisma.sql`COALESCE(s."completionDate", s."pickupDate", s."createdAt") DESC`
+      } else {
+        const rank = STATUS_SORT_RANK[req.user?.role ?? ""] ?? STATUS_SORT_RANK.DEFAULT
+        const whens = Object.entries(rank).map(([st, n]) => Prisma.sql`WHEN ${st} THEN ${n}`)
+        orderSql = Prisma.sql`
+          CASE s."status"::text ${Prisma.join(whens, " ")} ELSE ${UNRANKED_RANK} END ASC,
+          s."originLocation" ASC,
+          COALESCE(s."pickupDate", s."createdAt") ASC`
+      }
+
+      const pageSize = limit ?? MAX_PAGE_SIZE
+      const [idRows, countRows] = await Promise.all([
+        prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
+          SELECT s."id"
+          FROM "shipments" s
+          JOIN "users" u ON u."id" = s."clientId"
+          WHERE ${whereSql}
+          ORDER BY ${orderSql}
+          LIMIT ${pageSize} OFFSET ${offset}
+        `),
+        prisma.$queryRaw<{ count: bigint }[]>(Prisma.sql`
+          SELECT COUNT(*)::bigint AS count
+          FROM "shipments" s
+          JOIN "users" u ON u."id" = s."clientId"
+          WHERE ${whereSql}
+        `),
+      ])
+
+      const ids = idRows.map((r) => r.id)
+      const rows = await prisma.shipment.findMany({
+        where: { id: { in: ids } },
+        include: LIST_INCLUDE,
+      })
+      // findMany does not preserve the `in` order, so re-apply the ordered id sequence.
+      const byId = new Map(rows.map((s) => [s.id, s]))
+      const ordered = ids.map((id) => byId.get(id)).filter(Boolean)
+
+      return res.json({
+        shipments: ordered,
+        total: Number(countRows[0]?.count ?? 0),
+        limit: pageSize,
+        offset,
+      })
+    }
+
     const [shipments, total] = await Promise.all([
       prisma.shipment.findMany({
         where,
-        include: {
-          client:         { select: { fullName: true, companyName: true } },
-          driver:         { select: { fullName: true, phoneNumber: true } },
-          vehicle:        { select: { type: true, licensePlate: true, primaryDriverId: true } },
-          pickupPlant:    { select: { name: true, code: true, manufacturer: true } },
-          createdByAdmin: { select: { fullName: true } },
-          plantCheck:     { include: { pengiriman: true, lku: true, ksu: true } },
-        },
+        include: LIST_INCLUDE,
         orderBy: { createdAt: "desc" },
         ...(limit !== undefined && { take: limit, skip: offset }),
       }),
@@ -394,14 +488,7 @@ router.get("/:id", authenticate, async (req: AuthRequest, res: Response) => {
     const siblings = shipment.linkGroupId
       ? await prisma.shipment.findMany({
           where: { linkGroupId: shipment.linkGroupId, id: { not: shipment.id } },
-          include: {
-            client:         { select: { fullName: true, companyName: true } },
-            driver:         { select: { fullName: true, phoneNumber: true } },
-            vehicle:        { select: { type: true, licensePlate: true, primaryDriverId: true } },
-            pickupPlant:    { select: { name: true, code: true, manufacturer: true } },
-            createdByAdmin: { select: { fullName: true } },
-            plantCheck:     { include: { pengiriman: true, lku: true, ksu: true } },
-          },
+          include: LIST_INCLUDE,
           orderBy: { createdAt: "asc" },
         })
       : []
