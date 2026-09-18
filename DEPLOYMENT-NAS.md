@@ -322,12 +322,12 @@ than a full disk.
   `VITE_TURNSTILE_SITE_KEY` is wired, but **nothing in `apps/api` calls `siteverify`** — so the bot
   protection is currently **cosmetic** (bypassed by any direct `curl`). Validate the token against
   the secret key on the auth/registration endpoints.
-- 🔴 **Pagination on all list endpoints — LAUNCH BLOCKER at this scale.** `GET /api/shipments` has no
-  `take`/`skip` today; at 650k rows (§2.2) that's a multi-hundred-MB JSON response that would hang
-  the dashboard and hammer the host. Also review indexes on the columns actually filtered/sorted
-  (`status`, `createdAt`, `clientId`, `driverId`) — cheap now, painful to retrofit under load.
-- 🔴 **Server-side image resize + WebP on upload — LAUNCH BLOCKER (capacity).** Full spec in **§2.3**.
-  Without it the 1 TB disk lasts **~2 months** instead of ≈5.8 years.
+- [x] ✅ **Pagination — DONE 2026-09-18** (`GET /api/shipments`, 25/page, server-side filters + the
+  role-priority ordering). `/users` and `/fleet/*` were measured and deliberately left unpaginated —
+  see DEV-PLAN.md. **Still open:** indexes on the columns actually filtered/sorted (`status`,
+  `createdAt`, `clientId`, `driverId`, plus `originLocation`/`pickupDate` for the new ORDER BY).
+  `Shipment` currently has only `@@index([linkGroupId])` and `@@index([status, completionDate])`.
+- 🔴 **Server-side WebP + thumbnail on upload — LAUNCH BLOCKER (capacity).** Full spec in **§2.3**.
 - File uploads: enforce type + size limits, store outside the web root, never serve executable.
 - **Error hygiene** — never return stack traces or DB errors to clients.
 - **Secrets**: env files with tight permissions, never in git; **rotate `JWT_SECRET`, CSRF secret and

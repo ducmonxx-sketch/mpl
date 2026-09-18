@@ -328,7 +328,9 @@ Velocity/safety investments, separate from feature work. Tier-2 primitives overl
 
 **Further (once the basics are in)**
 - [ ] Flip CI typecheck + web lint to **blocking** (after the ~81 cleanup).
-- [ ] **Pagination** on list endpoints (`/users`, `/shipments`, `/fleet/*`, `/invoices`) — currently unbounded.
+- [x] ~~**Pagination** on list endpoints~~ — `/shipments` done 2026-09-18; `/users` + `/fleet/*`
+      deliberately skipped (see the Performance & scale checklist for the measurements); `/invoices`
+      no longer exists.
 - [ ] Tests beyond smoke: unit/integration for business logic (points/totals, status transitions, auth).
 - [ ] `npm audit` in CI + a pre-commit hook running typecheck/lint locally.
 - [ ] Optional: error tracking (Sentry) + basic request logging/metrics.
@@ -384,8 +386,16 @@ until this leg is built, which is why the decision is queued here rather than in
 > uplink** will. Optimize data size and query shape — not traffic-scaling infrastructure.
 
 ### 🔴 Needed
-- [ ] **Paginate list endpoints** — `GET /api/shipments` has no `take`/`skip`; at 650k rows that's a
-      multi-hundred-MB JSON response. Also `/users`, `/fleet/*`. *(Also a launch blocker in DEPLOYMENT-NAS.md §3 Layer 4.)*
+- [x] **Paginate `GET /api/shipments`** ✅ **DONE 2026-09-18** (`feat/pagination`, 6 commits). Server-side
+      filters + role-priority ordering + 25/page; opt-in so the shared client-facing callers are
+      untouched. Fixed 4 latent bugs found on the way — see the section below.
+- [x] **`/users` + `/fleet/*` — decided NOT to paginate** (2026-09-18). Measured: ~418 B/row for
+      clients, ~432 B drivers, ~665 B vehicles. At **~20 company clients** (user's number) that's ~8 KB —
+      pagination would be pure overhead. Fleet is bounded by physical assets, and **8 of its 10
+      consumers need the complete set** (create-form driver picker, `assignableVehicles`,
+      `pairedDrivers`, the Armada pair modal, dashboard stat totals), so paginating it would break
+      pickers exactly like the bugs fixed in the shipments pass. Limit those tables to 25/page
+      **client-side** instead. ⚠️ Revisit only if drivers/vehicles pass ~1,000 rows.
 - [ ] **Database indexes** — ⚠️ **Postgres does not auto-index foreign keys** and Prisma won't add
       them, so `Shipment.clientId` / `driverId` / `vehicleId` are likely unindexed. Add those plus
       `status` and `createdAt`. Cheap now, painful under load.
