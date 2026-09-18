@@ -298,19 +298,30 @@ than a full disk.
 
 ### Layer 4 — Application
 - 🟠 **Zod validation + field size caps** on every endpoint, especially public auth/registration.
-- 🟠 **Per-route rate limits backed by Redis** (`rate-limit-redis`); strict on auth / token /
-  registration / reset routes. Concrete gaps found in `index.ts`: **`/api/files` is mounted *before*
-  the limiter** (deliberately, so image loads don't count against it), leaving file serving
-  **completely unlimited** — an unbounded storage-IO DoS surface; and `AUTH_MAX = 50/15min` is loose
-  for bcrypt-backed routes (~10–20 is safer). The store is in-memory → must move to Redis before any
-  second instance. 💡 Reducing the 8 s dashboard polling would also let `API_MAX` (1500/15min, raised
-  *because* of that polling) be tightened — one fix, both security and performance.
-- 🔴 **`app.set("trust proxy", 1)`** — mandatory now that we sit behind a proxy/tunnel, otherwise
-  rate limiting keys on the proxy IP and is useless (and `X-Forwarded-For` becomes spoofable).
-- 🔴 **CORS must become an origin allowlist — it is single-origin today.** `index.ts` uses
-  `cors({ origin: process.env.CLIENT_URL, credentials: true })`. With two hostnames (`app.` + `admin.`)
-  that will lock out the admin panel — or tempt someone into a wildcard. Replace with an explicit
-  array of exact origins. *(`credentials: true` is already correct groundwork for cookie auth.)*
+- [x] ✅ **Per-route rate limits — DONE 2026-09-18** (except Redis). Fixed two concrete gaps:
+  **`/api/files` was mounted before the limiter and therefore completely unlimited** — an
+  unauthenticated unbounded storage-IO surface; it now has its own looser bucket (3000/15min) so
+  image loads still don't eat the API budget. And a **strict 15/15min limiter** now covers the
+  unauthenticated token routes — which turned out to be worse than documented: `GET|POST
+  /api/users/magic-link/:token[/register]` and `/reset-password/:token` live under `/api/users`, so
+  the `/api/auth` limiter **never covered them at all** and they had only the general 1500/15min
+  against a token check. Scoped by regex so the admin-authenticated `POST /api/users/magic-link`
+  stays out of it. Verified: the token route 429s at exactly 15 while `/api/shipments` keeps its own
+  bucket.
+  ⏭️ **Still open: Redis store** (`rate-limit-redis`) — in-memory counters would multiply by replica
+  count, so this is required before any second instance.
+  💡 `API_MAX` (1500/15min, raised *because* of the 8s polling) can likely come down now that
+  ShipmentsSection polls a 54-byte fingerprint — once the other four sections do the same.
+- [x] ✅ **`trust proxy` — DONE 2026-09-18.** Configurable via `TRUST_PROXY_HOPS` (default 0 = no
+  proxy, correct for dev) rather than a hardcoded `1`, because the count depends on the deployment:
+  cloudflared alone = 1, Caddy in front of cloudflared = 2. ⚠️ It must be **exact** — too low and the
+  limiter keys on the proxy IP so everyone shares one bucket; too high (or a blind `true`) and a
+  caller can forge `X-Forwarded-For` for a fresh bucket per request. Documented in `.env.example`.
+- [x] ✅ **CORS origin allowlist — DONE 2026-09-18.** Was single-origin (`CLIENT_URL`), which would
+  have locked out the admin panel once it moved to its own hostname. Now an exact-match allowlist from
+  `CLIENT_URL` + `ADMIN_URL` + `CORS_ORIGINS`. A rejected origin gets **no CORS header rather than a
+  500**, and a request with no `Origin` (curl / server-to-server) is allowed since CORS has nothing to
+  protect there. Verified against 6 origins including a blocked one.
 - helmet + **CSP** including the API origin in `connect-src` and `img-src`.
 - RBAC ✅ done · SUPERADMIN bypass ✅ done · audit log ✅ done — keep the audit log append-only.
 - 🔴 **Per-record access control (IDOR) audit — highest-risk gap.** RBAC answers *"may this role use
