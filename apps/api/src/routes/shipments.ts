@@ -39,7 +39,8 @@ const STATUS_SORT_RANK: Record<string, Record<string, number>> = {
 const UNRANKED_RANK = 99
 
 // Closed statuses — the field roles' "Selesai" view; everything else is "Dalam Proses".
-// ⚠️ Mirrors TERMINAL_STATUSES in ShipmentsSection.jsx.
+// Canonical definition: the client used to keep its own copy, but the split is applied
+// here now (?lifecycle=active|done), so this is the only one.
 const TERMINAL_STATUSES = ["DELIVERED", "CANCELLED", "FAILED"]
 
 const VALID_STATUSES: readonly string[] = Object.values(ShipmentStatus)

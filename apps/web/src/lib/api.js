@@ -264,6 +264,12 @@ export const shipmentsAPI = {
   getLinkableTrips: () =>
     api.get('/api/shipments/linkable-trips'),
 
+  /** Admin: filter-bar metadata that describes the whole set rather than one page —
+   *  the client dropdown options and the per-status tab counts.
+   *  Counts honour { clientName, serviceLevel }; the client list does not. */
+  getListMeta: (params) =>
+    api.get('/api/shipments/list-meta', params),
+
   /** Create a new shipment */
   create: (data) =>
     api.post('/api/shipments', data),

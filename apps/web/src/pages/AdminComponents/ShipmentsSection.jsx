@@ -73,7 +73,27 @@ const mapStatus = (s) => {
 }
 
 // Terminal (closed) statuses — the "Selesai" view; everything else is "Dalam Proses".
-const TERMINAL_STATUSES = ['DELIVERED', 'CANCELLED', 'FAILED']
+// The Dalam Proses / Selesai split is decided by the API now (?lifecycle=active|done),
+// so the terminal-status list lives server-side in routes/shipments.ts.
+
+// Inverse of mapStatus: a UI tab id → the raw enum value(s) it stands for. 'cancelled'
+// covers two because mapStatus folds the legacy FAILED in with CANCELLED.
+// Sent to the API as ?status=A,B now that filtering is server-side.
+const TAB_TO_STATUSES = {
+  pending:    ['PENDING'],
+  standby:    ['STANDBY'],
+  assigned:   ['DITUGASKAN'],
+  at_plant:   ['AT_PLANT'],
+  in_transit: ['TRANSIT'],
+  diterima:   ['DITERIMA'],
+  diturunkan: ['DITURUNKAN'],
+  delivered:  ['DELIVERED'],
+  cancelled:  ['CANCELLED', 'FAILED'],
+}
+
+const ITEMS_PER_PAGE = 25
+// Search hits the API now, so hold off until typing settles.
+const SEARCH_DEBOUNCE_MS = 350
 
 // Table sort: each role prioritises the statuses it acts on first. Rows then sort by
 // origin (Asal) then earliest created date within a status. Falls back to DEFAULT.
@@ -159,7 +179,14 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   const [filterService, setFilterService] = useState('all')
   const [filterPlant, setFilterPlant]     = useState('all') // PIC Pabrik: Lokasi Plant (defaults to bound plant)
   const [searchQuery, setSearchQuery]     = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [currentPage, setCurrentPage]     = useState(1)
+  // Server-side list state: SHIPMENTS now holds only the current page, so the row count
+  // and the tab badges have to come from the API rather than from array lengths.
+  const [totalCount, setTotalCount]       = useState(0)
+  const [statusCounts, setStatusCounts]   = useState({})
+  const [metaTotal, setMetaTotal]         = useState(0)
+  const [clientFilterOptions, setClientFilterOptions] = useState([])
   const [viewMode, setViewMode]           = useState('today') // 'today' | 'history'
   const [SHIPMENTS, setSHIPMENTS]         = useState([])
   const [loading, setLoading]             = useState(true)
@@ -351,18 +378,67 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     createdBy:             s.createdByAdmin?.fullName || s.client?.fullName || '-',
   })
 
+  // Every filter, the sort and the page are now query params — the server returns exactly
+  // the page being displayed. Kept in one memo so fetchShipments and the 8s poll always
+  // agree on what "the current page" is.
+  const listParams = useMemo(() => {
+    const isSelesaiView = usesFieldLayout && viewMode === 'history'
+    return {
+      limit:  ITEMS_PER_PAGE,
+      offset: (currentPage - 1) * ITEMS_PER_PAGE,
+      // Selesai orders by when a shipment closed; everything else by the role's status
+      // priority. Both live server-side because the order decides what lands on page 1.
+      sort: isSelesaiView ? 'completion' : 'priority',
+      ...(debouncedSearch && { search: debouncedSearch }),
+      ...(filter !== 'all' && TAB_TO_STATUSES[filter] && { status: TAB_TO_STATUSES[filter].join(',') }),
+      ...(filterClient  !== 'all' && { clientName:    filterClient }),
+      ...(filterService !== 'all' && { serviceLevel:  filterService }),
+      ...(filterPlant   !== 'all' && { pickupPlantId: filterPlant }),
+      // Dalam Proses / Selesai is a lifecycle split (TERMINAL_STATUSES), not a date one.
+      ...(usesFieldLayout && { lifecycle: viewMode === 'history' ? 'done' : 'active' }),
+    }
+  }, [currentPage, debouncedSearch, filter, filterClient, filterService, filterPlant, usesFieldLayout, viewMode])
+
   const fetchShipments = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true)
     try {
-      const data = await shipmentsAPI.list()
-      setSHIPMENTS((data.shipments || data || []).map(mapShipment))
+      const data = await shipmentsAPI.list(listParams)
+      const rows = data.shipments || []
+      setSHIPMENTS(rows.map(mapShipment))
+      setTotalCount(typeof data.total === 'number' ? data.total : rows.length)
     } catch (err) {
       console.error('Failed to fetch shipments:', err)
       showToast('Gagal memuat data pengiriman.', 'error')
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listParams])
+
+  // Debounce the search box: each keystroke would otherwise be a request.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), SEARCH_DEBOUNCE_MS)
+    return () => clearTimeout(t)
+  }, [searchQuery])
+
+  // The client dropdown and the status tab badges describe the whole filtered set, not the
+  // current page, so they come from /list-meta. Counts mirror the UI's old "baseSet":
+  // client + service filters apply, the status tab itself does not.
+  const fetchListMeta = useCallback(async () => {
+    try {
+      const res = await shipmentsAPI.getListMeta({
+        ...(filterClient  !== 'all' && { clientName:   filterClient }),
+        ...(filterService !== 'all' && { serviceLevel: filterService }),
+      })
+      setClientFilterOptions(res.clients || [])
+      setStatusCounts(res.counts || {})
+      setMetaTotal(res.total || 0)
+    } catch (err) {
+      console.error('Failed to fetch shipment list metadata:', err)
+    }
+  }, [filterClient, filterService])
+
+  useEffect(() => { fetchListMeta() }, [fetchListMeta])
 
   useEffect(() => {
     fetchShipments()
@@ -423,12 +499,25 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
       .catch(() => {})
   }, [role])
 
+  // Deep link from elsewhere in the dashboard (e.g. a notification). Fetched by id rather
+  // than looked up in SHIPMENTS: now that SHIPMENTS is a single page the target usually
+  // isn't in it, and the old lookup would silently do nothing instead of opening the panel.
   useEffect(() => {
-    if (highlightShipmentId && SHIPMENTS.length > 0) {
-      const found = SHIPMENTS.find(s => s.id === highlightShipmentId)
-      if (found) setSelectedShipment(found)
-    }
-  }, [highlightShipmentId, SHIPMENTS])
+    if (!highlightShipmentId) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await shipmentsAPI.getById(highlightShipmentId)
+        const row = res.shipment || res
+        if (!cancelled && row) setSelectedShipment(mapShipment(row))
+      } catch (err) {
+        console.error('Failed to open highlighted shipment:', err)
+        if (!cancelled) showToast('Pengiriman tidak ditemukan.', 'error')
+      }
+    })()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightShipmentId])
 
   useEffect(() => {
     if (!loading) {
@@ -2030,63 +2119,13 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   const notifyInFlight = !!selectedShipment && notifyingId === selectedShipment.id
   const notifySent     = !!selectedShipment && notifiedIds.has(selectedShipment.id)
 
-  // ── Filtering & pagination ────────────────────────────────────
-  const ITEMS_PER_PAGE = 20
-
-  let filtered = SHIPMENTS.filter(s => {
-    const matchStatus  = filter === 'all' || s.status === filter
-    const matchClient  = filterClient === 'all' || s.client === filterClient
-    const matchService = filterService === 'all' || s.serviceType === filterService
-    const matchSearch  = !searchQuery ||
-      s.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.client.toLowerCase().includes(searchQuery.toLowerCase())
-    
-    let matchViewMode = true
-    if (['KEPALA_ARMADA', 'PIC_PABRIK', 'PIC_GUDANG'].includes(role)) {
-      if (usesFieldLayout) {
-        // Split by lifecycle, not date: "Selesai" = terminal (done/cancelled),
-        // "Dalam Proses" = everything still active. A shipment marked Selesai moves
-        // to the Selesai tab immediately.
-        const isDone = TERMINAL_STATUSES.includes(s.rawStatus)
-        if (viewMode === 'today') {
-          matchViewMode = !isDone   // Dalam Proses
-        } else if (viewMode === 'history') {
-          matchViewMode = isDone    // Selesai
-        }
-      } else if (viewMode === 'today') {
-        matchViewMode = s.pickupDate === formatDate(new Date())
-      }
-    }
-
-    // PIC Pabrik: Lokasi Plant filter (soft default = bound plant; 'all' = every plant).
-    const matchPlant = filterPlant === 'all' || s.pickupPlantId === filterPlant
-
-    // Kepala Armada sees the full lifecycle of their shipments, split by the
-    // Dalam Proses / Selesai view mode above (no status restriction).
-    return matchStatus && matchClient && matchService && matchSearch && matchViewMode && matchPlant
-  })
-
-  // Selesai view: order by when the shipment was closed (most recently completed first).
-  // Otherwise: sort by status (order unique per role) → origin (Asal) → earliest date.
-  {
-    const isSelesaiView = usesFieldLayout && viewMode === 'history'
-    const closedAt = (s) => new Date(s.completionDate || s.rawPickupDate).getTime()
-    const RANK = STATUS_SORT_RANK[role] || STATUS_SORT_RANK.DEFAULT
-    filtered.sort((a, b) => {
-      if (isSelesaiView) {
-        return closedAt(b) - closedAt(a) // newest completion first
-      }
-      const ra = RANK[a.rawStatus] ?? 99
-      const rb = RANK[b.rawStatus] ?? 99
-      if (ra !== rb) return ra - rb
-      const byAsal = (a.originCity || '').localeCompare(b.originCity || '')
-      if (byAsal !== 0) return byAsal
-      return new Date(a.rawPickupDate).getTime() - new Date(b.rawPickupDate).getTime() // earliest first
-    });
-  }
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE))
-  const paginated  = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
+  // ── Server-side list ─────────────────────────────────────────
+  // Filtering, ordering and pagination all happen in the query now (see listParams), so
+  // SHIPMENTS already holds exactly the current page in the correct order. It must NOT be
+  // filtered or sorted again here: doing so would re-filter a single page and silently
+  // drop rows the server had already selected.
+  const paginated  = SHIPMENTS
+  const totalPages = Math.max(1, Math.ceil(totalCount / ITEMS_PER_PAGE))
 
   const filters = [
     { id: 'all',        label: 'Semua' },
@@ -2221,7 +2260,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
             />
           </div>
           <SearchableSelect
-            options={Array.from(new Set(SHIPMENTS.map(s => s.client))).sort().map(c => ({ value: c, label: c }))}
+            options={clientFilterOptions.map(c => ({ value: c, label: c }))}
             value={filterClient}
             onChange={v => { setFilterClient(v); setCurrentPage(1) }}
             placeholder="Semua Klien (A-Z)"
@@ -2284,13 +2323,11 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
       {!usesFieldLayout && (
         <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-px">
           {filters.map(f => {
-            const baseSet = SHIPMENTS.filter(s =>
-              (filterClient  === 'all' || s.client      === filterClient) &&
-              (filterService === 'all' || s.serviceType === filterService)
-            )
+            // Counts come from /list-meta — SHIPMENTS is one page, so counting it here
+            // would show per-page numbers on every tab.
             const count = f.id === 'all'
-              ? baseSet.length
-              : baseSet.filter(s => s.status === f.id).length
+              ? metaTotal
+              : (TAB_TO_STATUSES[f.id] || []).reduce((n, st) => n + (statusCounts[st] || 0), 0)
             const isActive = filter === f.id
             return (
               <button
@@ -2361,7 +2398,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
             <AdminPagination
               currentPage={currentPage}
               totalPages={totalPages}
-              totalItems={filtered.length}
+              totalItems={totalCount}
               itemsPerPage={ITEMS_PER_PAGE}
               onPageChange={setCurrentPage}
             />
