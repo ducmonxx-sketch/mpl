@@ -324,11 +324,17 @@ than a full disk.
   protect there. Verified against 6 origins including a blocked one.
 - helmet + **CSP** including the API origin in `connect-src` and `img-src`.
 - RBAC ✅ done · SUPERADMIN bypass ✅ done · audit log ✅ done — keep the audit log append-only.
-- 🔴 **Per-record access control (IDOR) audit — highest-risk gap.** RBAC answers *"may this role use
-  this endpoint?"* — it does **not** answer *"does this record belong to this user?"* Spot-checks are
-  correct today (`GET /api/shipments/:id` rejects a client whose `clientId` doesn't match), but every
-  route taking an `:id` needs the same check. At multi-client scale, one miss = cross-client data
-  leak. *(This is the API-layer equivalent of Postgres RLS — see §3.8.)*
+- [x] ✅ **IDOR / access-control sweep — DONE 2026-09-18.** All 27 routes taking a path param audited.
+  **Per-record ownership was already sound** — the client-reachable paths (`notifications/:id/read`
+  scopes by `userId` in the WHERE; `tracking/:shipmentId` and `shipments/:id` both reject a
+  mismatched `clientId`) were all correct. **The real gap was role-level, not record-level:** the
+  sidebar hides client management from KEPALA_ARMADA / PIC_PABRIK / PIC_GUDANG / SUPPORT, but the API
+  guarded verify / reject / edit / **delete** client and issue-password-reset with only `adminOnly` —
+  so a PIC_PABRIK token could **delete a client account**. Tightened to `clientManagerOnly`
+  (SUPERADMIN + OPERATIONS), matching the guard already used for *creating* a client. The two GETs
+  stay `adminOnly` on purpose: KEPALA_ARMADA needs the client list for the shipment create-form
+  picker and Beranda shows a Total Klien KPI. Also hardened `requireRole` to assert
+  `type === "admin"` — it previously checked only `role` and was safe only by accident (see §3.8).
 - [x] 🟠 **Turnstile — backend DONE 2026-09-18, frontend handoff outstanding.** The problem was worse
   than "no `siteverify` call": the widget was wired to the wrong places entirely — decorative on
   `HomePage` (no props, token discarded), button-gating only in the client `DeactivateModal`, and
@@ -395,8 +401,21 @@ Point-in-time verification against the actual codebase, recorded so these don't 
 | "Use a public DB key" | A **Supabase/Firebase `anon`-key** pattern. The browser never talks to Postgres here — DB credentials stay **fully private**. Applying this would be actively harmful. |
 | "Enable row-level security (RLS)" | RLS matters when clients query the DB **directly**. Our API is the only DB client, so authorization belongs in the API layer. **Useful substitutes:** least-privilege DB role (Layer 5) + the IDOR audit (Layer 4). |
 
-**🚨 Open findings from this audit** (all tracked in Layer 4 above): Turnstile not verified
-server-side · CORS single-origin · `/api/files` unlimited · IDOR sweep outstanding.
+**✅ Verified in the access-control sweep — 2026-09-18**
+| Checked | Result |
+|---|---|
+| Per-record ownership on client-reachable routes | **Already correct.** `notifications/:id/read` scopes by `userId`; `tracking/:shipmentId` and `shipments/:id` both 403 a mismatched `clientId`; the shipments list and `/version` scope non-admins by `clientId`. |
+| `adminNotifications/:id/read` (no scoping) | **Not a vulnerability** — `AdminNotification` has no `adminId`; it is a shared feed by design (the GET is unscoped too). ⚠️ *Product* note: `isRead` is therefore global, so one admin marking an alert read hides it from everyone. |
+| `/api/files` public, no auth | **By design and documented in the route**, with a warning not to serve sensitive files through it. Only avatars today. 🔴 **This blocks the image pipeline** — POD / plant-check / Surat Jalan would become readable by URL. The two tasks are coupled. |
+| Path traversal on `/api/files` | **Safe** — `normalize()` + strip leading `..` + `join()`. Attacked with 12 payloads (`../.env`, url- and double-encoded, interior `..`, absolute, backslash, Windows drive, null byte): all 404. |
+| `requireRole` | 🔧 **Fixed.** Asserted only `role`, never `type === "admin"`. Not exploitable today (client tokens carry role `"user"`), but safe only by accident — and `requirePermission` had always checked the type. |
+| Client-management authorization | 🔧 **Fixed.** See Layer 4 — `adminOnly` let pipeline roles delete client accounts. |
+
+**🚨 Still open:** `PATCH /api/users/:id` returns **500** on a nonexistent id (unhandled Prisma
+`P2025`) where it should be 404 — an instance of the Layer 4 "error hygiene" item. Also open: whether
+**PIC_PABRIK should be restricted to its own bound plant** — a PIC bound to Plant A can currently
+plant-check a shipment at Plant B. That is a business rule, not a leak, so it needs your call rather
+than a unilateral fix.
 
 ---
 

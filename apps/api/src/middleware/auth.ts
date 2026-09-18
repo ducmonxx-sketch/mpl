@@ -46,10 +46,20 @@ export const adminOnly = (
 
 // Specific admin roles. SUPERADMIN is a superuser — it bypasses every role gate,
 // so it can perform any action regardless of the required-role list.
+//
+// ⚠️ The `type === "admin"` assertion is deliberate and must stay. This guard used to check
+// only `role`, which made it safe purely by accident: client tokens are signed with
+// role "user" (routes/auth.ts), so they happened not to match any role list. That is a
+// fragile invariant — anything that gave a client token an admin-shaped role, or a route
+// written as requireRole("user"), would have let a client straight through an admin gate.
+// `requirePermission` in lib/rbac.ts has always checked the type; this now matches it.
 export const requireRole = (...roles: string[]) => {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
-    if (req.user?.role === "SUPERADMIN") return next()
-    if (!req.user || !roles.includes(req.user.role)) {
+    if (!req.user || req.user.type !== "admin") {
+      return res.status(403).json({ message: "Access denied. Admins only." })
+    }
+    if (req.user.role === "SUPERADMIN") return next()
+    if (!roles.includes(req.user.role)) {
       return res.status(403).json({
         message: `Access denied. Required role: ${roles.join(" or ")}`,
       })

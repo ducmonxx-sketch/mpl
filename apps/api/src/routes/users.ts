@@ -253,7 +253,7 @@ router.patch("/me/settings", authenticate, async (req: AuthRequest, res: Respons
 })
 
 // ── PATCH /api/users/:id/verify ───────────────────────────────
-router.patch("/:id/verify", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+router.patch("/:id/verify", authenticate, clientManagerOnly, async (req: AuthRequest, res: Response) => {
   try {
     const user = await prisma.user.update({
       where: { id: req.params.id as string },
@@ -337,7 +337,7 @@ router.patch("/:id/set-main-pic", authenticate, requireRole("SUPERADMIN"), async
 })
 
 // ── PATCH /api/users/:id/reject ───────────────────────────────
-router.patch("/:id/reject", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+router.patch("/:id/reject", authenticate, clientManagerOnly, async (req: AuthRequest, res: Response) => {
   try {
     const user = await prisma.user.update({
       where: { id: req.params.id as string },
@@ -525,7 +525,7 @@ router.post("/magic-link/:token/register", requireTurnstile, async (req: AuthReq
 })
 
 // ── POST /api/users/reset-password-link ──────────────────────
-router.post("/reset-password-link", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+router.post("/reset-password-link", authenticate, clientManagerOnly, async (req: AuthRequest, res: Response) => {
   try {
     const { userId } = req.body
 
@@ -636,7 +636,7 @@ router.post("/reset-password/:token", requireTurnstile, async (req: AuthRequest,
 // ── PATCH /api/users/:id ──────────────────────────────────────
 // Admin updates a client's profile fields.
 // NOTE: registered AFTER /me and /me/settings so those take precedence.
-router.patch("/:id", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+router.patch("/:id", authenticate, clientManagerOnly, async (req: AuthRequest, res: Response) => {
   try {
     const { fullName, companyName, email, phoneNumber, city, address, npwp } = req.body
 
@@ -690,7 +690,7 @@ router.patch("/:id", authenticate, adminOnly, async (req: AuthRequest, res: Resp
 
 // ── DELETE /api/users/:id ─────────────────────────────────────
 // Admin deletes a client. Their shipments are removed too.
-router.delete("/:id", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+router.delete("/:id", authenticate, clientManagerOnly, async (req: AuthRequest, res: Response) => {
   try {
     const id = req.params.id as string
 
