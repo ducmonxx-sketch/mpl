@@ -360,12 +360,35 @@ model Shipment {
   events     ShipmentEvent[]
   plantCheck PlantCheck?
 
-  @@index([linkGroupId])
-  @@index([status, completionDate])
-  // Required, not optional: the version endpoint runs MAX("updatedAt") on every poll, and
-  // unindexed that is a full table scan every 8s per admin — worse than the payload it
-  // replaces.
-  @@index([updatedAt])
+  // ── Indexes ────────────────────────────────────────────────────────────────────────────
+  // ⚠️ Postgres does NOT auto-index foreign keys (unlike MySQL) and Prisma does not add them,
+  // so every FK below needs one explicitly — both for the queries that filter on it and so
+  // that deleting a parent row (driver, vehicle, plant, client) doesn't seq-scan shipments.
+  // Each index here is justified by a query that actually runs; none are speculative.
+
+  @@index([linkGroupId])                    // sibling lookup on GET /:id
+  @@index([status, completionDate])          // /stats + /condition-analytics (DELIVERED in a date range)
+  @@index([updatedAt])                       // MAX(updatedAt) on every /version poll
+
+  // Client dashboard's main list: WHERE clientId = ? ORDER BY createdAt DESC. The leading
+  // column also serves the FK and list-meta's "clients that have shipments" EXISTS.
+  @@index([clientId, createdAt])
+
+  // Fleet's "current active shipment" includes, which run on every /fleet/* call — and those
+  // poll every 8s. Shape is exactly WHERE driverId = ? AND status IN (...) ORDER BY
+  // createdAt DESC LIMIT 1, so the 3-column form serves filter, order and limit together.
+  // Also covers the updateMany({ where: { driverId } }) on driver/vehicle removal.
+  @@index([driverId, status, createdAt])
+  @@index([vehicleId, status, createdAt])
+
+  @@index([pickupPlantId])                   // FK + PIC Pabrik's Lokasi Plant filter
+  @@index([createdAt])                        // admin list default ORDER BY + ?from/?to ranges
+
+  // 📌 Known limit that indexes cannot fix: the admin table's ?sort=priority ordering is a
+  // CASE expression over status (the per-role STATUS_SORT_RANK), and Postgres cannot use an
+  // index to satisfy an arbitrary CASE sort. Filtered views (status tab, lifecycle) stay
+  // cheap, but an unfiltered "Semua" page sorts the whole matching set. If that becomes slow
+  // at scale, the fix is a persisted rank column, not another index.
   @@map("shipments")
 }
 

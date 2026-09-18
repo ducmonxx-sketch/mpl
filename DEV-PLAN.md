@@ -396,9 +396,19 @@ until this leg is built, which is why the decision is queued here rather than in
       `pairedDrivers`, the Armada pair modal, dashboard stat totals), so paginating it would break
       pickers exactly like the bugs fixed in the shipments pass. Limit those tables to 25/page
       **client-side** instead. ⚠️ Revisit only if drivers/vehicles pass ~1,000 rows.
-- [ ] **Database indexes** — ⚠️ **Postgres does not auto-index foreign keys** and Prisma won't add
-      them, so `Shipment.clientId` / `driverId` / `vehicleId` are likely unindexed. Add those plus
-      `status` and `createdAt`. Cheap now, painful under load.
+- [x] **Database indexes** ✅ **DONE 2026-09-18** (`feat/shipment-indexes`). Confirmed the FK gap was
+      real: `clientId` / `driverId` / `vehicleId` / `pickupPlantId` were all unindexed, because
+      **Postgres does not auto-index foreign keys** and Prisma doesn't add them. Added 5, each tied to
+      a query that actually runs: `[clientId, createdAt]` (client dashboard list + the FK + list-meta's
+      EXISTS), `[driverId, status, createdAt]` and `[vehicleId, status, createdAt]` (fleet's
+      active-shipment includes, which match that shape exactly and run on every 8s poll),
+      `[pickupPlantId]` (FK + PIC Pabrik filter), `[createdAt]` (admin default ORDER BY + date ranges).
+      ⚠️ **Not verifiable at 16 dev rows** — Postgres correctly seq-scans a tiny table, so the plans
+      prove nothing yet. Needs a scale benchmark to confirm.
+      📌 **Known limit indexes can't fix:** `?sort=priority` orders by a CASE over status (the per-role
+      `STATUS_SORT_RANK`), and Postgres can't use an index for an arbitrary CASE sort. Filtered views
+      stay cheap; an unfiltered "Semua" page sorts the whole matching set. The fix, if it ever bites,
+      is a persisted rank column — not another index.
 - [ ] **Image resize + WebP on upload** — spec in DEPLOYMENT-NAS.md §2.3 (`sharp`, inside `lib/upload.ts` → `saveUpload`).
 - [ ] **Compress API payloads** — `compression` middleware at the origin. Lands directly on the real
       constraint: office **upload bandwidth** is the ceiling for every remote PIC and client.
