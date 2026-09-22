@@ -24,6 +24,22 @@ import { validateBody, createUserSchema, magicLinkSchema, magicLinkRegisterSchem
 
 const router = Router()
 
+// Link lifetimes, in hours. Both were hardcoded; they are env-tunable so the window can be
+// adjusted for slow-responding invitees without a code change.
+//
+// These are a genuine security/convenience trade-off, so keep them as short as the business
+// tolerates: the token is a bearer credential sat in someone's inbox or WhatsApp for the whole
+// window, and a registration link creates an account while a reset link takes one over.
+const hoursEnv = (name: string, def: number) => {
+  const v = Number.parseInt(process.env[name] ?? "", 10)
+  return Number.isInteger(v) && v > 0 ? v : def
+}
+// Both default to 1 day (user decision 2026-09-22). The registration invite was 7 days; it
+// was shortened because the token sits in an inbox or WhatsApp thread for its whole life and
+// re-issuing an expired invite is a two-click admin action.
+const REGISTRATION_LINK_HOURS = () => hoursEnv("MAGIC_LINK_HOURS", 24)
+const RESET_LINK_HOURS        = () => hoursEnv("RESET_LINK_HOURS", 24)
+
 // ── GET /api/users ────────────────────────────────────────────
 router.get("/", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
   try {
@@ -396,8 +412,7 @@ router.post("/magic-link", authenticate, clientManagerOnly, validateBody(magicLi
     }
 
     const token = crypto.randomBytes(32).toString("hex")
-    const expiresAt = new Date()
-    expiresAt.setDate(expiresAt.getDate() + 7) // Valid for 7 days
+    const expiresAt = new Date(Date.now() + REGISTRATION_LINK_HOURS() * 60 * 60 * 1000)
 
     await prisma.magicLink.create({
       data: {
@@ -544,8 +559,7 @@ router.post("/reset-password-link", authenticate, clientManagerOnly, async (req:
     }
 
     const token = crypto.randomBytes(32).toString("hex")
-    const expiresAt = new Date()
-    expiresAt.setHours(expiresAt.getHours() + 24) // Valid for 24 hours
+    const expiresAt = new Date(Date.now() + RESET_LINK_HOURS() * 60 * 60 * 1000)
 
     await prisma.magicLink.create({
       data: {
