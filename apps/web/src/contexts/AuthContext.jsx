@@ -79,6 +79,23 @@ export function AuthProvider({ children }) {
   // ── Admin login ───────────────────────────────────────────
   const adminLogin = useCallback(async (email, password) => {
     const data = await authAPI.adminLogin(email, password)
+    // With email 2FA on, step 1 succeeds but returns no token — just
+    // { otpRequired: true, challengeId }. Returning early matters: without this the
+    // lines below would store an undefined token and a null admin, leaving the app
+    // in a half-logged-in state. The caller collects the code and calls
+    // adminVerifyOtp() to finish.
+    if (data?.otpRequired) return data
+    setToken(data.token)
+    setStoredUser(data.admin, 'admin')
+    setUser(data.admin)
+    setUserType('admin')
+    return data
+  }, [])
+
+  // Step 2 of admin login. Additive — nothing else in the app calls this, and the
+  // client-side flow is untouched.
+  const adminVerifyOtp = useCallback(async (challengeId, code) => {
+    const data = await authAPI.adminVerifyOtp(challengeId, code)
     setToken(data.token)
     setStoredUser(data.admin, 'admin')
     setUser(data.admin)
@@ -115,6 +132,7 @@ export function AuthProvider({ children }) {
     login,
     register,
     adminLogin,
+    adminVerifyOtp,
     logout,
     refreshProfile,
   }

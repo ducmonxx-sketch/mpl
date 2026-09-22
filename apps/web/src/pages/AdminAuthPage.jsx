@@ -8,11 +8,20 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export default function AdminAuthPage() {
   const navigate = useNavigate()
-  const { adminLogin } = useAuth()
+  const { adminLogin, adminVerifyOtp } = useAuth()
   const [showPw, setShowPw] = useState(false)
   const [emailError, setEmailError] = useState('')
   const [loginError, setLoginError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  // ── Step 2: emailed one-time code (only when ADMIN_2FA_EMAIL is on server-side) ──
+  // Step 1 succeeds but returns no token, just { otpRequired, challengeId }. Until a code
+  // is verified there is no session, so this screen is the whole gate.
+  const [challengeId, setChallengeId] = useState(null)
+  const [otpEmail, setOtpEmail] = useState('')
+  const [otpCode, setOtpCode] = useState('')
+  const [otpError, setOtpError] = useState('')
+  // Surfaced only when the server has no SMTP configured (dev) so the flow is usable.
+  const [devCode, setDevCode] = useState('')
 
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault()
@@ -27,7 +36,15 @@ export default function AdminAuthPage() {
     setSubmitting(true)
 
     try {
-      await adminLogin(emailValue, passwordValue)
+      const result = await adminLogin(emailValue, passwordValue)
+      if (result?.otpRequired) {
+        // Password was correct; authentication just isn't finished. Switch to the code step
+        // rather than navigating.
+        setChallengeId(result.challengeId)
+        setOtpEmail(emailValue)
+        setDevCode(result.devCode || '')
+        return
+      }
       navigate('/admin/dashboard')
     } catch (err) {
       if (err.status === 401) {
@@ -39,6 +56,28 @@ export default function AdminAuthPage() {
       setSubmitting(false)
     }
   }, [navigate, adminLogin])
+
+  const handleVerifyOtp = useCallback(async (e) => {
+    e.preventDefault()
+    const code = otpCode.trim()
+    if (!/^\d{6}$/.test(code)) { setOtpError('Masukkan 6 digit kode.'); return }
+    setOtpError('')
+    setSubmitting(true)
+    try {
+      await adminVerifyOtp(challengeId, code)
+      navigate('/admin/dashboard')
+    } catch (err) {
+      // The server distinguishes expired / used / too-many-attempts, all of which mean
+      // "start over" rather than "try again", so its message is shown verbatim.
+      setOtpError(err.message || 'Kode tidak valid.')
+    } finally {
+      setSubmitting(false)
+    }
+  }, [challengeId, otpCode, adminVerifyOtp, navigate])
+
+  const restartLogin = useCallback(() => {
+    setChallengeId(null); setOtpCode(''); setOtpError(''); setDevCode('')
+  }, [])
 
   const handleEmailChange = useCallback(() => {
     if (emailError) setEmailError('')
@@ -101,6 +140,67 @@ export default function AdminAuthPage() {
               Pusat kendali operasional internal. Restricted access.
             </p>
 
+            {challengeId ? (
+              /* ── Step 2: emailed code ── */
+              <form className="adm-auth-form" onSubmit={handleVerifyOtp}>
+                <div className="adm-auth-field">
+                  <label className="adm-auth-field__label" htmlFor="admin-otp">
+                    Kode Verifikasi <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
+                  <p style={{ margin: '0 0 0.75rem', fontSize: '0.85rem', color: '#64748b' }}>
+                    Kami mengirim kode 6 digit ke <b>{otpEmail}</b>. Kode berlaku 10 menit.
+                  </p>
+                  <div className="adm-auth-field__input-wrap">
+                    <input
+                      id="admin-otp"
+                      name="admin-otp"
+                      className="adm-auth-field__input"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={6}
+                      placeholder="000000"
+                      value={otpCode}
+                      onChange={(e) => { setOtpCode(e.target.value.replace(/\D/g, '')); if (otpError) setOtpError('') }}
+                      style={{ letterSpacing: '0.4em', fontSize: '1.25rem', textAlign: 'center' }}
+                      autoFocus
+                    />
+                  </div>
+                </div>
+
+                {devCode && (
+                  <div className="adm-auth-error" style={{ marginBottom: '1rem' }}>
+                    <Icon name="info" size={16} />
+                    <p style={{ margin: 0 }}>
+                      SMTP belum dikonfigurasi — kode dev: <b>{devCode}</b>
+                    </p>
+                  </div>
+                )}
+
+                {otpError && (
+                  <div className="adm-auth-error" style={{ marginBottom: '1.25rem' }}>
+                    <Icon name="error_outline" size={16} />
+                    <p style={{ margin: 0 }}>{otpError}</p>
+                  </div>
+                )}
+
+                <button type="submit" className="adm-auth-submit" disabled={submitting}
+                  style={submitting ? { opacity: 0.7, cursor: 'not-allowed' } : {}}>
+                  {submitting ? 'Memverifikasi...' : 'Verifikasi & Masuk'}
+                </button>
+
+                <div className="adm-auth-forgot" style={{ marginTop: '1rem' }}>
+                  <Icon name="info" size={16} />
+                  <span>
+                    Tidak menerima kode?{' '}
+                    <button type="button" onClick={restartLogin}
+                      style={{ background: 'none', border: 0, padding: 0, color: 'inherit', textDecoration: 'underline', cursor: 'pointer' }}>
+                      Login ulang
+                    </button>{' '}untuk mengirim ulang.
+                  </span>
+                </div>
+              </form>
+            ) : (
             <form className="adm-auth-form" onSubmit={handleSubmit}>
               {/* ─ Email ─ */}
               <div className="adm-auth-field">
@@ -196,6 +296,7 @@ export default function AdminAuthPage() {
                 )}
               </button>
             </form>
+            )}
           </div>
         </div>
       </main>

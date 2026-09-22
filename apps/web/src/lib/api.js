@@ -149,6 +149,16 @@ export const authAPI = {
   adminLogin: (email, password) =>
     api.post('/api/auth/admin/login', { email, password }),
 
+  /** Step 2 of admin login when 2FA is on: exchange the emailed code for a session.
+   *  Step 1 returns { otpRequired: true, challengeId } and NO token. */
+  adminVerifyOtp: (challengeId, code) =>
+    api.post('/api/auth/admin/login/verify', { challengeId, code }),
+
+  /** Admin: active sessions + remembered browsers */
+  adminSessions: () => api.get('/api/auth/admin/sessions'),
+  adminRevokeSession: (id) => api.delete(`/api/auth/admin/sessions/${encodeURIComponent(id)}`),
+  adminRevokeAllSessions: () => api.delete("/api/auth/admin/sessions"),
+
   /** Admin: change own password (self-service; verifies current password) */
   changeAdminPassword: (data) =>
     api.patch('/api/auth/admin/me/password', data),
