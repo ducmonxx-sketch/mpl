@@ -142,14 +142,34 @@ export const resetPasswordSchema = z
     path: ["confirmPassword"],
   })
 
-/** Admin creates a client + issues an invite. */
-export const createClientSchema = z.object({
+/**
+ * Admin creates a full client account directly (POST /api/users).
+ *
+ * ⚠️ This is NOT the same shape as the magic-link invite below, and conflating the two broke
+ * the "add company" form: Zod strips unknown keys, so applying the invite schema here
+ * silently dropped fullName / password / phoneNumber / city / address / npwp, and the
+ * handler's own `if (!fullName || !email)` then returned "fullName and email are required"
+ * for a form that had in fact supplied them. Keep these two schemas separate.
+ */
+export const createUserSchema = z.object({
+  fullName:    nameField("Nama lengkap"),
+  email:       emailField,
+  companyName: optionalText(160),
+  // Optional: the route auto-generates a temporary password when none is given. Validated
+  // only if actually supplied.
+  password:    newPasswordField.optional(),
+  phoneNumber: phoneField,
+  city:        optionalText(80),
+  address:     optionalText(300),
+  npwp:        optionalText(40),
+})
+
+/** Admin issues a registration invite (POST /api/users/magic-link) — invite fields only. */
+export const magicLinkSchema = z.object({
   companyName: nameField("Nama perusahaan", 160),
   email:       emailField,
   accountType: z.enum(["MAIN_PIC", "ADDITIONAL_PIC"]).optional(),
 })
-
-export const magicLinkSchema = createClientSchema
 
 /** Client edits their own profile. Every field optional — it's a partial update. */
 export const updateMeSchema = z.object({

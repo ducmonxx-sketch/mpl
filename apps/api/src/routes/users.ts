@@ -19,7 +19,7 @@ import { uploadImageField, saveUpload, deleteUpload, ImageProcessingError } from
 import { getStorage } from "../lib/storage"
 import { requireTurnstile } from "../lib/turnstile"
 import { isRecordNotFound } from "../lib/prismaErrors"
-import { validateBody, createClientSchema, magicLinkSchema, magicLinkRegisterSchema,
+import { validateBody, createUserSchema, magicLinkSchema, magicLinkRegisterSchema,
          resetPasswordSchema, updateMeSchema, updateClientSchema } from "../lib/validate"
 
 const router = Router()
@@ -63,7 +63,7 @@ router.get("/", authenticate, adminOnly, async (req: AuthRequest, res: Response)
 // since an admin vouches for it.
 // TODO (Option B): once email (Resend/Nodemailer) is wired up, email the
 // temporary password to the client instead of returning it in the response.
-router.post("/", authenticate, clientManagerOnly, validateBody(createClientSchema), async (req: AuthRequest, res: Response) => {
+router.post("/", authenticate, clientManagerOnly, validateBody(createUserSchema), async (req: AuthRequest, res: Response) => {
   try {
     const {
       fullName,
