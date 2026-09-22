@@ -137,19 +137,8 @@ model Admin {
   sessions          Session[]
 
   @@map("admins")
-  // ── 2FA / TOTP (Phase 2d) ────────────────────────────────────────────────────────────────
-  // All nullable so the feature is reversible: reverting the code leaves these unused rather
-  // than breaking anything. Enforcement keys off totpEnabledAt, so an admin is unaffected
-  // until they actually enrol.
-  //
-  // ⚠️ totpSecret is plaintext by necessity — verification recomputes the code from it, so it
-  // cannot be hashed like a password. Encryption at rest (§3 Layer 5) is the control. A DB
-  // dump is equivalent to every enrolled admin's second factor.
-  totpSecret       String?
-  totpEnabledAt    DateTime?
-  // Last accepted 30-second step, to stop the same code being replayed inside its window.
-  totpLastUsedStep Int?
 
+  emailOtps     EmailOtp[]
 }
 
 // ============================================================
@@ -622,4 +611,35 @@ model LoginAttempt {
   @@index([email, createdAt])
   @@index([ip, createdAt])
   @@map("login_attempts")
+}
+
+// ── Email OTP (Phase 2d, email variant) ────────────────────────────────────────────────────
+// Replaces the TOTP approach. Chosen for staff usability: nothing to install, no QR to scan,
+// and no lost-phone lockout — every admin already has an email address, so there is no
+// enrolment step at all. 2FA is simply on or off globally (ADMIN_2FA_EMAIL).
+//
+// ⚠️ Two accepted trade-offs vs TOTP (user decision 2026-09-22):
+//   • Mailbox compromise yields both factors, since email is also the password-reset
+//     channel. Accepted because a VPN is planned in front of the admin panel — an attacker
+//     would then need network access as well, which is the real control.
+//   • Availability: if SMTP breaks or hits its daily cap, nobody can log in. TOTP had no
+//     such dependency. Mitigation is the ADMIN_2FA_EMAIL kill switch.
+//
+// codeHash, not the code: a leaked DB or backup must not hand over live codes.
+model EmailOtp {
+  id        String    @id @default(uuid())
+  adminId   String
+  admin     Admin     @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  codeHash  String
+  expiresAt DateTime
+  // Guessing budget for THIS code. Six digits is a million combinations, but a code lives
+  // for minutes, so the per-code cap is what actually closes the window.
+  attempts  Int       @default(0)
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  ip        String?
+
+  @@index([adminId, createdAt])
+  @@index([expiresAt])
+  @@map("email_otps")
 }

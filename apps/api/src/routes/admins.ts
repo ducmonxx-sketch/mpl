@@ -12,7 +12,6 @@ import bcrypt from "bcrypt"
 import crypto from "crypto"
 import prisma from "../lib/prisma"
 import { authenticate, adminOnly, AuthRequest } from "../middleware/auth"
-import { revokeAllSessions } from "../lib/session"
 import { requirePermission } from "../lib/rbac"
 
 const router = Router()
@@ -103,49 +102,5 @@ router.post("/:id/reset-password", authenticate, adminOnly, requirePermission("a
   }
 })
 
-// ── POST /api/admins/:id/2fa/reset ────────────────────────────
-// Lost-phone recovery. A TOTP secret only exists on the admin's device, so a wiped or lost
-// phone otherwise locks that account out permanently — this is the way back in.
-//
-// SUPERADMIN only, and it revokes the target's sessions so a reset cannot be used to
-// quietly keep someone else's session alive.
-//
-// ⚠️ Escape hatch for the worst case — the LAST superadmin losing their phone, with nobody
-// able to call this. Clear it directly in the database:
-//     UPDATE admins SET "totpSecret"=NULL, "totpEnabledAt"=NULL, "totpLastUsedStep"=NULL
-//     WHERE email='<their email>';
-// Or simply set TOTP_ENABLED=false to switch enforcement off for everyone while sorting it out.
-router.post("/:id/2fa/reset", authenticate, adminOnly, requirePermission("admin:manage"), async (req: AuthRequest, res: Response) => {
-  try {
-    const id = req.params.id as string
-    const target = await prisma.admin.findUnique({ where: { id }, select: { email: true, totpEnabledAt: true } })
-    if (!target) return res.status(404).json({ message: "Admin not found." })
-
-    await prisma.admin.update({
-      where: { id },
-      data: { totpSecret: null, totpEnabledAt: null, totpLastUsedStep: null },
-    })
-    const killed = await revokeAllSessions({ id, type: "admin" })
-
-    await prisma.adminAuditLog.create({
-      data: {
-        adminId:        req.user!.id,
-        actionType:     "RESET_PASSWORD",   // nearest existing enum value; no RESET_2FA yet
-        targetTable:    "admins",
-        targetRecordId: id,
-        changesSummary: `Reset 2FA for ${target.email}`,
-      },
-    }).catch(() => {})
-
-    res.json({
-      message: `2FA untuk ${target.email} telah direset. Admin tersebut perlu mendaftar ulang.`,
-      wasEnabled: !!target.totpEnabledAt,
-      sessionsRevoked: killed,
-    })
-  } catch (err) {
-    console.error(err)
-    res.status(500).json({ message: "Gagal mereset 2FA." })
-  }
-})
 
 export default router
