@@ -304,6 +304,9 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   // board, so they share the same UI; `isRegularAdmin` therefore means "scoped role".
   const hasStatusOverride = STATUS_OVERRIDE_ROLES.includes(role)
   const canCreateShipments = SHIPMENT_CREATOR_ROLES.includes(role)
+  // All creator roles share the Armada create form (Tipe Pengiriman + driver picker + plant).
+  // The legacy generic form kept in the modal's else-branch is a FUTURE FEATURE PLAN.
+  const usesArmadaCreateForm = canCreateShipments
   const isRegularAdmin = !hasStatusOverride
   // Field roles that use the compact page layout (status dropdown, no tabs, centered detail modal,
   // Dalam Proses/Selesai views).
@@ -684,7 +687,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
 
   const openCreateModal = (link = false) => {
     fetchClients()
-    if (role === 'KEPALA_ARMADA') {
+    if (usesArmadaCreateForm) {
       fetchFleet()
       fetchPickupPlants()
       // Refresh here rather than on the 8s poll — the trip list only matters while this
@@ -702,7 +705,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
       return
     }
 
-    if (role === 'KEPALA_ARMADA') {
+    if (usesArmadaCreateForm) {
       if (linkMode) {
         if (!linkTargetId) {
           showToast('Pilih trip driver untuk dihubungkan.', 'error')
@@ -726,6 +729,8 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
         if (!formOrigin.trim() || !formDestination.trim()) return showToast('Alamat Penjemputan dan Pengiriman harus diisi.', 'error')
       }
     } else {
+      // FUTURE FEATURE PLAN: generic (client-style) create validation — currently
+      // unreachable, since every creator role uses the Armada form above.
       if (!formPackageType.trim()) {
         showToast('Harap isi Deskripsi Barang.', 'error')
         return
@@ -751,11 +756,11 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     const finalOrigin      = formOriginPoint.trim()      ? `${formOriginPoint.trim()} - ${formOrigin.trim()}`      : formOrigin.trim()
     const finalDestination = formDestinationPoint.trim() ? `${formDestinationPoint.trim()} - ${formDestination.trim()}` : formDestination.trim()
     
-    // Auto map packageType and serviceLevel for KEPALA_ARMADA if empty
-    const pType = role === 'KEPALA_ARMADA' ? (formShippingCategory === 'Unit' ? 'Kendaraan' : (formShippingCategory === 'Cargo' ? 'Kargo' : 'Kontainer')) : formPackageType;
+    // Auto map packageType from the shipping category on the Armada form
+    const pType = usesArmadaCreateForm ? (formShippingCategory === 'Unit' ? 'Kendaraan' : (formShippingCategory === 'Cargo' ? 'Kargo' : 'Kontainer')) : formPackageType;
 
-    // Armada shipments carry the paired driver's vehicle from creation (→ backend starts them at STANDBY).
-    const armadaVehicleId = role === 'KEPALA_ARMADA'
+    // Armada-form shipments carry the paired driver's vehicle from creation (→ backend starts them at STANDBY).
+    const armadaVehicleId = usesArmadaCreateForm
       ? availableDrivers.find(d => d.id === formDriverId)?.primaryVehicle?.id
       : undefined
 
@@ -766,7 +771,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     let containerType       = '-'
     let pickupPlantId        // FK — stays undefined (null) when not a Unit shipment
 
-    if (role === 'KEPALA_ARMADA') {
+    if (usesArmadaCreateForm) {
       if (formShippingCategory === 'Unit') {
         const plant = pickupPlants.find(p => p.id === formPickupPlantId)
         originLocation      = plant ? `${plant.manufacturer} - ${plant.name}${plant.code ? ` (${plant.code})` : ''}` : '-'
@@ -790,14 +795,14 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
         destinationLocation,
         specialNotes:        formNotes || null,
         pickupDate:          formPickupDate ? new Date(formPickupDate).toISOString() : null,
-        shippingCategory:    role === 'KEPALA_ARMADA' ? formShippingCategory : null,
+        shippingCategory:    usesArmadaCreateForm ? formShippingCategory : null,
         // Link mode: driver+armada come from the target trip (backend copies them), so send only linkToShipmentId.
         linkToShipmentId:    linkMode ? linkTargetId : undefined,
-        driverId:            linkMode ? undefined : (role === 'KEPALA_ARMADA' ? formDriverId : undefined),
+        driverId:            linkMode ? undefined : (usesArmadaCreateForm ? formDriverId : undefined),
         vehicleId:           linkMode ? undefined : armadaVehicleId,
         pickupPlantId,
-        dimensions:          role === 'KEPALA_ARMADA' ? dimensions : undefined,
-        containerType:       role === 'KEPALA_ARMADA' ? containerType : undefined,
+        dimensions:          usesArmadaCreateForm ? dimensions : undefined,
+        containerType:       usesArmadaCreateForm ? containerType : undefined,
       })
       showToast('Pengiriman baru berhasil dibuat!', 'success')
       setShowCreateModal(false)
@@ -2719,7 +2724,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
           submitLabel={linkMode ? 'Hubungkan Pengiriman' : 'Simpan Pengiriman'}
         >
           <div className="flex flex-col gap-6">
-            {role === 'KEPALA_ARMADA' ? (
+            {usesArmadaCreateForm ? (
               <div className="flex flex-col gap-4 bg-gray-50/50 p-5 border border-gray-200 rounded-2xl">
                 <h4 className="text-sm font-bold text-gray-900 border-b border-gray-200 pb-2 flex items-center gap-2">
                   <Icon name="info" size={18} className="text-gray-400" /> Form Pengiriman Armada
@@ -2859,6 +2864,9 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
                 )}
               </div>
             ) : (
+              /* FUTURE FEATURE PLAN: generic (client-style) create form — kept for a
+                 planned non-Armada create flow. Currently unreachable: every creator
+                 role (SHIPMENT_CREATOR_ROLES) renders the Armada form above. */
               <>
                 <div className="bg-gray-50/50 p-5 border border-gray-200 rounded-2xl flex flex-col gap-4">
                   <h4 className="text-sm font-bold text-gray-900 border-b border-gray-200 pb-2 flex items-center gap-2">

@@ -675,10 +675,6 @@ router.post("/", authenticate, async (req: AuthRequest, res: Response) => {
     const clientId = isAdmin ? req.body.clientId : req.user!.id
     const id       = await generateShipmentId()
 
-    // Armada creates a shipment already carrying its driver+vehicle → starts at STANDBY
-    // (awaiting driver-availability reconfirm). Everyone else starts at PENDING (Menunggu).
-    const initialStatus = req.user?.role === "KEPALA_ARMADA" ? "STANDBY" : "PENDING"
-
     // Linked create ("Hubungkan Pengiriman"): join an existing pre-departure trip — reuse its
     // driver+vehicle and linkGroupId (mint the group from the target shipment id if it has none).
     let linkGroupId: string | undefined
@@ -697,6 +693,12 @@ router.post("/", authenticate, async (req: AuthRequest, res: Response) => {
       linkGroupId  = target.linkGroupId ?? target.id
       if (!target.linkGroupId) await prisma.shipment.update({ where: { id: target.id }, data: { linkGroupId } })
     }
+
+    // A shipment created already carrying its driver+vehicle (Armada create form — KEPALA_ARMADA
+    // or OPERATIONS — or a linked create) starts at STANDBY, awaiting driver-availability
+    // reconfirm; the fleet mirror below reserves the pairing. Everything else (client requests,
+    // the generic form) starts at PENDING (Menunggu).
+    const initialStatus = useDriverId && useVehicleId ? "STANDBY" : "PENDING"
 
     const shipment = await prisma.shipment.create({
       data: {
