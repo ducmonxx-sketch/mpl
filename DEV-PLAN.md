@@ -457,6 +457,25 @@ so it can never be cosmetic for a caller that sends one.
    is deliberate (failing closed today would break client registration and password reset) but means
    the protection is optional and therefore not yet real.
 
+## 🚧 Module split backlog (from the modular-monolith decision, 2026-09-22)
+> Architecture decided in DEPLOYMENT-NAS.md §2.5: **modular monolith**. The work that implies is
+> splitting the oversized files by domain concern — not reshuffling folders, and nothing
+> operational changes. These four files exceed this repo's own 800-line ceiling **and** are the
+> ones the two agents keep colliding on, so the split is a merge-conflict defence as much as a
+> readability one.
+
+| File | Lines | Suggested split | Scope |
+|---|---|---|---|
+| `AdminComponents/ShipmentsSection.jsx` | 3,036 | table+filters · detail panel · create/link modal · plant-check form | admin |
+| `AdminComponents/ArmadaSection.jsx` | 1,409 | list · detail · create/edit · pair-driver modal | admin |
+| `AdminComponents/ClientsSection.jsx` | 1,310 | list · detail · onboarding/invite | admin |
+| `routes/shipments.ts` | 1,219 | list/read · assignment · pipeline transitions (plant-check/handover/status) · analytics | admin |
+
+⚠️ **Do these one file at a time, each as its own branch, and coordinate first** — they are the
+highest-collision files in the repo, so a big-bang refactor is the one change most likely to
+produce an ugly merge with the friend's agent. Pure moves with no behaviour change; the smoke
+test plus `vite build` are the safety net.
+
 ## Performance & scale checklist — internet-facing, 130k shipments/yr
 > Added 2026-09-17. Each item was checked against the real stack, not assumed. Sizing basis:
 > [DEPLOYMENT-NAS.md](DEPLOYMENT-NAS.md) §2.2.

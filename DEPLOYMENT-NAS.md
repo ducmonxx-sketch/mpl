@@ -289,6 +289,57 @@ than a full disk.
   notifications; we already hit ordering pain during smoke-test cleanup.
 - Prefer **archive-then-delete** (compressed export to cold storage) over hard deletion.
 
+### 2.5 Application architecture — **DECIDED 2026-09-22: modular monolith**
+
+One Express app, one container, one Postgres, one deploy. Not microservices, and not an
+unstructured monolith either. Recorded because it was never written down, and because both
+alternatives look tempting on paper.
+
+**Why not microservices** — these are specific to this project, not general scepticism:
+1. **There is one machine.** Microservices exist to scale and deploy services *independently*.
+   On a single mini PC you get neither benefit, and you pay network hops plus N processes
+   competing for 16 GB.
+2. 🔴 **The domain is transactional.** `lib/shipmentStatus.ts` updates shipment + driver +
+   vehicle together, and link-groups cascade across rows. Today that is one Postgres
+   transaction. Split across services and it needs sagas and eventual consistency — **worse
+   correctness for no gain.** This is the strongest reason on the list.
+3. **Two-person team.** The real payoff of microservices is organisational: teams shipping
+   independently. With two people (and two agents already colliding on shared files) more
+   services multiplies coordination cost rather than reducing it.
+4. **It would require the infrastructure we deliberately avoided** — Redis, a broker, service
+   discovery, N pipelines — on the box that also runs Postgres.
+
+**Why not a plain (unstructured) monolith:** the cost is already visible, measured against
+this repo's own standard in `.claude/rules/common/coding-style.md` ("200–400 lines typical,
+800 max"):
+
+| File | Lines | vs the repo's own limit |
+|---|---|---|
+| `AdminComponents/ShipmentsSection.jsx` | 3,036 | 3.8× |
+| `AdminComponents/ArmadaSection.jsx` | 1,409 | 1.8× |
+| `AdminComponents/ClientsSection.jsx` | 1,310 | 1.6× |
+| `routes/shipments.ts` | 1,219 | 1.5× |
+
+Those are also precisely the files the two agents collide on. **Module boundaries here are a
+merge-conflict defence, not an aesthetic preference.**
+
+**What is already right** (so this is a tidy-up, not a rewrite): npm-workspaces monorepo ·
+`lib/storage` swappable local→S3 behind an interface · `lib/rbac`, `lib/statusFlow`,
+`lib/upload`, `lib/fileUrls` all behind seams · Docker Compose = one API container.
+
+**The work this implies** is splitting the fat files by domain concern — *not* reshuffling
+folders. Backlog in DEV-PLAN.md. Operationally nothing changes: same container, same Compose
+file, same single deploy.
+
+**One deliberate exception: OpenWA runs as its own container.** This is not a microservice —
+it is a third-party Node process that needs QR re-authentication and can crash, and that
+failure mode must not live inside the API process. *(Answers the §7 open question "OpenWA host
+— same box, or its own?": **same box, separate container**.)*
+
+**Revisit trigger:** only if a single box stops coping. At ~356 shipments/day that is years
+away, and the first step would be a second API instance behind the proxy (which is when
+`rate-limit-redis` becomes mandatory — see §3 Layer 4), not a service split.
+
 ---
 
 ## 3. Security plan — layered
