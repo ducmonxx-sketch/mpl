@@ -164,11 +164,22 @@ export const createUserSchema = z.object({
   npwp:        optionalText(40),
 })
 
-/** Admin issues a registration invite (POST /api/users/magic-link) — invite fields only. */
+/**
+ * Admin issues a registration invite (POST /api/users/magic-link) — invite fields only.
+ *
+ * ⚠️ Both constraints here were wrong on the first pass and broke the invite button:
+ *   • email is OPTIONAL. The route stores `email || null` precisely so an admin can either
+ *     pre-bind the invitee's address or leave the registrant to enter it.
+ *   • accountType values are 'client' | 'operations' | 'support' — see
+ *     MagicLink.accountType in schema.prisma, a plain String defaulting to "client". The
+ *     first version invented MAIN_PIC / ADDITIONAL_PIC, borrowed from User.isMainPic, which
+ *     is an unrelated concept. The UI sends 'client', so every invite was rejected.
+ * Check schema.prisma before changing either.
+ */
 export const magicLinkSchema = z.object({
   companyName: nameField("Nama perusahaan", 160),
-  email:       emailField,
-  accountType: z.enum(["MAIN_PIC", "ADDITIONAL_PIC"]).optional(),
+  email:       emailField.optional(),
+  accountType: z.enum(["client", "operations", "support"]).optional(),
 })
 
 /** Client edits their own profile. Every field optional — it's a partial update. */
