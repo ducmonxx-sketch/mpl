@@ -14,6 +14,7 @@ import { authenticate, adminOnly, AuthRequest } from "../middleware/auth"
 import { requireTurnstile } from "../lib/turnstile"
 import { startSession, endSession } from "../lib/session"
 import { checkLockout, recordAttempt } from "../lib/loginGuard"
+import { issueCsrfToken, issueCsrfTokenFromRequest } from "../lib/csrf"
 import { validateBody, registerSchema, loginSchema, emailOnlySchema, changePasswordSchema } from "../lib/validate"
 import { uploadImageField, saveUpload, deleteUpload, ImageProcessingError } from "../lib/upload"
 import { getStorage } from "../lib/storage"
@@ -110,8 +111,9 @@ router.post("/login", requireTurnstile, validateBody(loginSchema), async (req: R
     const token = generateToken(user.id, "user", "user")
     // Phase 2a: also open a server-side session. The body token stays for now so the
     // existing localStorage frontend keeps working until the 2f cutover.
-    await startSession(res, { id: user.id, role: "user", type: "user" }, req)
+    const sessionToken = await startSession(res, { id: user.id, role: "user", type: "user" }, req)
     await recordAttempt(email, req.ip, true, "client")
+    issueCsrfToken(res, sessionToken)
 
     res.json({
       token,
@@ -178,8 +180,9 @@ router.post("/admin/login", requireTurnstile, validateBody(loginSchema), async (
     const token = generateToken(admin.id, admin.role, "admin")
     // Phase 2a: also open a server-side session. The body token stays for now so the
     // existing localStorage frontend keeps working until the 2f cutover.
-    await startSession(res, { id: admin.id, role: admin.role, type: "admin" }, req)
+    const sessionToken = await startSession(res, { id: admin.id, role: admin.role, type: "admin" }, req)
     await recordAttempt(email, req.ip, true, "admin")
+    issueCsrfToken(res, sessionToken)
 
     res.json({
       token,
@@ -299,6 +302,14 @@ router.patch("/admin/me/password", authenticate, adminOnly, validateBody(changeP
 router.post("/logout", async (req: AuthRequest, res: Response) => {
   await endSession(req, res)
   res.json({ message: "Logged out." })
+})
+
+// GET /api/auth/csrf - mint a CSRF token for the current session. Needed because a page
+// reload loses any in-memory copy. 401 without a session, since there is nothing to bind to.
+router.get("/csrf", async (req: AuthRequest, res: Response) => {
+  const token = issueCsrfTokenFromRequest(req, res)
+  if (!token) return res.status(401).json({ message: "No session." })
+  res.json({ csrfToken: token })
 })
 
 export default router

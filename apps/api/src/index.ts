@@ -8,6 +8,7 @@ import express    from "express"
 import cors       from "cors"
 import helmet     from "helmet"
 import rateLimit  from "express-rate-limit"
+import { csrfProtection } from "./lib/csrf"
 
 import authRouter          from "./routes/auth"
 import shipmentsRouter     from "./routes/shipments"
@@ -105,6 +106,10 @@ app.use(cors({
 }))
 
 app.use(express.json())
+
+// CSRF — enforced only for requests authenticating via the session cookie. The Bearer path
+// is immune and skipped, which is what keeps this non-breaking before the 2f cutover.
+app.use(csrfProtection)
 
 // ── Rate limiting ────────────────────────────────────────────
 const RATE_WINDOW_MS = 15 * 60 * 1000 // 15 minutes
