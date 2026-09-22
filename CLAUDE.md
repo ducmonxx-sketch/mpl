@@ -16,6 +16,11 @@ before editing** → append a dated **Session Log** entry (§5) before finishing
 implications for follow-up instead. Don't break shared contracts (schema, shared
 routes, `api.js`, `AuthContext`, `TrackingSection`). Never force-push `main`.
 
+> **Exception (2026-09-22, user-approved):** the Phase-2f auth cutover may touch the
+> client-facing side — `api.js`, `AuthContext`, and the client login/registration forms.
+> Cookie auth cannot be finished without them. ⚠️ These are the highest-collision files in
+> the repo, so coordinate with the friend's agent before further edits there.
+>
 > **Temporary exception (2026-09-15, user-approved):** landing-page SEO work
 > (robots.txt, sitemap.xml, meta tags) in `apps/web` is in scope until this
 > exception is removed. All other client-facing-side restrictions still apply.

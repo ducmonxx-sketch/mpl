@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import {
   authAPI,
   usersAPI,
-  getToken,
   setToken,
   clearToken,
   getStoredUser,
@@ -22,16 +21,21 @@ export function AuthProvider({ children }) {
   const [userType, setUserType] = useState(getStoredUserType) // 'user' | 'admin'
   const [loading, setLoading] = useState(true)           // initial token check
 
-  // Derived
-  const isAuthenticated = !!user && !!getToken()
+  // Derived.
+  // Deliberately NOT `&& !!getToken()` any more: with cookie auth the token is httpOnly and
+  // unreadable by design, so that check would make isAuthenticated permanently false. The
+  // server is the authority — if /me returned a profile, we are logged in.
+  const isAuthenticated = !!user
   const isAdmin = userType === 'admin'
 
   // ── On mount: validate existing token ──────────────────────
   useEffect(() => {
     async function validateToken() {
-      const token = getToken()
+      // `mpl_user_type` is only a hint about WHICH /me to call — it is not a credential, so
+      // it stays in localStorage even after the token goes away. Without a hint we do not
+      // probe: a /me call while logged out would 401, and the api.js 401 handler redirects.
       const storedType = getStoredUserType()
-      if (!token) {
+      if (!storedType) {
         setLoading(false)
         return
       }
@@ -43,9 +47,13 @@ export function AuthProvider({ children }) {
           setUserType('user')
           setStoredUser(profile, 'user')
         } else if (storedType === 'admin') {
-          // Admin doesn't have a /me endpoint — keep stored data
-          setUser(getStoredUser())
+          // /api/auth/admin/me exists now, so ask the server rather than trusting whatever
+          // was cached locally. That is the whole point of cookie auth: the session, not
+          // localStorage, decides whether you are logged in.
+          const { admin } = await authAPI.getAdminMe()
+          setUser(admin)
           setUserType('admin')
+          setStoredUser(admin, 'admin')
         }
       } catch {
         // Token invalid — clear everything
@@ -104,7 +112,10 @@ export function AuthProvider({ children }) {
   }, [])
 
   // ── Logout ────────────────────────────────────────────────
-  const logout = useCallback((redirectTo = '/') => {
+  const logout = useCallback(async (redirectTo = '/') => {
+    // Tell the server to revoke the session. Previously logout only wiped localStorage,
+    // which left the credential valid server-side for its full lifetime.
+    await authAPI.logout().catch(() => {})
     clearToken()
     setUser(null)
     setUserType(null)

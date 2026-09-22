@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
 import { authAPI, BASE_URL } from '../../lib/api'
 import AdminModal from './components/AdminModal'
+import AdminSessionsPanel from './components/AdminSessionsPanel'
 
 export default function AdminProfileSection() {
   const { user } = useAuth()
@@ -192,6 +193,8 @@ export default function AdminProfileSection() {
         <div className="lg:col-span-2 space-y-6">
           
           {/* Personal Info Form */}
+          <AdminSessionsPanel />
+
           <div className="bg-white rounded-2xl shadow-[0_4px_30px_rgba(0,0,0,0.03)] border border-gray-100 overflow-hidden">
             <div className="p-6 border-b border-gray-100 flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-[#002442]/5 flex items-center justify-center text-[#002442]">

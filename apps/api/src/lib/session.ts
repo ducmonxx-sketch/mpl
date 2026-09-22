@@ -26,8 +26,20 @@ import prisma from "./prisma"
 
 export const SESSION_COOKIE = process.env.SESSION_COOKIE_NAME || "mpl_session"
 
+// Admin sessions are deliberately short: the admin panel is the high-value,
+// internet-facing target. Client sessions keep the long life they already had — clients are
+// far lower risk, and shortening theirs as a side effect of the admin hardening would just
+// log them out mid-errand. Sending cookies from the shared api.js would otherwise have done
+// exactly that, since client logins create sessions too.
 const ABSOLUTE_HOURS = Number.parseInt(process.env.SESSION_ABSOLUTE_HOURS ?? "8", 10) || 8
 const IDLE_MINUTES = Number.parseInt(process.env.SESSION_IDLE_MINUTES ?? "120", 10) || 120
+const CLIENT_ABSOLUTE_HOURS = Number.parseInt(process.env.CLIENT_SESSION_ABSOLUTE_HOURS ?? "168", 10) || 168
+const CLIENT_IDLE_MINUTES = Number.parseInt(process.env.CLIENT_SESSION_IDLE_MINUTES ?? "10080", 10) || 10080
+
+const absoluteHoursFor = (type: "user" | "admin") =>
+  type === "admin" ? ABSOLUTE_HOURS : CLIENT_ABSOLUTE_HOURS
+const idleMinutesFor = (type: "user" | "admin") =>
+  type === "admin" ? IDLE_MINUTES : CLIENT_IDLE_MINUTES
 
 // lastSeenAt drives the idle timeout, but writing it on every request would mean ~450 writes
 // an hour per admin from the dashboard poll alone. Only persist it once it's this stale.
@@ -79,7 +91,8 @@ export async function startSession(
   req?: Request,
 ): Promise<string> {
   const token = crypto.randomBytes(32).toString("base64url")
-  const expiresAt = new Date(Date.now() + ABSOLUTE_HOURS * 60 * 60 * 1000)
+  const hours = absoluteHoursFor(principal.type)
+  const expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000)
 
   await prisma.session.create({
     data: {
@@ -94,7 +107,7 @@ export async function startSession(
 
   res.cookie(SESSION_COOKIE, token, {
     ...cookieOptions(),
-    maxAge: ABSOLUTE_HOURS * 60 * 60 * 1000,
+    maxAge: hours * 60 * 60 * 1000,
   })
   return token
 }
@@ -116,7 +129,8 @@ export async function resolveSession(token: string): Promise<Principal | null> {
   const now = Date.now()
   if (session.revokedAt) return null
   if (session.expiresAt.getTime() <= now) return null
-  if (now - session.lastSeenAt.getTime() > IDLE_MINUTES * 60 * 1000) {
+  const idleLimit = idleMinutesFor(session.adminId ? "admin" : "user") * 60 * 1000
+  if (now - session.lastSeenAt.getTime() > idleLimit) {
     // Idle too long. Revoke rather than just refusing, so the row can't be revived by a
     // later request that happens to arrive inside a fresh idle window.
     await prisma.session.update({ where: { id: session.id }, data: { revokedAt: new Date() } })

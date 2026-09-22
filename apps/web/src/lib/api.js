@@ -48,6 +48,24 @@ export function getStoredUserType() {
   return localStorage.getItem('mpl_user_type') // 'user' | 'admin'
 }
 
+// ─── Cookie helpers (CSRF) ──────────────────────────────────
+// The session cookie is httpOnly and intentionally unreadable here. The CSRF cookie is NOT
+// httpOnly precisely so this can read it and echo it back in a header — which is what proves
+// the request came from our own page rather than a third-party site. The value is useless
+// without the session cookie, which scripts cannot touch.
+function readCookie(name) {
+  if (typeof document === 'undefined') return undefined
+  for (const part of document.cookie.split(';')) {
+    const eq = part.indexOf('=')
+    if (eq > 0 && part.slice(0, eq).trim() === name) {
+      return decodeURIComponent(part.slice(eq + 1).trim())
+    }
+  }
+  return undefined
+}
+
+const UNSAFE_METHODS = new Set(['POST', 'PATCH', 'PUT', 'DELETE'])
+
 // ─── Core fetch wrapper ─────────────────────────────────────
 async function request(endpoint, options = {}) {
   const { method = 'GET', body, params, headers: customHeaders } = options
@@ -71,15 +89,28 @@ async function request(endpoint, options = {}) {
   const headers = { ...customHeaders }
   if (!isForm) headers['Content-Type'] = 'application/json'
 
+  // Legacy Bearer token. Kept alongside the cookie during the cutover as a safety belt —
+  // the API dual-reads, preferring the cookie. Removed once cookie login is confirmed in a
+  // real browser; leaving it is what still allows an XSS to steal a credential.
   const token = getToken()
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
+  }
+
+  // CSRF: required by the API for state-changing requests that authenticate by cookie.
+  // Harmless when absent — the server only enforces it when a session cookie is present.
+  if (UNSAFE_METHODS.has(method)) {
+    const csrf = readCookie('mpl_csrf')
+    if (csrf) headers['x-csrf-token'] = csrf
   }
 
   // Make request
   const res = await fetch(url, {
     method,
     headers,
+    // Without this the browser never attaches the session cookie, and every bit of the
+    // server-side session work stays invisible to the app.
+    credentials: 'include',
     body: body ? (isForm ? body : JSON.stringify(body)) : undefined,
   })
 
@@ -158,6 +189,9 @@ export const authAPI = {
   adminSessions: () => api.get('/api/auth/admin/sessions'),
   adminRevokeSession: (id) => api.delete(`/api/auth/admin/sessions/${encodeURIComponent(id)}`),
   adminRevokeAllSessions: () => api.delete("/api/auth/admin/sessions"),
+
+  /** Revoke the server-side session and clear the cookie. */
+  logout: () => api.post('/api/auth/logout', {}),
 
   /** Admin: change own password (self-service; verifies current password) */
   changeAdminPassword: (data) =>
