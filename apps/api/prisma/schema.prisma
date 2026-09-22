@@ -590,3 +590,23 @@ model Session {
   @@index([expiresAt])
   @@map("sessions")
 }
+
+// ── Login attempts (Phase 2c) ──────────────────────────────────────────────────────────────
+// Feeds the failed-login lockout. Tracked on TWO axes because either alone is bypassable:
+// per-email (so one account can't be ground down from many IPs) and per-IP (so one host
+// can't spray many accounts). Rate limiting alone was per-IP only.
+//
+// `email` is stored as submitted, whether or not the account exists — otherwise the lockout
+// response would differ for real vs fake addresses and become an account-enumeration oracle.
+model LoginAttempt {
+  id        String   @id @default(uuid())
+  email     String
+  ip        String?
+  success   Boolean
+  kind      String   // "admin" | "client" — the two login routes
+  createdAt DateTime @default(now())
+
+  @@index([email, createdAt])
+  @@index([ip, createdAt])
+  @@map("login_attempts")
+}

@@ -13,6 +13,7 @@ import prisma from "../lib/prisma"
 import { authenticate, adminOnly, AuthRequest } from "../middleware/auth"
 import { requireTurnstile } from "../lib/turnstile"
 import { startSession, endSession } from "../lib/session"
+import { checkLockout, recordAttempt } from "../lib/loginGuard"
 import { validateBody, registerSchema, loginSchema, emailOnlySchema, changePasswordSchema } from "../lib/validate"
 import { uploadImageField, saveUpload, deleteUpload, ImageProcessingError } from "../lib/upload"
 import { getStorage } from "../lib/storage"
@@ -73,13 +74,24 @@ router.post("/login", requireTurnstile, validateBody(loginSchema), async (req: R
   try {
     const { email, password } = req.body
 
+    // Phase 2c: refuse before touching bcrypt, so a locked-out attacker gets no CPU either.
+    const lock = await checkLockout(email, req.ip)
+    if (lock.locked) {
+      res.setHeader("Retry-After", String(lock.retryAfterSeconds))
+      return res.status(429).json({
+        message: `Terlalu banyak percobaan login. Coba lagi dalam ${Math.ceil(lock.retryAfterSeconds / 60)} menit.`,
+      })
+    }
+
     const user = await prisma.user.findUnique({ where: { email } })
     if (!user) {
+      await recordAttempt(email, req.ip, false, "client")
       return res.status(401).json({ message: "Invalid email or password." })
     }
 
     const match = await bcrypt.compare(password, user.passwordHash)
     if (!match) {
+      await recordAttempt(email, req.ip, false, "client")
       return res.status(401).json({ message: "Invalid email or password." })
     }
 
@@ -99,6 +111,7 @@ router.post("/login", requireTurnstile, validateBody(loginSchema), async (req: R
     // Phase 2a: also open a server-side session. The body token stays for now so the
     // existing localStorage frontend keeps working until the 2f cutover.
     await startSession(res, { id: user.id, role: "user", type: "user" }, req)
+    await recordAttempt(email, req.ip, true, "client")
 
     res.json({
       token,
@@ -141,13 +154,24 @@ router.post("/admin/login", requireTurnstile, validateBody(loginSchema), async (
   try {
     const { email, password } = req.body
 
+    // Phase 2c: refuse before touching bcrypt, so a locked-out attacker gets no CPU either.
+    const lock = await checkLockout(email, req.ip)
+    if (lock.locked) {
+      res.setHeader("Retry-After", String(lock.retryAfterSeconds))
+      return res.status(429).json({
+        message: `Terlalu banyak percobaan login. Coba lagi dalam ${Math.ceil(lock.retryAfterSeconds / 60)} menit.`,
+      })
+    }
+
     const admin = await prisma.admin.findUnique({ where: { email } })
     if (!admin) {
+      await recordAttempt(email, req.ip, false, "admin")
       return res.status(401).json({ message: "Invalid email or password." })
     }
 
     const match = await bcrypt.compare(password, admin.passwordHash)
     if (!match) {
+      await recordAttempt(email, req.ip, false, "admin")
       return res.status(401).json({ message: "Invalid email or password." })
     }
 
@@ -155,6 +179,7 @@ router.post("/admin/login", requireTurnstile, validateBody(loginSchema), async (
     // Phase 2a: also open a server-side session. The body token stays for now so the
     // existing localStorage frontend keeps working until the 2f cutover.
     await startSession(res, { id: admin.id, role: admin.role, type: "admin" }, req)
+    await recordAttempt(email, req.ip, true, "admin")
 
     res.json({
       token,
