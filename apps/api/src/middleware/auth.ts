@@ -2,6 +2,7 @@
 
 import { Request, Response, NextFunction } from "express"
 import jwt from "jsonwebtoken"
+import { readSessionCookie, resolveSession } from "../lib/session"
 
 export interface AuthRequest extends Request {
   user?: {
@@ -11,12 +12,40 @@ export interface AuthRequest extends Request {
   }
 }
 
-// Any logged-in user (client or admin)
-export const authenticate = (
+// Any logged-in user (client or admin).
+//
+// Phase 2a dual-read: the httpOnly session cookie is preferred, with the legacy
+// `Authorization: Bearer` JWT as a fallback. Both produce the same `req.user` shape, so no
+// route needed changing. This is what makes the cookie migration non-breaking — the existing
+// frontend keeps working over Bearer until the 2f cutover removes it.
+//
+// ⚠️ Once 2f lands and the frontend sends cookies, DELETE the Bearer branch. Leaving it in
+// place would keep a 7-day, non-revocable, XSS-exfiltratable credential valid alongside the
+// sessions that were introduced specifically to eliminate it.
+export const authenticate = async (
   req: AuthRequest,
   res: Response,
   next: NextFunction
 ) => {
+  const cookieToken = readSessionCookie(req)
+  if (cookieToken) {
+    try {
+      const principal = await resolveSession(cookieToken)
+      if (principal) {
+        req.user = principal
+        return next()
+      }
+      // A present-but-invalid cookie (revoked, expired, idled out) is an explicit 401 rather
+      // than a silent fall-through to Bearer: the caller has a session that is genuinely
+      // over, and should be told to log in again.
+      return res.status(401).json({ message: "Session expired. Please log in again." })
+    } catch (err) {
+      console.error("[auth] session lookup failed:", err)
+      return res.status(500).json({ message: "Authentication error." })
+    }
+  }
+
+  // ── Legacy path (removed at 2f) ──
   const token = req.headers.authorization?.split(" ")[1]
 
   if (!token) {

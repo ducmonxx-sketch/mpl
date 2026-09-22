@@ -14,7 +14,7 @@
 
 generator client {
   provider = "prisma-client"
-  output   = "../src/generated/prisma/"  // generated types go here, not node_modules
+  output   = "../src/generated/prisma/" // generated types go here, not node_modules
 }
 
 // In Prisma 7, the datasource block only declares the provider.
@@ -50,35 +50,35 @@ enum VerificationStatus {
 
 enum DriverStatus {
   ACTIVE
-  STANDBY      // reserved for a Standby shipment (pre-assigned, not yet on duty)
+  STANDBY // reserved for a Standby shipment (pre-assigned, not yet on duty)
   ON_DUTY
   UNAVAILABLE
 }
 
 enum VehicleStatus {
   AVAILABLE
-  STANDBY      // reserved for a Standby shipment (pre-assigned, not yet in use)
+  STANDBY // reserved for a Standby shipment (pre-assigned, not yet in use)
   IN_USE
   MAINTENANCE
 }
 
 enum ShipmentStatus {
-  PENDING      // created by admin, not yet picked up by armada (Menunggu)
-  STANDBY      // created/assigned by armada; awaiting driver-availability reconfirm before Ditugaskan
-  DITUGASKAN   // driver & vehicle assigned + reconfirmed; staging before departure
-  AT_PLANT     // Truck arrives at plant
-  TRANSIT      // currently being delivered
-  DITERIMA     // received at destination/gudang (Gudang leg) ← ADDED 2026-07-15
-  DITURUNKAN   // unloaded at destination/gudang ← ADDED 2026-07-15
-  DELIVERED    // successfully delivered (Selesai)
-  FAILED       // delivery failed (legacy; no longer offered as a forward option)
-  CANCELLED    // delivery cancelled after departure (vehicle returned with payload)
+  PENDING // created by admin, not yet picked up by armada (Menunggu)
+  STANDBY // created/assigned by armada; awaiting driver-availability reconfirm before Ditugaskan
+  DITUGASKAN // driver & vehicle assigned + reconfirmed; staging before departure
+  AT_PLANT // Truck arrives at plant
+  TRANSIT // currently being delivered
+  DITERIMA // received at destination/gudang (Gudang leg) ← ADDED 2026-07-15
+  DITURUNKAN // unloaded at destination/gudang ← ADDED 2026-07-15
+  DELIVERED // successfully delivered (Selesai)
+  FAILED // delivery failed (legacy; no longer offered as a forward option)
+  CANCELLED // delivery cancelled after departure (vehicle returned with payload)
 }
 
 enum EventStatus {
-  UPCOMING     // not yet reached this stop
-  ACTIVE       // currently at this stop
-  DONE         // already passed this stop
+  UPCOMING // not yet reached this stop
+  ACTIVE // currently at this stop
+  DONE // already passed this stop
 }
 
 enum AuditActionType {
@@ -119,7 +119,7 @@ model Admin {
   email        String    @unique
   passwordHash String
   role         AdminRole @default(OPERATIONS)
-  avatarKey    String?   // storage key for profile picture (see lib/storage)
+  avatarKey    String? // storage key for profile picture (see lib/storage)
   createdAt    DateTime  @default(now())
 
   // PIC_PABRIK: the plant this account is bound to (default Lokasi Plant filter). Nullable / other roles.
@@ -134,6 +134,7 @@ model Admin {
   shipmentEvents    ShipmentEvent[] @relation("EventCreatedBy")
   sentNotifications Notification[]  @relation("NotificationSentBy")
   auditLogs         AdminAuditLog[]
+  sessions          Session[]
 
   @@map("admins")
 }
@@ -170,7 +171,7 @@ model User {
   city               String?
   address            String?
   npwp               String?
-  avatarKey          String?            // storage key for profile picture (see lib/storage)
+  avatarKey          String? // storage key for profile picture (see lib/storage)
   verificationStatus VerificationStatus @default(PENDING)
   isMainPic          Boolean            @default(false) // designated main PIC among accounts sharing a companyName
   createdAt          DateTime           @default(now())
@@ -182,6 +183,7 @@ model User {
   settings      UserSettings?
   shipments     Shipment[]
   notifications Notification[]
+  sessions      Session[]
 
   @@map("users")
 }
@@ -212,9 +214,9 @@ model Driver {
   fullName      String
   phoneNumber   String?
   status        DriverStatus @default(ACTIVE)
-  licenseNumber String?      // nomor SIM
-  licenseType   String?      // jenis SIM (A, B1, B2, dll.)
-  licenseExpiry DateTime?    // masa berlaku SIM
+  licenseNumber String? // nomor SIM
+  licenseType   String? // jenis SIM (A, B1, B2, dll.)
+  licenseExpiry DateTime? // masa berlaku SIM
 
   lastUpdatedByAdminId String?
   lastUpdatedByAdmin   Admin?  @relation("DriverManagedBy", fields: [lastUpdatedByAdminId], references: [id])
@@ -230,20 +232,20 @@ model Driver {
 // ============================================================
 
 model Vehicle {
-  id           String        @id @default(uuid())
-  type         String
-  licensePlate String        @unique
-  status       VehicleStatus @default(AVAILABLE)
-  stnkExpiry   DateTime?     // masa berlaku STNK
-  kirExpiry    DateTime?     // masa berlaku KIR
-  serviceDate  DateTime?     // jadwal service berikutnya (di-flag sebagai compliance bila terlewat)
-  chassisNumber String?      // nomor rangka
-  engineNumber  String?      // nomor mesin
-  brand         String?      // merk kendaraan (e.g. Toyota) — free text, picked from the VehicleBrand list
-  modelName     String?      // nama/model kendaraan (e.g. Avanza). NOTE: 'modelName' not 'model' (Prisma keyword risk)
-  color         String?      // warna kendaraan — free text, picked from the VehicleColor list
+  id            String        @id @default(uuid())
+  type          String
+  licensePlate  String        @unique
+  status        VehicleStatus @default(AVAILABLE)
+  stnkExpiry    DateTime? // masa berlaku STNK
+  kirExpiry     DateTime? // masa berlaku KIR
+  serviceDate   DateTime? // jadwal service berikutnya (di-flag sebagai compliance bila terlewat)
+  chassisNumber String? // nomor rangka
+  engineNumber  String? // nomor mesin
+  brand         String? // merk kendaraan (e.g. Toyota) — free text, picked from the VehicleBrand list
+  modelName     String? // nama/model kendaraan (e.g. Avanza). NOTE: 'modelName' not 'model' (Prisma keyword risk)
+  color         String? // warna kendaraan — free text, picked from the VehicleColor list
 
-  primaryDriverId String? @unique  // 1:1 pairing — driver can only be primary on one vehicle
+  primaryDriverId String? @unique // 1:1 pairing — driver can only be primary on one vehicle
   primaryDriver   Driver? @relation("VehiclePrimaryDriver", fields: [primaryDriverId], references: [id])
 
   lastUpdatedByAdminId String?
@@ -288,8 +290,8 @@ model PickupPlant {
   manufacturer Manufacturer
   createdAt    DateTime     @default(now())
 
-  shipments    Shipment[]
-  admins       Admin[]      // PIC_PABRIK accounts bound to this plant
+  shipments Shipment[]
+  admins    Admin[] // PIC_PABRIK accounts bound to this plant
 
   @@map("pickup_plants")
 }
@@ -303,7 +305,7 @@ model Shipment {
   id                     String         @id
   packageType            String
   weightKg               Decimal        @db.Decimal(10, 2)
-  units                  Int?           // jumlah barang (pcs)
+  units                  Int? // jumlah barang (pcs)
   serviceLevel           String
   originLocation         String
   destinationLocation    String
@@ -323,18 +325,18 @@ model Shipment {
   updatedAt              DateTime       @updatedAt
 
   // --- New fields for pipeline roles ---
-  shippingCategory       String?        // 'Unit', 'Cargo', 'Container'
-  dimensions             String?        // for Cargo (PxLxT)
-  containerType          String?        // for Container ('20 Feet', '40 Feet')
-  pickupPlantId          String?
-  pickupPlant            PickupPlant?   @relation(fields: [pickupPlantId], references: [id])
-  vehicleCondition       String?        // by Pengurus Pabrik
-  lkuNumber              String?        // by Pengurus Pabrik
-  pabrikNotes            String?        // by Pengurus Pabrik
-  serahTerimaUrl         String?        // by Kepala Gudang
-  handoverNotes          String?        // by Kepala Gudang
-  catatanPlantPengirim   String?        // Catatan Serah Terima — Plant Pengirim (Kepala Gudang)
-  catatanGudangPenerima  String?        // Catatan Serah Terima — Gudang Penerima (Kepala Gudang)
+  shippingCategory      String? // 'Unit', 'Cargo', 'Container'
+  dimensions            String? // for Cargo (PxLxT)
+  containerType         String? // for Container ('20 Feet', '40 Feet')
+  pickupPlantId         String?
+  pickupPlant           PickupPlant? @relation(fields: [pickupPlantId], references: [id])
+  vehicleCondition      String? // by Pengurus Pabrik
+  lkuNumber             String? // by Pengurus Pabrik
+  pabrikNotes           String? // by Pengurus Pabrik
+  serahTerimaUrl        String? // by Kepala Gudang
+  handoverNotes         String? // by Kepala Gudang
+  catatanPlantPengirim  String? // Catatan Serah Terima — Plant Pengirim (Kepala Gudang)
+  catatanGudangPenerima String? // Catatan Serah Terima — Gudang Penerima (Kepala Gudang)
   // -------------------------------------
 
   clientId String
@@ -366,14 +368,12 @@ model Shipment {
   // that deleting a parent row (driver, vehicle, plant, client) doesn't seq-scan shipments.
   // Each index here is justified by a query that actually runs; none are speculative.
 
-  @@index([linkGroupId])                    // sibling lookup on GET /:id
-  @@index([status, completionDate])          // /stats + /condition-analytics (DELIVERED in a date range)
-  @@index([updatedAt])                       // MAX(updatedAt) on every /version poll
-
+  @@index([linkGroupId]) // sibling lookup on GET /:id
+  @@index([status, completionDate]) // /stats + /condition-analytics (DELIVERED in a date range)
+  @@index([updatedAt]) // MAX(updatedAt) on every /version poll
   // Client dashboard's main list: WHERE clientId = ? ORDER BY createdAt DESC. The leading
   // column also serves the FK and list-meta's "clients that have shipments" EXISTS.
   @@index([clientId, createdAt])
-
   // FK access path: the updateMany({ where: { driverId } }) that runs when a driver or
   // vehicle is removed, plus the constraint check itself. Benchmarked at 200k rows: without
   // these that lookup is 41ms (seq scan); with them 0.08ms.
@@ -384,10 +384,8 @@ model Shipment {
   // identically but cost 7.4 MB each vs 1.5 MB here.
   @@index([driverId])
   @@index([vehicleId])
-
-  @@index([pickupPlantId])                   // FK + PIC Pabrik's Lokasi Plant filter
-  @@index([createdAt])                        // admin list default ORDER BY + ?from/?to ranges
-
+  @@index([pickupPlantId]) // FK + PIC Pabrik's Lokasi Plant filter
+  @@index([createdAt]) // admin list default ORDER BY + ?from/?to ranges
   // ⚠️ TWO PARTIAL INDEXES LIVE ONLY IN THE MIGRATION, not here — Prisma has no syntax for
   // a `WHERE` clause on an index:
   //     shipments_active_driver_idx  (driverId, createdAt)  WHERE status IN (STANDBY, DITUGASKAN, TRANSIT)
@@ -415,8 +413,8 @@ model Shipment {
 // ============================================================
 
 model PlantCheck {
-  id         String @id @default(uuid())
-  shipmentId String @unique
+  id         String   @id @default(uuid())
+  shipmentId String   @unique
   shipment   Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
 
   checkedByAdminId String?
@@ -530,14 +528,15 @@ model Notification {
 model MagicLink {
   id          String   @id @default(uuid())
   token       String   @unique
-  type        String   // 'registration' | 'reset_password'
+  type        String // 'registration' | 'reset_password'
   accountType String   @default("client") // what this link creates: 'client' | 'operations' | 'support'
   companyName String
-  email       String?  // optional: admin can pre-bind the invitee's email; else they enter it
+  email       String? // optional: admin can pre-bind the invitee's email; else they enter it
   userId      String?
   used        Boolean  @default(false)
   expiresAt   DateTime
   createdAt   DateTime @default(now())
+
   @@map("magic_links")
 }
 
@@ -554,5 +553,40 @@ model AdminNotification {
   linkTo    String?
   linkId    String?
   createdAt DateTime @default(now())
+
   @@map("admin_notifications")
+}
+
+// ── Sessions (Phase 2a) ────────────────────────────────────────────────────────────────────
+// Server-side sessions, chosen over JWT-in-cookie because a JWT cannot be un-issued and
+// instant revocation is the point for an internet-facing admin panel (DEPLOYMENT-NAS.md §5.2).
+//
+// ⚠️ `tokenHash` stores a SHA-256 of the cookie value, never the value itself. A session token
+// is long-lived and grants full access, so a leaked DB dump or backup must not yield usable
+// sessions. (Note: MagicLink/reset tokens are still stored raw — lower risk since they're
+// single-use and short-lived, but worth revisiting.)
+model Session {
+  id        String @id @default(uuid())
+  tokenHash String @unique
+
+  // Exactly one of these is set — a session belongs to an admin or a client, never both.
+  adminId String?
+  admin   Admin?  @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  userId  String?
+  user    User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt  DateTime  @default(now())
+  // Drives the idle timeout. Updated lazily (see lib/session.ts) — writing it on every
+  // request would mean ~450 writes/hour per admin from the dashboard poll alone.
+  lastSeenAt DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+
+  userAgent String?
+  ip        String?
+
+  @@index([adminId])
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
 }

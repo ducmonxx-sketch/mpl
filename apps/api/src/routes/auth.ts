@@ -12,6 +12,7 @@ import jwt from "jsonwebtoken"
 import prisma from "../lib/prisma"
 import { authenticate, adminOnly, AuthRequest } from "../middleware/auth"
 import { requireTurnstile } from "../lib/turnstile"
+import { startSession, endSession } from "../lib/session"
 import { validateBody, registerSchema, loginSchema, emailOnlySchema, changePasswordSchema } from "../lib/validate"
 import { uploadImageField, saveUpload, deleteUpload, ImageProcessingError } from "../lib/upload"
 import { getStorage } from "../lib/storage"
@@ -95,6 +96,9 @@ router.post("/login", requireTurnstile, validateBody(loginSchema), async (req: R
     }
 
     const token = generateToken(user.id, "user", "user")
+    // Phase 2a: also open a server-side session. The body token stays for now so the
+    // existing localStorage frontend keeps working until the 2f cutover.
+    await startSession(res, { id: user.id, role: "user", type: "user" }, req)
 
     res.json({
       token,
@@ -148,6 +152,9 @@ router.post("/admin/login", requireTurnstile, validateBody(loginSchema), async (
     }
 
     const token = generateToken(admin.id, admin.role, "admin")
+    // Phase 2a: also open a server-side session. The body token stays for now so the
+    // existing localStorage frontend keeps working until the 2f cutover.
+    await startSession(res, { id: admin.id, role: admin.role, type: "admin" }, req)
 
     res.json({
       token,
@@ -257,6 +264,16 @@ router.patch("/admin/me/password", authenticate, adminOnly, validateBody(changeP
     console.error(err)
     res.status(500).json({ message: "Gagal memperbarui password." })
   }
+})
+
+// ── POST /api/auth/logout ─────────────────────────────────────
+// Did not exist before Phase 2a — with a stateless Bearer JWT there was nothing to revoke,
+// so "logging out" was purely a client-side localStorage wipe and the token stayed valid for
+// its full 7 days. Now it revokes the session server-side and clears the cookie.
+// Unauthenticated on purpose: logging out must work even with an already-dead session.
+router.post("/logout", async (req: AuthRequest, res: Response) => {
+  await endSession(req, res)
+  res.json({ message: "Logged out." })
 })
 
 export default router
