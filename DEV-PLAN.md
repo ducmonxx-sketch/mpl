@@ -3,15 +3,15 @@
 > **Resuming?** Read this first, then [RUNBOOK.md](RUNBOOK.md) (sync + audit) and [CLAUDE.md](CLAUDE.md) (scope).
 > Last updated: **2026-09-22**. Newest work at the top; RUNBOOK §6 has per-session detail.
 
-## 🔜 NEXT SESSION (updated 2026-09-22) — run the audit fix plan
+## 🔜 NEXT SESSION (updated 2026-09-23) — run the audit fix plan
 A whole-project audit (per-page docs in [docs/pages/](docs/pages/)) produced a ranked fix
 plan: **[client-deployment.md](client-deployment.md)** (what/why + client-rehaul handoff)
 and **[docs/plans/admin-backend-fixes.md](docs/plans/admin-backend-fixes.md)** (step-by-step
-execution guide — start THERE; it pre-makes the decisions). **Package 4 (broken admin
-actions) is DONE** (2026-09-22, executed on Sonnet per the plan doc — see RUNBOOK §6).
-**Next: package 6 (KPI correctness) → 5 (fleet + tracking integrity) → 8 (dead-code sweep).**
-9 (dep-vuln upgrade) is its own session, ask first. Smoke suite is at **58/58** (cookie+CSRF,
-self-cleaning) — keep it there.
+execution guide — start THERE; it pre-makes the decisions). **Packages 4 and 6 are DONE**
+(2026-09-22/23, executed on Sonnet per the plan doc — see RUNBOOK §6; user said "stop at
+package 6" for this session). **Next: package 5 (fleet + tracking integrity) → 8 (dead-code
+sweep).** 9 (dep-vuln upgrade) is its own session, ask first. Smoke suite is at **59/59**
+(cookie+CSRF, self-cleaning) — keep it there.
 
 ## 🔜 Queued 2026-08-07 (older queue) — 2 of 3 done, 1 still open
 1. ~~Split activity logs by role~~ — **already done** (predates this note; `auditLogs.ts`

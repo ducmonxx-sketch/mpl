@@ -292,8 +292,18 @@ router.get("/stats", authenticate, async (req: AuthRequest, res: Response) => {
       createdAt: { gte: startDate },
     }
 
+    // Scoped like `where` (client-restricted for non-admins) but deliberately NOT
+    // windowed by createdAt — "active" means every shipment currently in-flight,
+    // regardless of when it was created. Additive field only; every existing field
+    // above stays on its original period window (this route is also read by the
+    // client dashboard, so nothing already returned may change shape).
+    const activeWhere = {
+      ...(!isAdmin && { clientId: req.user!.id }),
+      status: { in: ["STANDBY", "DITUGASKAN", "AT_PLANT", "TRANSIT", "DITERIMA", "DITURUNKAN"] as any },
+    }
+
     // Run all counts in parallel — faster than sequential awaits
-    const [total, delivered, transit, failed, pending, cancelled] =
+    const [total, delivered, transit, failed, pending, cancelled, active] =
       await Promise.all([
         prisma.shipment.count({ where }),
         prisma.shipment.count({ where: { ...where, status: "DELIVERED"  } }),
@@ -301,9 +311,10 @@ router.get("/stats", authenticate, async (req: AuthRequest, res: Response) => {
         prisma.shipment.count({ where: { ...where, status: "FAILED"     } }),
         prisma.shipment.count({ where: { ...where, status: "PENDING"    } }),
         prisma.shipment.count({ where: { ...where, status: "CANCELLED"  } }),
+        prisma.shipment.count({ where: activeWhere }),
       ])
 
-    res.json({ period, total, delivered, transit, failed, pending, cancelled })
+    res.json({ period, total, delivered, transit, failed, pending, cancelled, active })
   } catch (err) {
     console.error(err)
     res.status(500).json({ message: "Failed to fetch stats." })

@@ -202,7 +202,10 @@ export default function OverviewSection({ onChangeNav, onNavigateToShipment, use
         })))
 
         setKpiData({
-          activeShipments: statsData.transit || 0,
+          // statsData.active = every shipment currently in-flight (STANDBY..DITURUNKAN),
+          // unwindowed — fixed 2026-09-22, was statsData.transit (TRANSIT-only, and
+          // /stats itself windows to the last month, so older in-flight shipments vanished).
+          activeShipments: statsData.active || 0,
           totalClients: 0,
           availableDrivers: 0,
           unassignedDrivers: 0,
@@ -217,22 +220,18 @@ export default function OverviewSection({ onChangeNav, onNavigateToShipment, use
             fleetAPI.getDrivers(),
           ])
           const driversList = driversData.drivers || []
-          // Driver is assigned if shipment is pending or transit
-          const assignedDriverIds = new Set(
-            shipments
-              .filter(s => s.status === 'PENDING' || s.status === 'TRANSIT')
-              .map(s => s.driverId)
-              .filter(Boolean)
-          )
-          const unassignedCount = driversList.filter(
-            d => d.status === 'ACTIVE' && !assignedDriverIds.has(d.id)
-          ).length
+          // "Waiting" drivers = fleet-derived (ACTIVE = free, not currently paired to any
+          // shipment) — fixed 2026-09-22. The old version scanned shipments for
+          // PENDING/TRANSIT status to guess which drivers were unassigned, which predated
+          // the STANDBY/DITUGASKAN/AT_PLANT/DITERIMA/DITURUNKAN statuses and missed all of
+          // them; a driver pre-assigned to one of those still counted as "menunggu".
+          const availableCount = driversList.filter(d => d.status === 'ACTIVE').length
 
           setKpiData(prev => ({
             ...prev,
             totalClients: (usersData.users || []).length,
-            availableDrivers: driversList.filter(d => d.status === 'ACTIVE').length,
-            unassignedDrivers: unassignedCount,
+            availableDrivers: availableCount,
+            unassignedDrivers: availableCount,
           }))
         } catch { /* Non-critical */ }
       } catch (err) {

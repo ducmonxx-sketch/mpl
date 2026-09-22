@@ -96,7 +96,13 @@ async function call(name, method, path, { as, body, expect = [200, 201] } = {}) 
   const ship = await call('POST /shipments (client)', 'POST', '/api/shipments', { as: CLIENT, body: { packageType: 'Box', weightKg: 5, serviceLevel: 'Darat', originLocation: 'Jakarta', destinationLocation: 'Bandung' }, expect: [201] })
   const SHIP = ship.json.shipment?.id
   await call('GET /shipments', 'GET', '/api/shipments', { as: CLIENT })
-  await call('GET /shipments/stats', 'GET', '/api/shipments/stats?period=monthly', { as: CLIENT })
+  const stats = await call('GET /shipments/stats', 'GET', '/api/shipments/stats?period=monthly', { as: CLIENT })
+  // `active` (added 2026-09-22): every in-flight status, unwindowed by createdAt — additive
+  // field, so just assert it exists and is numeric rather than an exact count (the exact
+  // count depends on whatever liveish-seeded ongoing shipments are in the DB at run time).
+  const activeIsNumeric = typeof stats.json.active === 'number'
+  activeIsNumeric ? pass++ : fail++
+  results.push({ name: 'GET /shipments/stats returns numeric `active`', code: stats.code, ok: activeIsNumeric, msg: activeIsNumeric ? '' : `active was ${typeof stats.json.active}` })
 
   // fleet
   const driver = await call('POST /fleet/drivers', 'POST', '/api/fleet/drivers', { as: ADMIN, body: { fullName: 'Smoke Driver', phoneNumber: '0812' }, expect: [201] })

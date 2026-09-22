@@ -3,7 +3,7 @@
 
 ## What it does
 - Landing section of the admin dashboard: KPI cards + "Pengiriman Terbaru" table (last 5 shipments) + SUPERADMIN-only audit-log activity feed.
-- KPIs: Pengiriman Aktif (= `stats.transit`), Total Pengiriman, Total Klien, Driver Tersedia — each card navigates to its section on click (L307–314).
+- KPIs: Pengiriman Aktif (= `stats.active` — fixed 2026-09-22, was `stats.transit`), Total Pengiriman, Total Klien, Driver Tersedia — each card navigates to its section on click.
 - Recent-shipments table: 5 newest shipments, clickable ID jumps into the record in Pengiriman (L253–262).
 - Activity feed (SUPERADMIN): reads `AdminAuditLog` via `GET /api/audit-logs`, split into role-group tabs — Operasional (OPERATIONS,SUPPORT), Pipeline (KEPALA_ARMADA,PIC_PABRIK,PIC_GUDANG), Super Admin (L23–27).
 - Localizes English audit summaries to Indonesian via full-line regex rules (`SUMMARY_RULES`, L86–112) + a status-change parser handling `(reversal|override by ROLE)` suffixes (L118–127). Unrecognized summaries fall through raw — nothing is hidden (L114–131).
@@ -13,7 +13,7 @@
 | api.js fn | HTTP route | Purpose |
 |---|---|---|
 | `shipmentsAPI.list()` | `GET /api/shipments` | recent-5 table + unassigned-driver calc (L190, L221–229) |
-| `shipmentsAPI.getStats('monthly')` | `GET /api/shipments/stats?period=monthly` | KPI counts (transit/pending/total) (L191) |
+| `shipmentsAPI.getStats('monthly')` | `GET /api/shipments/stats?period=monthly` | KPI counts (pending/total/**active**) — `active` added 2026-09-22, unwindowed count of every in-flight status |
 | `usersAPI.listAll()` | `GET /api/users` | Total Klien count (L216) |
 | `fleetAPI.getDrivers()` | `GET /api/fleet/drivers` | Driver Tersedia + unassigned count (L217) |
 | `auditLogsAPI.list({ role, limit, offset, adminId? })` | `GET /api/audit-logs` | activity feed (SUPERADMIN, L155–160) |
@@ -25,7 +25,7 @@
 - KPI onClick targets: Pengiriman Aktif → `onChangeNav('shipments')` (L307), Total Pengiriman → `shipments` (L308), Total Klien → `clients` (L310), Driver Tersedia → `drivers` (L313). "Lihat Semua" button → `shipments` (L323).
 - Feed load: `loadActivities({append})` — offset is `activities.length` when appending (L153); reload-from-top effect on `isSuperAdmin | filterAdminId | roleTab` (L172–175, exhaustive-deps disabled). Tab switch resets `filterAdminId` (L358). "Muat Lebih Banyak" shows while `activities.length < activityTotal` (L284, L423–431).
 - Dropdown is populated with ALL admins once, then narrowed client-side to the active tab's roles at render (L376–380).
-- Unassigned drivers = `status === 'ACTIVE'` drivers not on a PENDING/TRANSIT shipment (L221–229); Driver Tersedia = all `ACTIVE` drivers (L234).
+- Unassigned drivers = all `ACTIVE` drivers (fixed 2026-09-22 — was `status === 'ACTIVE'` drivers not on a PENDING/TRANSIT shipment, a stale shipment-scan that predated the 10-status pipeline). Now identical to Driver Tersedia's computation — both are fleet-derived, no shipment scan.
 
 ## Cross-page couplings
 - Props from `AdminDashboardPage.jsx` L240: `onChangeNav` (= `handleNavChange`, L216–221), `onNavigateToShipment` (= `navigateToShipment`, sets `shipmentHighlightId` + nav `shipments`, L228–231), `userRole` (= `user?.role || 'Super Admin'`, L257).
@@ -34,10 +34,9 @@
 - `GET /api/shipments/stats` is shared with the client dashboard (`apps/api/src/routes/shipments.ts` L275–311, `authenticate` only; clients get rows scoped to `clientId`).
 
 ## Gotchas
-- Feed panel is gated by `user?.role === 'SUPERADMIN'` from AuthContext (L135–136), NOT by the `userRole` prop; backend enforces via `requirePermission("admin:manage")` (`auditLogs.ts` L27).
-- "Pengiriman Aktif" = `stats.transit` only, and `/stats` filters `createdAt >= startDate` (last month for `monthly`) — a TRANSIT shipment created >1 month ago is not counted (shipments.ts L290–304). DITUGASKAN/AT_PLANT/STANDBY statuses are not counted anywhere in the KPI.
-- Unassigned-driver calc (L223) checks only PENDING/TRANSIT shipments — misses STANDBY/DITUGASKAN/AT_PLANT, so pre-assigned drivers still count as "menunggu".
-- Dead `useEffect` at L271–273 (empty body on `[loading]`).
+- Feed panel is gated by `user?.role === 'SUPERADMIN'` from AuthContext, NOT by the `userRole` prop; backend enforces via `requirePermission("admin:manage")`.
+- **"Pengiriman Aktif" and "menunggu" KPI drift — FIXED 2026-09-22.** Both used to under-count against the 10-status pipeline (see history above). `stats.active` is an ADDITIVE field on `/stats` — every OTHER field on that route (`total`/`delivered`/`transit`/`failed`/`pending`/`cancelled`) still windows on `createdAt` per `period`, unchanged, because the client dashboard also reads this route and its existing fields must not shift shape.
+- Dead `useEffect` (empty body on `[loading]`) — still open, package-8 territory.
 - api.js JSDoc for `auditLogsAPI.list` documents `scope` (L434) but this page sends `role`; backend accepts both, `role` takes precedence (`auditLogs.ts` L31–48).
 - Users/drivers fetch failure is swallowed as "non-critical" (L237): those KPIs silently show 0.
 

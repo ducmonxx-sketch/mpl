@@ -241,6 +241,13 @@ For each: file + line (`path:line`), what's wrong, blast radius (admin-only vs s
 
 ## 6. Session Log
 
+### 2026-09-23 — Package 6 (KPI correctness) executed per docs/plans/admin-backend-fixes.md
+- **Continuation of the (cont. 2) session below** (still on Sonnet, same fix-plan execution). User said "stop at package 6" after this landed — packages 5/8/9 remain for next time.
+- **Backend:** `GET /api/shipments/stats` gains an additive `active` field — count of every in-flight status (`STANDBY,DITUGASKAN,AT_PLANT,TRANSIT,DITERIMA,DITURUNKAN`), scoped by `clientId` for non-admins like the rest of the route, but deliberately NOT windowed by `createdAt` (every other field on this route stays on its original period window — the client dashboard reads the same route, so nothing already returned may change shape).
+- **Frontend (`OverviewSection.jsx`):** "Pengiriman Aktif" now reads `stats.active` (was `stats.transit` — TRANSIT-only, and the route itself windows to the last month, so older in-flight shipments vanished from the KPI). "X menunggu" (the trend text on that same card) now reuses the same fleet-derived `driversList.filter(d => d.status === 'ACTIVE').length` that "Driver Tersedia" already computes — the old version scanned shipments for PENDING/TRANSIT status to guess who was unassigned, predating the 10-status pipeline and missing STANDBY/DITUGASKAN/AT_PLANT/DITERIMA/DITURUNKAN entirely.
+- **Verified:** typecheck 0 · smoke **59/59** (+1 probe: `active` present and numeric — no exact-count assertion, since the exact number depends on whatever liveish-seeded ongoing shipments are in the DB at run time) · `vite build` green · `eslint` clean on the touched file.
+- **Docs updated in the same pass:** `admin-overview.md`, `client-deployment.md` package 6 ticked.
+
 ### 2026-09-22 (cont. 2) — Package 4 (broken admin actions) executed per docs/plans/admin-backend-fixes.md
 - **Model switch:** user moved to Sonnet mid-session (budget) and asked to "run the next package from docs/plans/admin-backend-fixes.md" — the plan file from the (cont.) entry below was written specifically so a cheaper model could execute it unassisted. Followed it top-to-bottom.
 - **4a WhatsApp notify button** — `ShipmentsSection.jsx`: render gate compared display `status` against raw enums (always false); fixed to compare `rawStatus`.
