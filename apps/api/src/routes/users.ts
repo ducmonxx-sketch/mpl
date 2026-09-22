@@ -656,6 +656,33 @@ router.post("/reset-password/:token", requireTurnstile, validateBody(resetPasswo
   }
 })
 
+// ── PATCH /api/users/company-rename ───────────────────────────
+// Renames a company across ALL of its PICs at once (a per-user PATCH would split the
+// renamed PIC out of the group, leaving siblings on the old name).
+// NOTE: registered BEFORE /:id so Express doesn't treat "company-rename" as an :id.
+router.patch("/company-rename", authenticate, clientManagerOnly, async (req: AuthRequest, res: Response) => {
+  try {
+    const { from, to } = req.body
+    if (!from?.trim() || !to?.trim()) {
+      return res.status(400).json({ message: "from/to wajib diisi." })
+    }
+    const result = await prisma.user.updateMany({ where: { companyName: from }, data: { companyName: to.trim() } })
+    await prisma.adminAuditLog.create({
+      data: {
+        adminId:        req.user!.id,
+        actionType:     "UPDATE_USER",
+        targetTable:    "users",
+        targetRecordId: from,
+        changesSummary: `Renamed company "${from}" -> "${to}" (${result.count} accounts)`,
+      },
+    })
+    res.json({ updated: result.count })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to rename company." })
+  }
+})
+
 // ── PATCH /api/users/:id ──────────────────────────────────────
 // Admin updates a client's profile fields.
 // NOTE: registered AFTER /me and /me/settings so those take precedence.

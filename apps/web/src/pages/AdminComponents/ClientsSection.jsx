@@ -56,6 +56,11 @@ export default function ClientsSection({ userRole }) {
   const [formCity, setFormCity] = useState('')
   const [formAddress, setFormAddress] = useState('')
   const [formNpwp, setFormNpwp] = useState('')
+  // Edit-mode only: the PIC's real name (edit was previously hardcoding 'Admin Perusahaan').
+  const [editFullName, setEditFullName] = useState('')
+  // Edit-mode only: the company name as opened, so a rename can be detected and routed
+  // through the bulk company-rename endpoint instead of splitting the company.
+  const [editOriginalCompanyName, setEditOriginalCompanyName] = useState('')
 
   const fetchClients = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true)
@@ -181,6 +186,8 @@ export default function ClientsSection({ userRole }) {
     setFormCity('')
     setFormAddress('')
     setFormNpwp('')
+    setEditFullName('')
+    setEditOriginalCompanyName('')
     setCreateSuccess(false)
     setPicMagicLink('')
     setPicMagicLinkCopied(false)
@@ -195,6 +202,8 @@ export default function ClientsSection({ userRole }) {
     setFormCity(row.city || '')
     setFormAddress(row.address || '')
     setFormNpwp(row.npwp || '')
+    setEditFullName(pic.name || '')
+    setEditOriginalCompanyName(row.companyName || '')
     setShowCreateModal(true)
   }
 
@@ -222,14 +231,20 @@ export default function ClientsSection({ userRole }) {
   }
 
   const handleUpdateClient = async () => {
-    if (!formCompanyName.trim() || !formPhone.trim() || !formEmail.trim() || !formCity.trim() || !formAddress.trim() || !formNpwp.trim()) {
+    if (!formCompanyName.trim() || !formPhone.trim() || !formEmail.trim() || !formCity.trim() || !formAddress.trim() || !formNpwp.trim() || !editFullName.trim()) {
       showToast('Harap isi semua field yang wajib diisi.', 'error')
       return
     }
     try {
+      const companyRenamed = editOriginalCompanyName && formCompanyName.trim() !== editOriginalCompanyName
+      // A rename must apply to every PIC in the company — route it through the bulk
+      // endpoint instead of the per-user PATCH (which would split this PIC out on their own).
+      if (companyRenamed) {
+        await usersAPI.renameCompany(editOriginalCompanyName, formCompanyName.trim())
+      }
       await usersAPI.updateUser(editingClientId, {
-        fullName: 'Admin Perusahaan', // Fallback for backend
-        companyName: formCompanyName,
+        fullName: editFullName.trim(),
+        ...(companyRenamed ? {} : { companyName: formCompanyName }),
         email: formEmail,
         phoneNumber: formPhone,
         city: formCity,
@@ -930,6 +945,18 @@ export default function ClientsSection({ userRole }) {
                   className={INPUT_CLASS}
                 />
               </AdminFormField>
+              {isEditMode && (
+                <AdminFormField label="Nama PIC" required fullWidth>
+                  <input
+                    type="text"
+                    placeholder="Nama penanggung jawab"
+                    value={editFullName}
+                    onChange={(e) => setEditFullName(e.target.value)}
+                    required
+                    className={INPUT_CLASS}
+                  />
+                </AdminFormField>
+              )}
               <AdminFormField label="No. Telepon Perusahaan" required>
                 <input
                   type="text"

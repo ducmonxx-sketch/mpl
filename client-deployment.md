@@ -145,7 +145,7 @@ touches the same files; 9 is its own testing session.
 ## Checklist
 **This agent (admin/backend):**
 - [x] 7 Smoke rewrite (cookie+CSRF) ✅ 2026-09-22 — 50/50, self-cleaning; suite now also asserts no-legacy-token, CSRF enforcement, and bootstraps its own client account (seed has none)
-- [ ] 4 Broken admin actions
+- [x] 4 Broken admin actions ✅ 2026-09-22 — all 5 sub-fixes landed: (a) WhatsApp notify button gate now compares `rawStatus` not `status`; (b) PIC edit sends the real name instead of hardcoded 'Admin Perusahaan', company rename routed through new bulk `PATCH /api/users/company-rename`; (c) SUPPORT is explicitly read-only on shipment status (dead fallback flows deleted, `canUpdateStatus` returns `false`); (d) Admin Profil activity log + profile save are real (`GET/PATCH /api/audit-logs/me`, `PATCH /api/auth/admin/me` — new `UPDATE_ADMIN` audit enum value, migration `add_update_admin_action_type`); (e) `/assign` now mirrors fleet status (was leaving driver/vehicle at ACTIVE/AVAILABLE). Verified: typecheck 0, smoke 58/58 (+8 new probes), build green, lint shows zero NEW issues (one `no-undef` from an incomplete deletion caught + fixed by lint itself).
 - [ ] 6 KPI correctness
 - [ ] 5 Fleet + tracking integrity
 - [ ] 8 Dead-code sweep + pagination

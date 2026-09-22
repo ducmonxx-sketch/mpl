@@ -189,6 +189,11 @@ export const updateMeSchema = z.object({
   phoneNumber: phoneField,
 })
 
+/** Admin edits their own profile (Profil page). Admin has no phoneNumber column. */
+export const updateAdminMeSchema = z.object({
+  fullName: nameField("Nama lengkap").optional(),
+})
+
 /** Admin edits a client record. */
 export const updateClientSchema = z.object({
   fullName:    nameField("Nama lengkap").optional(),

@@ -29,12 +29,13 @@
 | `validateMagicLink` / `registerViaMagicLink` (api.js:249/253) | `GET`/`POST /api/users/magic-link/:token[/register]` | Public; consumed by `MagicLinkPage.jsx`, Turnstile-guarded, registrant lands PENDING |
 | `validateResetLink` / `resetPassword` (api.js:261/265) | `GET`/`POST /api/users/reset-password/:token` | Public; consumed by `ResetPasswordPage.jsx`, Turnstile-guarded, one-time use |
 | `getCompanies` (api.js:241) | `GET /api/users/companies` | Distinct company names — **currently unused**; dropdown is derived client-side (line 386) |
+| `renameCompany(from, to)` | `PATCH /api/users/company-rename` | **New 2026-09-22.** Bulk-renames a company across ALL its PICs in one `updateMany` (avoids splitting the company); `clientManagerOnly`; registered BEFORE `/:id` in `users.ts` so Express doesn't swallow it as an id param |
 
 ## Key state & flows
 
 - `CLIENTS` — company-grouped rows (`{id, companyName, shipmentCount, pics[], address, city, npwp, isActive}`), built in `fetchClients` (lines 60-108). Company `isActive` = every PIC `VERIFIED` (line 99); `shipmentCount` summed across PICs (line 82).
 - `selectedClient` + `selectedPicByRow` — detail panel and its per-row PIC dropdown; `getMainPic` (line 161) falls back to `pics[0]`, `getSelectedPic` (line 165) defaults to main PIC.
-- Create/Edit modal: `showCreateModal`, `isEditMode`, `editingClientId`, `formCompanyName/Phone/Email/City/Address/Npwp`, `createSuccess` (lines 21, 35, 53-58, 172-173).
+- Create/Edit modal: `showCreateModal`, `isEditMode`, `editingClientId`, `formCompanyName/Phone/Email/City/Address/Npwp`, `createSuccess` (lines 21, 35, 53-58, 172-173). Edit mode also carries `editFullName` (the PIC's real name, seeded from `pic.name` on open) and `editOriginalCompanyName` (to detect a rename) — added 2026-09-22, see Gotchas.
 - PIC modal: `showPicModal`, `showPicMagicLinkSection` (manual form vs magic-link view), `picForm*`, `picCreateSuccess`, `picCreatedCredentials`, `picMagicLink` (lines 38-50).
 - Reset modal: `showResetModal`, `resetUser`, `resetLink`, `resetLinkCopied` (lines 29-32).
 - Verification lifecycle: magic-link registration → `PENDING` → admin `verify` → `VERIFIED` (client gets an in-app notification). `REJECTED` exists in the schema/API but this page never sends it and renders it identically to PENDING ("❌ Belum Terverifikasi", line 76).
@@ -45,7 +46,7 @@
 - **Shipments:** shipments carry `clientId`; deleting a client cascades `shipment.deleteMany` (`users.ts:743`) — Pengiriman lists shrink. ShipmentsSection's create-for-client dropdown reads the same user set.
 - **Overview:** "Total Klien" KPI routes here (`OverviewSection.jsx:310`, `onChangeNav('clients')`).
 - **Notifications:** verify creates a client `notification` row (`users.ts:299-305`) shown in the client app.
-- **Audit logs:** create/verify/reject/set-main-pic/update/delete/magic-link/reset-link all write `adminAuditLog` (e.g. `users.ts:149, 289, 345, 428, 574`) — surfaces in Beranda's SUPERADMIN activity feed.
+- **Audit logs:** create/verify/reject/set-main-pic/update/delete/magic-link/reset-link/**company-rename** all write `adminAuditLog` (e.g. `users.ts:149, 289, 345, 428, 574`) — surfaces in Beranda's SUPERADMIN activity feed.
 - **Client-facing shared contracts:** `MagicLinkPage.jsx` (`/auth/register/:token`) and `ResetPasswordPage.jsx` (`/reset-password?token=`) consume the public token endpoints; link URLs are built from `CLIENT_URL` (`users.ts:438, 584`). Don't change token paths or response shapes without updating both apps.
 
 ## Gotchas
@@ -53,7 +54,7 @@
 - **UI vs backend gates:** `canSetMainPic` (line 16) is display-only; the API enforces SUPERADMIN. Conversely the whole page renders for any role that reaches it — RBAC failures surface as 403 toasts.
 - **Main-PIC field:** `isMainPic` added by migration `20260914091951_add_user_main_pic` (2026-09-14) with backfill; delete auto-promotes the next-oldest PIC (`users.ts:732-745`).
 - **Company create makes a real account:** `handleCreateClient` (lines 201-222) creates a user with `fullName: 'Admin Perusahaan'`, auto-VERIFIED — and the returned `temporaryPassword` is discarded (success screen, lines 901-919, tells the admin to add PICs instead). That anchor account exists but nobody holds its password.
-- **Edit clobbers names / can split companies:** `handleUpdateClient` (lines 224-246) always sends `fullName: 'Admin Perusahaan'` and PATCHes **one** user row — editing any PIC overwrites that person's name, and renaming the company moves only that PIC out of the group.
+- **Edit clobbering names / splitting companies — FIXED 2026-09-22.** `handleUpdateClient` used to always send `fullName: 'Admin Perusahaan'` and PATCH **one** user row; a rename would move just that PIC out of the group. Now: the edit modal shows a "Nama PIC" field (`editFullName`, seeded from the real name on open) and sends it verbatim; a company-name change is detected against `editOriginalCompanyName` and routed through `usersAPI.renameCompany` (bulk, all PICs) INSTEAD of the per-user `companyName` field. **The company-create anchor account still hardcodes `'Admin Perusahaan'`** (next bullet) — that's a separate, still-open issue.
 - **Pagination is decorative:** `totalPages={1}` hardcoded and the table receives the full `filtered` array unsliced (lines 633-759).
 - Row-level actions (verify/edit/reset/delete) always target the **main PIC** (lines 410, 471-515); other PICs are only reachable via the expanded card list.
 - New-shipment eligibility etc. treats anything ≠ VERIFIED as inactive; a REJECTED user shows an "Aktifkan" button that re-verifies them.

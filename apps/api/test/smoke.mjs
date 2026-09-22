@@ -108,6 +108,14 @@ async function call(name, method, path, { as, body, expect = [200, 201] } = {}) 
 
   // assign + status + tracking
   if (SHIP && DRIVER && VEHICLE) await call('PATCH /shipments/:id/assign', 'PATCH', `/api/shipments/${encodeURIComponent(SHIP)}/assign`, { as: ADMIN, body: { driverId: DRIVER, vehicleId: VEHICLE } })
+  // /assign must mirror the fleet: SHIP went PENDING -> DITUGASKAN on assign, so the
+  // driver should now be ON_DUTY (previously stayed ACTIVE — the bug this regression-tests).
+  if (DRIVER) {
+    const fd = await call('GET /fleet/drivers (post-assign mirror check)', 'GET', '/api/fleet/drivers', { as: ADMIN })
+    const mirrored = (fd.json.drivers || []).find(d => d.id === DRIVER)?.status === 'ON_DUTY'
+    mirrored ? pass++ : fail++
+    results.push({ name: '/assign mirrors driver to ON_DUTY', code: fd.code, ok: mirrored, msg: mirrored ? '' : 'driver did not engage' })
+  }
   if (SHIP) await call('PATCH /shipments/:id/status', 'PATCH', `/api/shipments/${encodeURIComponent(SHIP)}/status`, { as: ADMIN, body: { status: 'TRANSIT', currentProgressPercent: 30 } })
   if (SHIP) await call('GET /tracking/:id', 'GET', `/api/tracking/${encodeURIComponent(SHIP)}`, { as: CLIENT })
   let EVENT
@@ -165,6 +173,22 @@ async function call(name, method, path, { as, body, expect = [200, 201] } = {}) 
   // notifications
   await call('GET /notifications', 'GET', '/api/notifications', { as: CLIENT })
   await call('GET /admin-notifications', 'GET', '/api/admin-notifications', { as: ADMIN })
+
+  // admin self-service profile (Profil page): self-update + self-scoped activity log
+  {
+    const before = await call('GET /auth/admin/me (before rename)', 'GET', '/api/auth/admin/me', { as: ADMIN })
+    const originalName = before.json.admin?.fullName
+    const renamed = await call('PATCH /auth/admin/me (rename)', 'PATCH', '/api/auth/admin/me', { as: ADMIN, body: { fullName: `Smoke Admin ${rnd}` } })
+    const nameChanged = renamed.json.admin?.fullName === `Smoke Admin ${rnd}`
+    nameChanged ? pass++ : fail++
+    results.push({ name: 'PATCH /auth/admin/me actually changes fullName', code: renamed.code, ok: nameChanged, msg: nameChanged ? '' : 'fullName did not change' })
+    if (originalName) await call('PATCH /auth/admin/me (restore name)', 'PATCH', '/api/auth/admin/me', { as: ADMIN, body: { fullName: originalName } })
+
+    const mine = await call('GET /audit-logs/me', 'GET', '/api/audit-logs/me', { as: ADMIN })
+    const onlyMine = (mine.json.logs || []).every(l => l.admin?.id === before.json.admin?.id)
+    onlyMine ? pass++ : fail++
+    results.push({ name: 'GET /audit-logs/me returns only the caller\'s own rows', code: mine.code, ok: onlyMine, msg: onlyMine ? '' : 'another admin\'s row leaked' })
+  }
 
   // onboarding — magic-link registration lifecycle (generate → validate → register → verify → login)
   const picEmail = `pic${rnd}@t.com`

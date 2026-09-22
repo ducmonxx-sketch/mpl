@@ -222,7 +222,6 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   const [linkedShipmentId, setLinkedShipmentId]     = useState('')
   // DITUGASKAN reconfirm UI
   const [gantiDriverChecked, setGantiDriverChecked] = useState(false)
-  const [newDriverVehicleId, setNewDriverVehicleId] = useState('')
   const [newDriverId, setNewDriverId]               = useState('') // STANDBY reconfirm: substitute driver (keeps vehicle)
   const [tandaiTidakTersedia, setTandaiTidakTersedia] = useState(true)
 
@@ -362,7 +361,10 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     if (role === 'KEPALA_ARMADA') return rs === 'STANDBY';
     if (role === 'PIC_PABRIK') return rs === 'DITUGASKAN' || rs === 'AT_PLANT';
     if (role === 'PIC_GUDANG') return ['TRANSIT', 'DITERIMA', 'DITURUNKAN'].includes(rs);
-    return ['PENDING', 'STANDBY', 'DITUGASKAN', 'AT_PLANT', 'TRANSIT'].includes(rs);
+    // SUPPORT has [] permissions (lib/rbac.ts) and no legal forward move of its own —
+    // read-only on shipment status. (These 4 role checks + hasStatusOverride above
+    // cover all 6 admin roles.)
+    return false;
   })();
 
   // ── Data fetching ─────────────────────────────────────────────
@@ -923,7 +925,6 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     setLinkShipmentChecked(false)
     setLinkedShipmentId('')
     setGantiDriverChecked(false)
-    setNewDriverVehicleId('')
     setNewDriverId('')
     setTandaiTidakTersedia(true)
     setAssignPickupPlantId('')
@@ -1185,34 +1186,9 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
         return
       }
 
-      // ── Fallback for OPERATIONS / SUPPORT role ────────────────
-      if (rawStatus === 'PENDING') {
-        // Old assign logic here...
-        if (!selectedVehicleId) return showToast('Pilih driver & kendaraan.', 'error')
-        const vehicle = fleetVehicles.find(v => v.id === selectedVehicleId)
-        try {
-          await shipmentsAPI.assign(id, { driverId: vehicle.primaryDriver.id, vehicleId: vehicle.id })
-          showToast('Driver ditugaskan.', 'success')
-          setShowStatusModal(false)
-          resetModalState()
-          fetchShipments({ silent: true })
-          setSelectedShipment(prev => prev ? ({ ...prev, rawStatus: 'DITUGASKAN', status: 'assigned' }) : null)
-        } catch(err) {}
-        return
-      }
-
-      if (rawStatus === 'DITUGASKAN') {
-        const ok = await handleStatusUpdate('TRANSIT')
-        if (ok) { setShowStatusModal(false); resetModalState() }
-        return
-      }
-
-      if (rawStatus === 'TRANSIT') {
-        if (!pendingStatus) return showToast('Pilih status baru.', 'error')
-        const ok = await handleStatusUpdate(pendingStatus)
-        if (ok) { setShowStatusModal(false); resetModalState() }
-        return
-      }
+      // SUPPORT has no forward move it may legally make (canUpdateStatus already keeps
+      // the Update Status button hidden for SUPPORT — see below), so there is no
+      // remaining scoped-role fallback here.
     }
 
     // ── Override roles: generic status picker ────────────────
@@ -1706,108 +1682,8 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
         )
       }
 
-      // ── Fallback (OPERATIONS/SUPPORT) DITUGASKAN ──────────────
-      if (rawStatus === 'DITUGASKAN') {
-        const gantiDriverOptions = assignableVehicles.filter(v => v.primaryDriver?.id !== selectedShipment.driverId)
-        return (
-          <div className="flex flex-col gap-5">
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-medium text-gray-500">Status saat ini:</span>
-              <AdminStatusBadge status="assigned" type="shipment" />
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <span className="text-sm font-bold text-gray-900">Driver &amp; Kendaraan Saat Ini</span>
-              {modalLoading ? (
-                <div className="flex items-center gap-2 p-4 text-gray-400">
-                  <Icon name="sync" size={18} className="animate-spin" />
-                  <span className="text-xs">Memuat...</span>
-                </div>
-              ) : currentShipmentVehicle ? (
-                <DriverVehicleCard vehicle={currentShipmentVehicle} selected={false} onClick={undefined} />
-              ) : (
-                <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-600">
-                  {selectedShipment.driverName || 'Driver'} — {selectedShipment.vehicleName || 'Kendaraan'}
-                </div>
-              )}
-            </div>
-
-            <div className="flex flex-col gap-3 pt-3 border-t border-gray-100">
-              <label className="flex items-center gap-2.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={gantiDriverChecked}
-                  onChange={e => { setGantiDriverChecked(e.target.checked); setNewDriverVehicleId('') }}
-                  className="w-4 h-4 rounded accent-[#fec330]"
-                />
-                <span className="text-sm font-bold text-gray-700">Ganti Driver</span>
-              </label>
-
-              {gantiDriverChecked && (
-                <div className="flex flex-col gap-3 ml-2">
-                  {gantiDriverOptions.length === 0 ? (
-                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
-                      Tidak ada driver aktif lain yang tersedia.
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
-                      {gantiDriverOptions.map(v => (
-                        <DriverVehicleCard
-                          key={v.id}
-                          vehicle={v}
-                          selected={newDriverVehicleId === v.id}
-                          onClick={() => setNewDriverVehicleId(v.id)}
-                        />
-                      ))}
-                    </div>
-                  )}
-
-                  <label className="flex items-center gap-2.5 cursor-pointer mt-1">
-                    <input
-                      type="checkbox"
-                      checked={tandaiTidakTersedia}
-                      onChange={e => setTandaiTidakTersedia(e.target.checked)}
-                      className="w-4 h-4 rounded accent-[#fec330]"
-                    />
-                    <span className="text-sm text-gray-700">Tandai driver lama tidak tersedia</span>
-                  </label>
-                </div>
-              )}
-            </div>
-          </div>
-        )
-      }
-
-      // ── TRANSIT: status buttons ─────────────────────────────
-      if (rawStatus === 'TRANSIT') {
-        return (
-          <div className="flex flex-col gap-5">
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-medium text-gray-500">Status saat ini:</span>
-              <AdminStatusBadge status="in_transit" type="shipment" />
-            </div>
-            <div className="flex flex-col gap-2">
-              <span className="text-sm font-bold text-gray-900">Pilih status baru</span>
-              <div className="grid grid-cols-2 gap-3">
-                {[{ value: 'DELIVERED', label: 'Terkirim' }, { value: 'CANCELLED', label: 'Dibatalkan' }].map(opt => (
-                  <button
-                    type="button"
-                    key={opt.value}
-                    onClick={() => setPendingStatus(opt.value)}
-                    className={`px-4 py-3 rounded-xl border text-sm font-bold transition-colors ${
-                      pendingStatus === opt.value
-                        ? 'border-dash-secondary bg-dash-secondary/15 text-dash-primary'
-                        : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )
-      }
+      // SUPPORT is read-only on shipment status (canUpdateStatus keeps the Update
+      // Status button hidden), so there is no remaining render body to fall back to.
     }
 
     // ── Override roles: generic status picker ──────────────────
@@ -2625,7 +2501,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
                   </div>
                 )}
 
-                {(selectedShipment.status === 'PENDING' || selectedShipment.status === 'DITUGASKAN') && (
+                {(selectedShipment.rawStatus === 'PENDING' || selectedShipment.rawStatus === 'DITUGASKAN') && (
                   <div className="mt-2">
                     {selectedShipment.driverName ? (
                       <button

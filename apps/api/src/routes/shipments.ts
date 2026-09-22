@@ -767,7 +767,7 @@ router.patch("/:id/assign", authenticate, adminOnly, async (req: AuthRequest, re
 
     const current = await prisma.shipment.findUnique({
       where:  { id: req.params.id as string },
-      select: { status: true },
+      select: { status: true, driverId: true, vehicleId: true },
     })
 
     const shipment = await prisma.shipment.update({
@@ -792,6 +792,18 @@ router.patch("/:id/assign", authenticate, adminOnly, async (req: AuthRequest, re
         data:  { driverId, vehicleId, lastUpdatedByAdminId: req.user!.id },
       })
     }
+
+    // Fleet mirror: assign previously left the driver/vehicle status untouched (ACTIVE/
+    // AVAILABLE) even though the shipment moved PENDING→DITUGASKAN. Free the outgoing
+    // pair first (group-aware — only if no other occupying shipment still uses it), then
+    // engage the new pair per the shipment's current status (covers STANDBY + DITUGASKAN).
+    if (current?.driverId && current.driverId !== shipment.driverId) {
+      await releaseFleetIfUnused(current.driverId, null)
+    }
+    if (current?.vehicleId && current.vehicleId !== shipment.vehicleId) {
+      await releaseFleetIfUnused(null, current.vehicleId)
+    }
+    await mirrorFleetStatus(shipment.status, shipment.driverId, shipment.vehicleId, shipment.id)
 
     await prisma.adminAuditLog.create({
       data: {

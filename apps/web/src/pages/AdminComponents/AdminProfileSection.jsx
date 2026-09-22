@@ -2,9 +2,28 @@ import { useState, useEffect, useRef } from 'react'
 import Icon from '../../components/Icon'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
-import { authAPI, BASE_URL } from '../../lib/api'
+import { authAPI, auditLogsAPI, BASE_URL } from '../../lib/api'
 import AdminModal from './components/AdminModal'
 import AdminSessionsPanel from './components/AdminSessionsPanel'
+
+// Same shape as the relative-time formatter in OverviewSection's activity feed.
+function relativeTime(iso) {
+  if (!iso) return '-'
+  const diffSec = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+  if (diffSec < 60) return 'Baru saja'
+  const min = Math.floor(diffSec / 60)
+  if (min < 60) return `${min} menit lalu`
+  const hr = Math.floor(min / 60)
+  if (hr < 24) return `${hr} jam lalu`
+  const day = Math.floor(hr / 24)
+  if (day === 1) return 'Kemarin'
+  if (day < 7) return `${day} hari lalu`
+  return new Date(iso).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function humanizeAction(actionType) {
+  return `melakukan ${(actionType || 'aksi').replace(/_/g, ' ').toLowerCase()}`
+}
 
 export default function AdminProfileSection() {
   const { user } = useAuth()
@@ -35,22 +54,32 @@ export default function AdminProfileSection() {
   const [dragOver, setDragOver] = useState(false)
   const fileInputRef = useRef(null)
 
-  // Mock data for activity logs since backend isn't ready
+  // The admin's own activity (GET /api/audit-logs/me — self-scoped, any role).
   useEffect(() => {
-    setTimeout(() => {
-      setActivityLogs([
-        { id: 1, action: 'CREATE_INVOICE', details: 'Membuat faktur INV-2024-001', createdAt: new Date(Date.now() - 3600000).toISOString() },
-        { id: 2, action: 'UPDATE_SHIPMENT', details: 'Memperbarui status pengiriman #MPL-005', createdAt: new Date(Date.now() - 86400000).toISOString() },
-        { id: 3, action: 'ADD_DRIVER', details: 'Menambahkan pengemudi baru: Budi Santoso', createdAt: new Date(Date.now() - 172800000).toISOString() },
-      ])
-      setIsLoading(false)
-    }, 1000)
+    auditLogsAPI.mine({ limit: 10 })
+      .then(({ logs }) => {
+        setActivityLogs((logs || []).map(l => ({
+          id: l.id,
+          details: l.changesSummary || humanizeAction(l.actionType),
+          createdAt: l.timestamp,
+        })))
+      })
+      .catch(() => showToast('Gagal memuat riwayat aktivitas.', 'error'))
+      .finally(() => setIsLoading(false))
   }, [])
 
-  const handleProfileSubmit = (e) => {
+  const handleProfileSubmit = async (e) => {
     e.preventDefault()
-    // TODO: Call API when backend is ready
-    showToast('Profil berhasil diperbarui (Simulasi)', 'success')
+    if (!formData.fullName.trim()) {
+      showToast('Nama lengkap wajib diisi.', 'error')
+      return
+    }
+    try {
+      await authAPI.updateAdminMe({ fullName: formData.fullName.trim() })
+      showToast('Profil berhasil diperbarui.', 'success')
+    } catch (err) {
+      showToast(err.message || 'Gagal memperbarui profil.', 'error')
+    }
   }
 
   const handlePasswordSubmit = async (e) => {
@@ -75,11 +104,16 @@ export default function AdminProfileSection() {
     }
   }
 
-  // Load the saved avatar on mount (backend returns a relative /api/files/... path).
+  // Load the real profile on mount (backend returns a relative /api/files/... path for
+  // the avatar, plus the current fullName/email — more current than the AuthContext
+  // snapshot from login).
   useEffect(() => {
     authAPI.getAdminMe()
-      .then(({ admin }) => setAvatarUrl(admin?.avatarUrl || null))
-      .catch(() => { /* keep the placeholder */ })
+      .then(({ admin }) => {
+        setAvatarUrl(admin?.avatarUrl || null)
+        if (admin) setFormData({ fullName: admin.fullName || '', email: admin.email || '' })
+      })
+      .catch(() => { /* keep the AuthContext defaults */ })
   }, [])
 
   const resolveAvatar = (u) => (u ? (u.startsWith('http') ? u : `${BASE_URL}${u}`) : null)
@@ -217,12 +251,13 @@ export default function AdminProfileSection() {
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700">Alamat Email</label>
-                    <input 
+                    <input
                       type="email"
                       value={formData.email}
-                      onChange={e => setFormData({ ...formData, email: e.target.value })}
-                      className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#fec330]/50 focus:border-[#fec330] outline-none transition-all"
-                      placeholder="admin@example.com"
+                      disabled
+                      readOnly
+                      title="Email tidak dapat diubah dari halaman ini."
+                      className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 text-gray-500 cursor-not-allowed outline-none"
                     />
                   </div>
                 </div>
@@ -327,9 +362,7 @@ export default function AdminProfileSection() {
                       <p className="text-sm font-bold text-[#002442] mb-0.5">{log.details}</p>
                       <div className="flex items-center gap-1.5 text-xs text-gray-500">
                         <Icon name="schedule" size={14} />
-                        <span>{new Date(log.createdAt).toLocaleString('id-ID', {
-                          day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
-                        })}</span>
+                        <span>{relativeTime(log.createdAt)}</span>
                       </div>
                     </div>
                   </div>

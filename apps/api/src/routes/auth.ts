@@ -19,7 +19,7 @@ import { verifiedAccessEmail } from "../lib/cfAccess"
 import { trustDevice, isDeviceTrusted, forgetThisDevice, revokeAllDevices, listDevices } from "../lib/trustedDevice"
 import { listSessions, revokeSessionById, currentSessionId, readSessionCookie } from "../lib/session"
 import { revokeAllSessions } from "../lib/session"
-import { validateBody, registerSchema, loginSchema, emailOnlySchema, changePasswordSchema } from "../lib/validate"
+import { validateBody, registerSchema, loginSchema, emailOnlySchema, changePasswordSchema, updateAdminMeSchema } from "../lib/validate"
 import { uploadImageField, saveUpload, deleteUpload, ImageProcessingError } from "../lib/upload"
 import { getStorage } from "../lib/storage"
 
@@ -243,6 +243,39 @@ router.get("/admin/me", authenticate, adminOnly, async (req: AuthRequest, res: R
   } catch (err) {
     console.error(err)
     res.status(500).json({ message: "Failed to fetch admin profile." })
+  }
+})
+
+// ── PATCH /api/auth/admin/me ──────────────────────────────────
+// Admin self-update (Profil page "Informasi Pribadi"). Any role. Only fullName exists
+// on Admin (no phoneNumber column) — see updateAdminMeSchema.
+router.patch("/admin/me", authenticate, adminOnly, validateBody(updateAdminMeSchema), async (req: AuthRequest, res: Response) => {
+  try {
+    const { fullName } = req.body
+
+    const admin = await prisma.admin.update({
+      where: { id: req.user!.id },
+      data:  { ...(fullName !== undefined && { fullName }) },
+      select: { id: true, fullName: true, email: true, role: true, avatarKey: true, createdAt: true,
+                pickupPlantId: true, pickupPlant: { select: { name: true } } },
+    })
+
+    await prisma.adminAuditLog.create({
+      data: {
+        adminId:        req.user!.id,
+        actionType:     "UPDATE_ADMIN",
+        targetTable:    "admins",
+        targetRecordId: req.user!.id,
+        changesSummary: `Updated own profile`,
+      },
+    })
+
+    const { avatarKey, ...rest } = admin
+    const avatarUrl = avatarKey ? await getStorage().getUrl(avatarKey) : null
+    res.json({ admin: { ...rest, avatarUrl } })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Failed to update admin profile." })
   }
 })
 

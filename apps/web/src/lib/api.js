@@ -188,6 +188,10 @@ export const authAPI = {
   getAdminMe: () =>
     api.get('/api/auth/admin/me'),
 
+  /** Admin: update own profile (Profil page). Only fullName exists on Admin. */
+  updateAdminMe: (data) =>
+    api.patch('/api/auth/admin/me', data),
+
   /** Admin: upload profile picture (multipart, field `file`) → { avatarUrl } */
   uploadAdminAvatar: (file) => {
     const fd = new FormData()
@@ -233,6 +237,10 @@ export const usersAPI = {
   /** Admin: update a user/client account */
   updateUser: (userId, data) =>
     api.patch(`/api/users/${userId}`, data),
+
+  /** Admin: rename a company across ALL of its PICs (bulk, avoids splitting the company) */
+  renameCompany: (from, to) =>
+    api.patch('/api/users/company-rename', { from, to }),
 
   /** Admin: delete a user/client account */
   deleteUser: (userId) =>
@@ -429,11 +437,15 @@ export const notificationsAPI = {
     api.patch('/api/notifications/read-all'),
 }
 
-// ─── Audit Logs API (SUPERADMIN only) ───────────────────────
+// ─── Audit Logs API ──────────────────────────────────────────
 export const auditLogsAPI = {
-  /** Admin activity feed. params: { scope: 'normal'|'all', adminId, limit, offset } */
+  /** SUPERADMIN only: admin activity feed. params: { scope: 'normal'|'all', adminId, limit, offset } */
   list: (params) =>
     api.get('/api/audit-logs', params),
+
+  /** Any admin: their OWN activity (Profil page). params: { limit, offset } */
+  mine: (params) =>
+    api.get('/api/audit-logs/me', params),
 }
 
 // ─── Admins API (SUPERADMIN only) ───────────────────────────

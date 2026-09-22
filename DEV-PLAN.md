@@ -7,17 +7,24 @@
 A whole-project audit (per-page docs in [docs/pages/](docs/pages/)) produced a ranked fix
 plan: **[client-deployment.md](client-deployment.md)** (what/why + client-rehaul handoff)
 and **[docs/plans/admin-backend-fixes.md](docs/plans/admin-backend-fixes.md)** (step-by-step
-execution guide — start THERE; it pre-makes the decisions). Order: package 4 → 6 → 5 → 8
-(9 = dep-vuln session, ask first). Smoke suite rewritten for cookie+CSRF (50/50 baseline).
-The 2026-08-07 queue below still stands — item 1 overlaps fix 4d (Profil activity log) and
-item 3 overlaps 4d's PATCH /admin/me; do them together when running package 4.
+execution guide — start THERE; it pre-makes the decisions). **Package 4 (broken admin
+actions) is DONE** (2026-09-22, executed on Sonnet per the plan doc — see RUNBOOK §6).
+**Next: package 6 (KPI correctness) → 5 (fleet + tracking integrity) → 8 (dead-code sweep).**
+9 (dep-vuln upgrade) is its own session, ask first. Smoke suite is at **58/58** (cookie+CSRF,
+self-cleaning) — keep it there.
 
-## 🔜 Queued 2026-08-07 (older queue — see note above)
-Continue client-onboarding / admin work. Three items the user queued:
-
-1. **Split activity logs by role — SUPERADMIN vs OPERATIONS.** Today the Beranda "Log Aktivitas" is SUPERADMIN-only and shows `scope=normal` (OPERATIONS/SUPPORT actions lumped together); the superadmin's own log is the deferred Profil-page item. Goal: **separate super-admin actions from operations-admin actions** in the activity view (distinct sections/filters, not one combined feed). Touches `routes/auditLogs.ts` (it already accepts `scope`/`adminId` and returns `admin.role`) + `OverviewSection.jsx` (+ maybe the Profil log). Admin-scope, frontend-heavy.
-2. **Give SUPERADMIN every available action.** Audit all RBAC gates (`clientManagerOnly`, `requireRole`, `requirePermission`, per-status UI gates, sidebar filters) and ensure **SUPERADMIN is never blocked from any action** anywhere (a consistent superadmin bypass). Cross-cutting: check `middleware/auth.ts`, `lib/rbac.ts`, route guards, and the frontend role gates.
-3. **Wire up user settings — change name + reset password.** Make the profile/settings UI functional for **changing display name** and **resetting password**. Backend partly exists: clients have `PATCH /api/users/me` (name), admin has `PATCH /api/auth/admin/me/password` (password); an **admin self-update for name** may still be missing (flagged earlier — "needs an admin self-update endpoint"). Confirm the surface (client settings vs admin Profil vs both) and wire the forms end-to-end. Client side touches shared contracts — coordinate.
+## 🔜 Queued 2026-08-07 (older queue) — 2 of 3 done, 1 still open
+1. ~~Split activity logs by role~~ — **already done** (predates this note; `auditLogs.ts`
+   has `?role=` + `OverviewSection.jsx` has `ROLE_TABS` splitting ops/pipeline/super feeds).
+2. **Give SUPERADMIN every available action — still open.** Audit all RBAC gates
+   (`clientManagerOnly`, `requireRole`, `requirePermission`, per-status UI gates, sidebar
+   filters) and ensure **SUPERADMIN is never blocked from any action** anywhere. ⚠️ Known
+   tension: `SHIPMENT_CREATOR_ROLES` deliberately excludes SUPERADMIN by a 2026-09-22 user
+   decision — resolving this item means adding SUPERADMIN there (a one-word change), so
+   confirm with the user before flipping it.
+3. ~~Wire up admin self-update (name)~~ — **done 2026-09-22** as part of package 4d
+   (`PATCH /api/auth/admin/me`). Client-side "reset password" settings wiring is now
+   [client-deployment.md](client-deployment.md) package 2 (client rehaul, friend's scope).
 
 > Also still open: push `tier1-infra` (coordinate the 2 magic-link migrations with the friend); **[SECURITY-MAGICLINK.md](SECURITY-MAGICLINK.md) Phase A** before public launch; the **super-admin page to add/remove OPERATIONS & SUPPORT accounts** (the `accountType` link tag is groundwork). See RUNBOOK §6 (2026-08-07) for the onboarding work just shipped.
 
