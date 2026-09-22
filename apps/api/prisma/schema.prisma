@@ -139,6 +139,7 @@ model Admin {
   @@map("admins")
 
   emailOtps     EmailOtp[]
+  trustedDevices TrustedDevice[]
 }
 
 // ============================================================
@@ -642,4 +643,33 @@ model EmailOtp {
   @@index([adminId, createdAt])
   @@index([expiresAt])
   @@map("email_otps")
+}
+
+// ── Trusted devices (Phase 2e) ─────────────────────────────────────────────────────────────
+// "Don't ask me for an email code on this browser for 7 days."
+//
+// Deliberately SEPARATE from Session rather than just making sessions 7 days long. A session
+// is the thing a stolen cookie replays, so it stays short (8h absolute / 30min idle); this
+// only records that the second factor was satisfied recently, which is a much weaker
+// capability — it lets a password login skip the OTP, and nothing more.
+//
+// tokenHash, not the token: a leaked DB must not yield devices that skip 2FA.
+// Bound to one admin, so a device trusted for A cannot skip the OTP for B.
+// Revoked when the password changes — if you changed it because you suspect someone else is
+// in, their remembered device must stop skipping the second factor.
+model TrustedDevice {
+  id         String    @id @default(uuid())
+  adminId    String
+  admin      Admin     @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime  @default(now())
+  revokedAt  DateTime?
+  userAgent  String?
+  ip         String?
+
+  @@index([adminId])
+  @@index([expiresAt])
+  @@map("trusted_devices")
 }

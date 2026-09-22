@@ -21,6 +21,7 @@ import adminsRouter        from "./routes/admins"
 import adminNotificationsRouter from "./routes/adminNotifications"
 import auditLogsRouter     from "./routes/auditLogs"
 import { startAlertScheduler } from "./services/alertScheduler"
+import { startMaintenanceScheduler } from "./services/maintenance"
 
 const app  = express()
 const PORT = process.env.PORT || 3001
@@ -215,6 +216,7 @@ app.listen(PORT, () => {
 ╚══════════════════════════════════════╝
   `)
   startAlertScheduler()
+  startMaintenanceScheduler()
 })
 
 export default app

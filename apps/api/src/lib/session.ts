@@ -27,7 +27,7 @@ import prisma from "./prisma"
 export const SESSION_COOKIE = process.env.SESSION_COOKIE_NAME || "mpl_session"
 
 const ABSOLUTE_HOURS = Number.parseInt(process.env.SESSION_ABSOLUTE_HOURS ?? "8", 10) || 8
-const IDLE_MINUTES = Number.parseInt(process.env.SESSION_IDLE_MINUTES ?? "30", 10) || 30
+const IDLE_MINUTES = Number.parseInt(process.env.SESSION_IDLE_MINUTES ?? "120", 10) || 120
 
 // lastSeenAt drives the idle timeout, but writing it on every request would mean ~450 writes
 // an hour per admin from the dashboard poll alone. Only persist it once it's this stale.
@@ -169,4 +169,42 @@ export async function pruneExpiredSessions(): Promise<number> {
     where: { OR: [{ expiresAt: { lt: cutoff } }, { revokedAt: { lt: cutoff } }] },
   })
   return res.count
+}
+
+/** Active sessions for a principal — powers the "where am I logged in" view. */
+export async function listSessions(principal: Pick<Principal, "id" | "type">) {
+  return prisma.session.findMany({
+    where: {
+      revokedAt: null,
+      expiresAt: { gt: new Date() },
+      ...(principal.type === "admin" ? { adminId: principal.id } : { userId: principal.id }),
+    },
+    orderBy: { lastSeenAt: "desc" },
+    select: { id: true, createdAt: true, lastSeenAt: true, expiresAt: true, userAgent: true, ip: true },
+  })
+}
+
+/** Revoke one session by id, scoped to its owner so nobody can kill someone else's. */
+export async function revokeSessionById(
+  id: string,
+  principal: Pick<Principal, "id" | "type">,
+): Promise<boolean> {
+  const res = await prisma.session.updateMany({
+    where: {
+      id,
+      revokedAt: null,
+      ...(principal.type === "admin" ? { adminId: principal.id } : { userId: principal.id }),
+    },
+    data: { revokedAt: new Date() },
+  })
+  return res.count > 0
+}
+
+/** Identify the caller's own session, so the UI can label it and avoid self-revoking. */
+export async function currentSessionId(token: string): Promise<string | null> {
+  const row = await prisma.session.findUnique({
+    where: { tokenHash: sha256(token) },
+    select: { id: true },
+  })
+  return row?.id ?? null
 }

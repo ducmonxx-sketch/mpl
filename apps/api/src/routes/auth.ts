@@ -17,6 +17,8 @@ import { checkLockout, recordAttempt } from "../lib/loginGuard"
 import { issueCsrfToken, issueCsrfTokenFromRequest } from "../lib/csrf"
 import { isEmailOtpEnabled, createEmailOtp, verifyEmailOtp } from "../lib/emailOtp"
 import { verifiedAccessEmail } from "../lib/cfAccess"
+import { trustDevice, isDeviceTrusted, forgetThisDevice, revokeAllDevices, listDevices } from "../lib/trustedDevice"
+import { listSessions, revokeSessionById, currentSessionId, readSessionCookie } from "../lib/session"
 import { revokeAllSessions } from "../lib/session"
 import { validateBody, registerSchema, loginSchema, emailOnlySchema, changePasswordSchema } from "../lib/validate"
 import { uploadImageField, saveUpload, deleteUpload, ImageProcessingError } from "../lib/upload"
@@ -191,8 +193,11 @@ router.post("/admin/login", requireTurnstile, validateBody(loginSchema), async (
     if (isEmailOtpEnabled()) {
       const accessEmail = await verifiedAccessEmail(req)
       const accessSatisfied = !!accessEmail && accessEmail === admin.email.trim().toLowerCase()
+      // Or this browser proved the second factor within the trust window (default 7 days).
+      // Still requires the password — the device cookie only removes the OTP step.
+      const deviceTrusted = accessSatisfied ? false : await isDeviceTrusted(req, admin.id)
 
-      if (!accessSatisfied) {
+      if (!accessSatisfied && !deviceTrusted) {
         const challenge = await createEmailOtp(admin, req.ip)
         if ("rateLimited" in challenge) {
           res.setHeader("Retry-After", String(challenge.retryAfterSeconds))
@@ -318,6 +323,30 @@ router.patch("/admin/me/password", authenticate, adminOnly, validateBody(changeP
       },
     })
 
+    // Changing a password should not leave other sessions alive, and must drop every
+
+    // remembered browser: if the password was changed because someone else is suspected
+
+    // to be in, their device must stop skipping the second factor.
+
+    const currentToken = readSessionCookie(req)
+
+    const keepId = currentToken ? await currentSessionId(currentToken) : null
+
+    await revokeAllSessions({ id: req.user!.id, type: "admin" })
+
+    await revokeAllDevices(req.user!.id)
+
+    // Re-open the caller's own session so changing a password doesn't log you out of
+
+    // the tab you did it in.
+
+    if (keepId) {
+
+      await prisma.session.update({ where: { id: keepId }, data: { revokedAt: null } }).catch(() => {})
+
+    }
+
     res.json({ message: "Password berhasil diperbarui." })
   } catch (err) {
     console.error(err)
@@ -332,6 +361,11 @@ router.patch("/admin/me/password", authenticate, adminOnly, validateBody(changeP
 // Unauthenticated on purpose: logging out must work even with an already-dead session.
 router.post("/logout", async (req: AuthRequest, res: Response) => {
   await endSession(req, res)
+  // Opt-in: ?forgetDevice=1 also drops the 7-day OTP exemption for this browser, for
+  // "I'm on someone else's computer".
+  if (req.query.forgetDevice === "1" || req.body?.forgetDevice === true) {
+    await forgetThisDevice(req, res)
+  }
   res.json({ message: "Logged out." })
 })
 
@@ -377,6 +411,9 @@ router.post("/admin/login/verify", async (req: AuthRequest, res: Response) => {
     // which also resets the per-email failure counter from lib/loginGuard.
     await recordAttempt(admin.email, req.ip, true, "admin")
     issueCsrfToken(res, sessionToken)
+    // Second factor satisfied — remember this browser so the next 7 days need only a
+    // password. The session itself stays short; this only skips the OTP.
+    await trustDevice(res, admin.id, req)
 
     res.json({
       token,
@@ -385,6 +422,59 @@ router.post("/admin/login/verify", async (req: AuthRequest, res: Response) => {
   } catch (err) {
     console.error(err)
     res.status(500).json({ message: "Gagal memverifikasi kode." })
+  }
+})
+
+// ── Session & device management (Phase 2e) ────────────────────
+// "Where am I logged in, and make it stop." This is the capability sessions exist for —
+// a JWT cannot be listed or revoked.
+
+// GET /api/auth/admin/sessions → active sessions + remembered browsers
+router.get("/admin/sessions", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+  try {
+    const token = readSessionCookie(req)
+    const [sessions, devices, currentId] = await Promise.all([
+      listSessions({ id: req.user!.id, type: "admin" }),
+      listDevices(req.user!.id),
+      token ? currentSessionId(token) : Promise.resolve(null),
+    ])
+    res.json({
+      // `current` lets the UI label "this device" and avoid offering to revoke it.
+      sessions: sessions.map((s) => ({ ...s, current: s.id === currentId })),
+      trustedDevices: devices,
+    })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Gagal memuat sesi." })
+  }
+})
+
+// DELETE /api/auth/admin/sessions/:id → revoke one session
+router.delete("/admin/sessions/:id", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+  try {
+    // Scoped to the caller inside revokeSessionById, so an admin cannot kill another
+    // admin's session through this endpoint.
+    const done = await revokeSessionById(String(req.params.id), { id: req.user!.id, type: "admin" })
+    if (!done) return res.status(404).json({ message: "Sesi tidak ditemukan." })
+    res.json({ message: "Sesi dihentikan." })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Gagal menghentikan sesi." })
+  }
+})
+
+// DELETE /api/auth/admin/sessions → revoke everything, including remembered browsers.
+// The blunt instrument for "I think someone else is in".
+router.delete("/admin/sessions", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+  try {
+    const [sessions, devices] = await Promise.all([
+      revokeAllSessions({ id: req.user!.id, type: "admin" }),
+      revokeAllDevices(req.user!.id),
+    ])
+    res.json({ message: "Semua sesi dihentikan.", sessionsRevoked: sessions, devicesForgotten: devices })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Gagal menghentikan sesi." })
   }
 })
 
