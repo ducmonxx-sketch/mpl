@@ -12,6 +12,14 @@ newest §6 Session Log entries (older logs live in `RUNBOOK-ARCHIVE.md`; read on
 need history) — and follow it: sync (§2) → integration audit (§3) → **report findings
 before editing** → append a dated **Session Log** entry (§5) before finishing.
 
+**Page docs — read before building on a page:** every dashboard page has a doc in
+**[docs/pages/](docs/pages/)** (see its [README](docs/pages/README.md) index): endpoints,
+load-bearing state, cross-page couplings, gotchas, and a line-cited "how to add a feature
+cleanly" checklist. **Before developing or changing a feature on a page, read that page's
+doc first** — then follow its checklist. If your change alters the page materially
+(new endpoint, state, flow, or gate), **update the page doc in the same commit**; a stale
+doc is worse than none.
+
 **Scope:** admin dashboard only. Do not modify the client-facing side — note client
 implications for follow-up instead. Don't break shared contracts (schema, shared
 routes, `api.js`, `AuthContext`, `TrackingSection`). Never force-push `main`.
