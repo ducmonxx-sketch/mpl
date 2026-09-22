@@ -8,7 +8,6 @@
 
 import { Router, Request, Response } from "express"
 import bcrypt from "bcrypt"
-import jwt from "jsonwebtoken"
 import prisma from "../lib/prisma"
 import { authenticate, adminOnly, AuthRequest } from "../middleware/auth"
 import { requireTurnstile } from "../lib/turnstile"
@@ -26,8 +25,6 @@ import { getStorage } from "../lib/storage"
 
 const router = Router()
 
-const generateToken = (id: string, role: string, type: "user" | "admin") =>
-  jwt.sign({ id, role, type }, process.env.JWT_SECRET!, { expiresIn: "7d" })
 
 // ── POST /api/auth/register ──────────────────────────────────
 router.post("/register", requireTurnstile, validateBody(registerSchema), async (req: Request, res: Response) => {
@@ -112,8 +109,6 @@ router.post("/login", requireTurnstile, validateBody(loginSchema), async (req: R
         message: "Your account has been rejected. Please contact support.",
       })
     }
-
-    const token = generateToken(user.id, "user", "user")
     // Phase 2a: also open a server-side session. The body token stays for now so the
     // existing localStorage frontend keeps working until the 2f cutover.
     const sessionToken = await startSession(res, { id: user.id, role: "user", type: "user" }, req)
@@ -121,7 +116,6 @@ router.post("/login", requireTurnstile, validateBody(loginSchema), async (req: R
     issueCsrfToken(res, sessionToken)
 
     res.json({
-      token,
       user: {
         id:          user.id,
         fullName:    user.fullName,
@@ -181,8 +175,6 @@ router.post("/admin/login", requireTurnstile, validateBody(loginSchema), async (
       await recordAttempt(email, req.ip, false, "admin")
       return res.status(401).json({ message: "Invalid email or password." })
     }
-
-    const token = generateToken(admin.id, admin.role, "admin")
     // Phase 2a: also open a server-side session. The body token stays for now so the
     // existing localStorage frontend keeps working until the 2f cutover.
     // ── Second factor: emailed one-time code ──
@@ -221,7 +213,6 @@ router.post("/admin/login", requireTurnstile, validateBody(loginSchema), async (
     issueCsrfToken(res, sessionToken)
 
     res.json({
-      token,
       admin: {
         id:       admin.id,
         fullName: admin.fullName,
@@ -404,8 +395,6 @@ router.post("/admin/login/verify", async (req: AuthRequest, res: Response) => {
       select: { id: true, fullName: true, email: true, role: true },
     })
     if (!admin) return res.status(401).json({ message: "Akun tidak ditemukan." })
-
-    const token = generateToken(admin.id, admin.role, "admin")
     const sessionToken = await startSession(res, { id: admin.id, role: admin.role, type: "admin" }, req)
     // Recorded as the successful login, since this is the point authentication completes —
     // which also resets the per-email failure counter from lib/loginGuard.
@@ -416,7 +405,6 @@ router.post("/admin/login/verify", async (req: AuthRequest, res: Response) => {
     await trustDevice(res, admin.id, req)
 
     res.json({
-      token,
       admin: { id: admin.id, fullName: admin.fullName, email: admin.email, role: admin.role },
     })
   } catch (err) {

@@ -1,7 +1,6 @@
 // src/middleware/auth.ts
 
 import { Request, Response, NextFunction } from "express"
-import jwt from "jsonwebtoken"
 import { readSessionCookie, resolveSession } from "../lib/session"
 
 export interface AuthRequest extends Request {
@@ -14,14 +13,9 @@ export interface AuthRequest extends Request {
 
 // Any logged-in user (client or admin).
 //
-// Phase 2a dual-read: the httpOnly session cookie is preferred, with the legacy
-// `Authorization: Bearer` JWT as a fallback. Both produce the same `req.user` shape, so no
-// route needed changing. This is what makes the cookie migration non-breaking — the existing
-// frontend keeps working over Bearer until the 2f cutover removes it.
-//
-// ⚠️ Once 2f lands and the frontend sends cookies, DELETE the Bearer branch. Leaving it in
-// place would keep a 7-day, non-revocable, XSS-exfiltratable credential valid alongside the
-// sessions that were introduced specifically to eliminate it.
+// Authenticated purely by the httpOnly session cookie. The Bearer fallback that made the
+// 2a migration non-breaking was removed once the frontend cut over (2f), so there is no
+// longer any JS-readable credential to steal.
 export const authenticate = async (
   req: AuthRequest,
   res: Response,
@@ -45,20 +39,10 @@ export const authenticate = async (
     }
   }
 
-  // ── Legacy path (removed at 2f) ──
-  const token = req.headers.authorization?.split(" ")[1]
-
-  if (!token) {
-    return res.status(401).json({ message: "No token provided. Please log in." })
-  }
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as AuthRequest["user"]
-    req.user = decoded
-    next()
-  } catch {
-    return res.status(401).json({ message: "Invalid or expired token." })
-  }
+  // No session cookie: not authenticated. The legacy `Authorization: Bearer` path was
+  // removed at 2f — leaving it would have kept a 7-day, non-revocable,
+  // XSS-exfiltratable credential valid alongside the sessions built to replace it.
+  return res.status(401).json({ message: "No session. Please log in." })
 }
 
 // Admin only

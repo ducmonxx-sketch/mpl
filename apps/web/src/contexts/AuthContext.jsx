@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import {
   authAPI,
   usersAPI,
-  setToken,
   clearToken,
   getStoredUser,
   setStoredUser,
@@ -71,7 +70,6 @@ export function AuthProvider({ children }) {
   // ── Client login ──────────────────────────────────────────
   const login = useCallback(async (email, password) => {
     const data = await authAPI.login(email, password)
-    setToken(data.token)
     setStoredUser(data.user, 'user')
     setUser(data.user)
     setUserType('user')
@@ -93,7 +91,6 @@ export function AuthProvider({ children }) {
     // in a half-logged-in state. The caller collects the code and calls
     // adminVerifyOtp() to finish.
     if (data?.otpRequired) return data
-    setToken(data.token)
     setStoredUser(data.admin, 'admin')
     setUser(data.admin)
     setUserType('admin')
@@ -104,7 +101,6 @@ export function AuthProvider({ children }) {
   // client-side flow is untouched.
   const adminVerifyOtp = useCallback(async (challengeId, code) => {
     const data = await authAPI.adminVerifyOtp(challengeId, code)
-    setToken(data.token)
     setStoredUser(data.admin, 'admin')
     setUser(data.admin)
     setUserType('admin')

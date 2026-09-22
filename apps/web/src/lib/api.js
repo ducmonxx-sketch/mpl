@@ -3,7 +3,7 @@
  *
  * Wraps fetch() with:
  *  - Base URL from VITE_API_BASE_URL
- *  - Automatic Bearer token attachment from localStorage
+ *  - Cookie-based auth (httpOnly session cookie + CSRF header); no token in localStorage
  *  - JSON request/response handling
  *  - 401 handling (clears token, redirects to login)
  *
@@ -16,14 +16,9 @@
 export const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'
 
 // ─── Token helpers ──────────────────────────────────────────
-export function getToken() {
-  return localStorage.getItem('mpl_token')
-}
-
-export function setToken(token) {
-  localStorage.setItem('mpl_token', token)
-}
-
+// Auth now lives in an httpOnly cookie the server sets and clears, so there is no token to
+// store. This remains to wipe the local user cache on logout — and to clear `mpl_token` for
+// anyone still carrying one from before the cutover.
 export function clearToken() {
   localStorage.removeItem('mpl_token')
   localStorage.removeItem('mpl_user')
@@ -88,14 +83,6 @@ async function request(endpoint, options = {}) {
   const isForm = body instanceof FormData
   const headers = { ...customHeaders }
   if (!isForm) headers['Content-Type'] = 'application/json'
-
-  // Legacy Bearer token. Kept alongside the cookie during the cutover as a safety belt —
-  // the API dual-reads, preferring the cookie. Removed once cookie login is confirmed in a
-  // real browser; leaving it is what still allows an XSS to steal a credential.
-  const token = getToken()
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`
-  }
 
   // CSRF: required by the API for state-changing requests that authenticate by cookie.
   // Harmless when absent — the server only enforces it when a session cookie is present.

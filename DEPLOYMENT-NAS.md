@@ -357,12 +357,17 @@ away, and the first step would be a second API instance behind the proxy (which 
 - HSTS (add `preload` only once you're confident); `Secure` on all cookies.
 
 ### Layer 3 — Identity & session 🔴 **the biggest gap today**
-- 🔴 **The auth rehaul is now MANDATORY, not deferred** (DEPLOYMENT.md §3). Today the admin JWT
-  lives in `localStorage` → **one XSS = silent 7-day admin takeover**. That was tolerable on a LAN;
-  it is not acceptable for an internet-reachable admin panel. Move to **httpOnly + Secure +
-  SameSite cookies + CSRF tokens**; prefer **server-side sessions** for instant revocation.
-- 🔴 **2FA/MFA on every admin account** (new requirement). TOTP at minimum. With Option B,
-  Cloudflare Access supplies a second factor in front of the app as well.
+- [x] ✅ **Auth rehaul — DONE 2026-09-22 (Phase 2a–2f).** The admin JWT in `localStorage` is gone:
+  auth is now an httpOnly + SameSite session cookie with CSRF tokens, backed by **server-side
+  sessions** so revocation is instant. Verified after the cutover that a **perfectly valid signed
+  JWT is refused** — the Bearer path no longer exists, so there is no JS-readable credential for an
+  XSS to steal. Admin sessions 8h/2h-idle (clients keep 7 days); trusted devices skip the emailed
+  code for 7 days; failed-login lockout per account and per IP; emailed one-time codes as the second
+  factor, skipped only for a *cryptographically verified* Cloudflare Access identity.
+- [x] ✅ **2FA — DONE 2026-09-22, as emailed one-time codes** (not TOTP; user decision for staff
+  usability, with a VPN planned as the control for mailbox compromise). Off by default via
+  `ADMIN_2FA_EMAIL`, which is also the way back in if SMTP fails. Needs SMTP credentials + SPF/DKIM
+  to be real — until then codes surface as `devCode` outside production.
 - Strong password policy (length + common-password ban); keep bcrypt with a sane cost.
 - **Failed-login lockout / throttle** per account *and* per IP.
 - Short admin session lifetime + idle timeout; rotate on privilege change; **server-side revocation**
