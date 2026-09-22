@@ -8,7 +8,12 @@
 import prisma from "./prisma"
 
 // Statuses in which a shipment still "occupies" its driver + vehicle (not terminal).
-const OCCUPYING = ["STANDBY", "DITUGASKAN", "AT_PLANT", "TRANSIT", "DITERIMA", "DITURUNKAN"]
+//
+// DITURUNKAN was removed 2026-09-22 (user request): the load is off the truck, so the pair is
+// free to take another trip while the serah-terima paperwork is finished. It must come out of
+// this list as well as gaining a RELEASE rule below — otherwise a DITURUNKAN *sibling* would
+// still count as occupying and block the group-aware release of its linked shipments.
+const OCCUPYING = ["STANDBY", "DITUGASKAN", "AT_PLANT", "TRANSIT", "DITERIMA"]
 
 // Departure guard: only ONE shipment per driver may be in TRANSIT at a time.
 // Returns the id of a conflicting (different) TRANSIT shipment, or null if clear.
@@ -47,8 +52,12 @@ const RULES: Record<string, MirrorRule> = {
 function ruleFor(status: string): MirrorRule | null {
   if (status === "STANDBY") return RULES.STANDBY
   if (status === "DITUGASKAN" || status === "AT_PLANT" || status === "TRANSIT") return RULES.ENGAGE
-  if (status === "DELIVERED" || status === "CANCELLED") return RULES.RELEASE
-  return null  // DITERIMA/DITURUNKAN/PENDING/FAILED: no fleet change (driver stays engaged through the gudang leg)
+  // DITURUNKAN releases as of 2026-09-22 (user request) — the driver + armada become available
+  // again once the load is off, rather than waiting for DELIVERED. Both are freed together: the
+  // create form selects a driver by `primaryVehicle.status === 'AVAILABLE'`, so freeing the
+  // driver alone would leave them visibly ACTIVE but still unselectable for a new shipment.
+  if (status === "DITURUNKAN" || status === "DELIVERED" || status === "CANCELLED") return RULES.RELEASE
+  return null  // DITERIMA/PENDING/FAILED: no fleet change (driver stays engaged until unloaded)
 }
 
 // Mirror a shipment's new status onto its driver + vehicle (1:1), status-filtered so
