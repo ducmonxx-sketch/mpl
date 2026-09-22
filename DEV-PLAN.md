@@ -1,7 +1,7 @@
 # DEV-PLAN — resume point
 
 > **Resuming?** Read this first, then [RUNBOOK.md](RUNBOOK.md) (sync + audit) and [CLAUDE.md](CLAUDE.md) (scope).
-> Last updated: **2026-09-18**. Newest work at the top; RUNBOOK §6 has per-session detail.
+> Last updated: **2026-09-22**. Newest work at the top; RUNBOOK §6 has per-session detail.
 
 ## 🔜 NEXT SESSION — planned (not built yet), queued 2026-08-07
 Continue client-onboarding / admin work. Three items the user queued:
@@ -11,6 +11,122 @@ Continue client-onboarding / admin work. Three items the user queued:
 3. **Wire up user settings — change name + reset password.** Make the profile/settings UI functional for **changing display name** and **resetting password**. Backend partly exists: clients have `PATCH /api/users/me` (name), admin has `PATCH /api/auth/admin/me/password` (password); an **admin self-update for name** may still be missing (flagged earlier — "needs an admin self-update endpoint"). Confirm the surface (client settings vs admin Profil vs both) and wire the forms end-to-end. Client side touches shared contracts — coordinate.
 
 > Also still open: push `tier1-infra` (coordinate the 2 magic-link migrations with the friend); **[SECURITY-MAGICLINK.md](SECURITY-MAGICLINK.md) Phase A** before public launch; the **super-admin page to add/remove OPERATIONS & SUPPORT accounts** (the `accountType` link tag is groundwork). See RUNBOOK §6 (2026-08-07) for the onboarding work just shipped.
+
+## ✅ DONE (2026-09-22) — OPERATIONS gets shipment create + full status control · invite-link lifetimes · driver freed at Diturunkan
+
+Three unrelated user requests in one session. **Uncommitted at time of writing.**
+
+### A. OPERATIONS may now create shipments and set any status
+
+**The finding that started it:** the user reported "the create shipment button isn't there". It was
+gated to `role === 'KEPALA_ARMADA'` only, with the comment *"Creating shipments is Kepala Armada's
+job only"* — so **SUPERADMIN could not see it either**, the one place in the repo where SUPERADMIN
+held *less* access than another role. Meanwhile `POST /api/shipments` has **no role check at all**
+(`authenticate` only), so the restriction was always **UI-only, never a security control**.
+
+**User decision: grant OPERATIONS, explicitly NOT SUPERADMIN.**
+
+> ⚠️ **Open tension with queued item #2 above** ("Give SUPERADMIN every available action"). The
+> create button still excludes SUPERADMIN by explicit instruction. When item #2 is done, add
+> `SUPERADMIN` to `SHIPMENT_CREATOR_ROLES` — it is a one-word change and the only thing standing
+> between SUPERADMIN and shipment creation.
+
+**Backend (the real gate):**
+- `lib/rbac.ts` — `OPERATIONS: []` → `OPERATIONS: ["status:override"]`. This one line is what
+  actually unlocks reversals/off-flow moves, via `canChangeStatus` in `lib/statusFlow.ts`.
+  **`admin:manage` was deliberately NOT granted** — admin-account management stays SUPERADMIN-only.
+- `routes/shipments.ts` — the `AT_PLANT` guard was `role !== "PIC_PABRIK" && role !== "SUPERADMIN"`,
+  a hardcoded role pair. Now `role !== "PIC_PABRIK" && !roleHas(role, "status:override")`, so the
+  escape hatch follows the permission matrix instead of a literal. Added `import { roleHas }`.
+  ⚠️ This supersedes the 2026-07-18 note below that says "SUPERADMIN keeps override" — it is now
+  any override role.
+- **No change needed for creation** — `POST /api/shipments` already allowed any admin, and already
+  handled non-Armada creators: it reads `clientId` from the body for admins and starts the shipment
+  at `PENDING` rather than `STANDBY` when the creator is not `KEPALA_ARMADA`.
+
+**Frontend — `AdminComponents/ShipmentsSection.jsx` (all changes in this one file):**
+- Added two module constants to stop role strings being scattered: `STATUS_OVERRIDE_ROLES =
+  ['SUPERADMIN','OPERATIONS']` (⚠️ must mirror `lib/rbac.ts`) and `SHIPMENT_CREATOR_ROLES =
+  ['KEPALA_ARMADA','OPERATIONS']`.
+- `availableStatusOptions()` — `role === 'SUPERADMIN'` → `STATUS_OVERRIDE_ROLES.includes(role)`.
+- New derived flags `hasStatusOverride` / `canCreateShipments`; **`isRegularAdmin` redefined from
+  `!isSuperAdmin` to `!hasStatusOverride`**. That is the load-bearing change: it routes OPERATIONS
+  out of the scoped per-status flows and into the generic status picker in both
+  `handleConfirmStatus()` and `renderModalContent()`.
+- `canUpdateStatus`, `getModalTitle`, `getModalSubtitle`, `getSubmitLabel` — `isSuperAdmin` →
+  `hasStatusOverride`.
+- Create-button gate `role === 'KEPALA_ARMADA'` → `canCreateShipments`.
+- **Direct-assign row button opened from `SUPERADMIN` to `hasStatusOverride`** (title dropped the
+  "(SUPERADMIN)" suffix). This is a *consequence, not a bonus*: OPERATIONS now sees the free status
+  picker instead of the PENDING assign-driver flow, so without this button it would have had **no
+  way left to attach a driver** to a PENDING shipment.
+- 7 stale `SUPERADMIN`-worded comments retitled to "override role(s)".
+
+**Behaviour notes / deliberate trade-offs:**
+- OPERATIONS **loses** its three scoped modal flows (PENDING assign · DITUGASKAN confirm departure ·
+  TRANSIT complete-or-cancel) and gains the free picker + row-button assign instead. The old
+  "Fallback for OPERATIONS / SUPPORT" branches now serve **SUPPORT only** — SUPPORT is unchanged.
+- `canDeleteShipment` was left alone (OPERATIONS still deletes only STANDBY).
+- `usesFieldLayout` is false for OPERATIONS, so it keeps the standard tabbed layout and the
+  standard "Informasi Dasar" create form, which already has a required Klien selector.
+- ⚠️ **Known rough edge, not fixed:** `POST /api/shipments` takes `clientId` from the body with no
+  validation, and the column is required — so a create with no client selected returns a Prisma 500
+  rather than a clean 400. The frontend blocks it (`if (!formClientId)`), so it is only reachable by
+  calling the API directly.
+
+**Verified:** API `tsc --noEmit` clean · web ESLint on the edited file **17 problems before, 17
+after** (zero added; all pre-existing unused-vars / react-refresh) · **20/20 permission assertions
+pass** (`status:override` held by SUPERADMIN+OPERATIONS and by no one else; `admin:manage` does not
+leak to OPERATIONS; OPERATIONS can reverse TRANSIT→DITUGASKAN and DELIVERED→TRANSIT; SUPPORT and
+PIC_GUDANG still cannot; forward moves still open to all; AT_PLANT allows PIC_PABRIK + override
+roles only). **Not yet clicked through in a browser.**
+
+### B. Invite / reset link lifetimes are env-tunable, and both now default to 1 day
+
+- `routes/users.ts` — two hardcoded expiries replaced with env-driven helpers:
+  `MAGIC_LINK_HOURS` (registration invite) and `RESET_LINK_HOURS` (password reset), both
+  **defaulting to 24**. Bad values (`abc`, `0`, `-5`) fall back to the default rather than minting
+  an already-expired link.
+  - Registration invite **was 7 days → now 1 day** (user decision). Reset link was already 24h.
+  - Was `expiresAt.setDate(getDate()+7)`, now `Date.now() + hours*3600e3`. Identical instant here —
+    Jakarta has no DST — verified to 2 ms.
+- `.env.example` — documented next to the 2FA block, with the caution that unlike a session these
+  tokens sit in an inbox/WhatsApp thread for their whole window, and whoever holds one can create an
+  account (registration) or take one over (reset).
+- ⚠️ Already-generated links keep their original expiry; the value is baked in at creation time.
+- **Verified:** 7/7 assertions (defaults, both overrides, garbage/zero/negative fallback, old-vs-new
+  date math).
+
+### C. Driver + armada become available again at DITURUNKAN (was: DELIVERED)
+
+User request: *"driver status available again after a shipment is in Diturunkan"*. Previously the
+pair stayed engaged through the whole gudang leg and was only freed at DELIVERED/CANCELLED, so a
+truck sat unusable while the serah-terima paperwork was finished.
+
+**`lib/shipmentStatus.ts` — two edits that must go together:**
+1. `ruleFor()` — `DITURUNKAN` now returns `RULES.RELEASE` alongside DELIVERED/CANCELLED.
+2. `OCCUPYING` — `DITURUNKAN` **removed** from the list. Easy to miss: without this a DITURUNKAN
+   *sibling* would still count as occupying and block the group-aware release of its linked
+   shipments, and `releaseFleetIfUnused()` (called after a delete) would refuse to free the pair.
+
+**⚠️ Deliberate scope call — the vehicle is released too, not just the driver.** The ask named only
+the driver, but the create form selects a driver via `primaryVehicle?.status === 'AVAILABLE'`
+(`ShipmentsSection.jsx`), so freeing the driver alone would leave them showing ACTIVE yet still
+unselectable for a new shipment — i.e. the change would have looked applied but done nothing.
+Reverting to driver-only means also changing that UI filter.
+
+**Consequence to be aware of:** a driver/armada can now be dispatched on a new trip *before* the
+previous shipment's handover is recorded. The departure guard still holds — only one TRANSIT
+shipment per driver at a time — so the risk is administrative (unfinished paperwork), not a
+double-booked truck.
+
+**Verified — 14/14 against the real dev DB** (throwaway driver/vehicle/shipment, tagged `ZZTEST-`,
+deleted in a `finally` and confirmed 0 leftover rows): TRANSIT still engages · **DITERIMA still does
+NOT release** (only DITURUNKAN changed) · DITURUNKAN frees driver+vehicle · the later
+DITURUNKAN→DELIVERED mirror is a harmless no-op · a DITURUNKAN trip raises no `findTransitConflict`
+and the driver re-engages on a new trip · a sibling still in TRANSIT *does* keep the pair held ·
+`releaseFleetIfUnused` no longer treats DITURUNKAN as an occupier. API `tsc --noEmit` clean.
+**Not yet clicked through in a browser.**
 
 ## ✅ DONE (2026-07-18) — Pipeline hardening + Link shipments ("Hubungkan Pengiriman")
 - **#1 DONE** (`8ed685f`): `AT_PLANT` gated to **PIC_PABRIK** (from DITUGASKAN; SUPERADMIN keeps override); **auto-WhatsApp-on-assign removed** (manual `/notify-driver` only).
