@@ -23,7 +23,7 @@ export const SERVICE_LABELS = {
 
 export const STATUS_OPTIONS = ['pending', 'assigned', 'in_transit', 'delivered', 'cancelled']
 
-// Statuses offered as targets in the SUPERADMIN picker (FAILED omitted — legacy only).
+// Statuses offered as targets in the override-role picker (FAILED omitted — legacy only).
 const RAW_STATUS_OPTIONS = [
   { value: 'PENDING',     label: 'Menunggu' },
   { value: 'STANDBY',     label: 'Standby' },
@@ -50,9 +50,20 @@ const FORWARD_STATUS = {
   CANCELLED:  [],
 }
 
-// SUPERADMIN: all statuses except current; regular admin: forward-only.
+// Roles that may move a shipment to ANY status, including backwards / off-flow.
+// ⚠️ Must mirror the API's `status:override` permission in apps/api/src/lib/rbac.ts — the
+// server is the real gate, so adding a role here without adding it there just produces a
+// picker whose options 403.
+const STATUS_OVERRIDE_ROLES = ['SUPERADMIN', 'OPERATIONS']
+
+// Roles that may create shipments. Kepala Armada raises its own trips; Operations dispatches
+// on behalf of clients. POST /api/shipments itself allows any admin, so this list is a UI
+// scoping choice, not a security boundary.
+const SHIPMENT_CREATOR_ROLES = ['KEPALA_ARMADA', 'OPERATIONS']
+
+// Override roles: all statuses except the current one; everyone else: forward-only.
 const availableStatusOptions = (role, from) =>
-  role === 'SUPERADMIN'
+  STATUS_OVERRIDE_ROLES.includes(role)
     ? RAW_STATUS_OPTIONS.filter(opt => opt.value !== from)
     : RAW_STATUS_OPTIONS.filter(opt => (FORWARD_STATUS[from] ?? []).includes(opt.value))
 
@@ -248,7 +259,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   // Delete-shipment confirmation box: null = closed, 'single' | 'group' = open with scope
   const [deleteScope, setDeleteScope]                     = useState(null)
 
-  // ── SUPERADMIN separate assign modal ────────────────────────
+  // ── Override-role separate assign modal ─────────────────────
   const [showAssignModal, setShowAssignModal]     = useState(false)
   const [assigningShipment, setAssigningShipment] = useState(null)
   const [assignDriverId, setAssignDriverId]       = useState('')
@@ -288,7 +299,12 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   // ── Derived ───────────────────────────────────────────────────
   const role = user?.role || 'SUPERADMIN'
   const isSuperAdmin = role === 'SUPERADMIN'
-  const isRegularAdmin = !isSuperAdmin
+  // Full status control (free picker + direct assign), as opposed to the scoped, one-step
+  // flows the pipeline roles get. SUPERADMIN and OPERATIONS both dispatch across the whole
+  // board, so they share the same UI; `isRegularAdmin` therefore means "scoped role".
+  const hasStatusOverride = STATUS_OVERRIDE_ROLES.includes(role)
+  const canCreateShipments = SHIPMENT_CREATOR_ROLES.includes(role)
+  const isRegularAdmin = !hasStatusOverride
   // Field roles that use the compact page layout (status dropdown, no tabs, centered detail modal,
   // Dalam Proses/Selesai views).
   const usesFieldLayout = role === 'KEPALA_ARMADA' || role === 'PIC_PABRIK' || role === 'PIC_GUDANG'
@@ -333,12 +349,12 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   // below. They used to be filtered out of SHIPMENTS, which silently returned the wrong
   // answer as soon as the relevant row fell outside the loaded page.
 
-  // Status options for SUPERADMIN status picker
+  // Status options for the override-role status picker
   const statusOptions = selectedShipment ? availableStatusOptions(user?.role, selectedShipment.rawStatus) : []
 
   // Whether the Update Status button should be shown
   const canUpdateStatus = selectedShipment && (() => {
-    if (isSuperAdmin) return statusOptions.length > 0;
+    if (hasStatusOverride) return statusOptions.length > 0;
     const rs = selectedShipment.rawStatus;
     if (role === 'KEPALA_ARMADA') return rs === 'STANDBY';
     if (role === 'PIC_PABRIK') return rs === 'DITUGASKAN' || rs === 'AT_PLANT';
@@ -792,7 +808,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     }
   }
 
-  // ── SUPERADMIN assign modal ───────────────────────────────────
+  // ── Override-role assign modal ────────────────────────────────
   const openAssignModal = (row) => {
     setAssigningShipment(row)
     setAssignDriverId(row.driverId || '')
@@ -1194,7 +1210,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
       }
     }
 
-    // ── SUPERADMIN: generic status picker ────────────────────
+    // ── Override roles: generic status picker ────────────────
     if (!pendingStatus) {
       showToast('Pilih status baru terlebih dahulu.', 'error')
       return
@@ -1205,7 +1221,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
 
   // Modal title / subtitle / submit label
   const getModalTitle = () => {
-    if (!selectedShipment || isSuperAdmin) return 'Update Status Pengiriman'
+    if (!selectedShipment || hasStatusOverride) return 'Update Status Pengiriman'
     if (role === 'KEPALA_ARMADA' && selectedShipment.rawStatus === 'STANDBY') return 'Konfirmasi Ketersediaan Driver'
     if (role === 'KEPALA_ARMADA' && selectedShipment.rawStatus === 'PENDING') return 'Tugaskan Driver & Kendaraan'
     if (role === 'PIC_PABRIK' && selectedShipment.rawStatus === 'DITUGASKAN') return 'Konfirmasi Kedatangan di Pabrik'
@@ -1223,7 +1239,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   const getModalSubtitle = () => {
     if (!selectedShipment) return ''
     const sid = selectedShipment.id.startsWith('#') ? selectedShipment.id : `#${selectedShipment.id}`
-    if (isSuperAdmin) return `${sid} — pilih status baru`
+    if (hasStatusOverride) return `${sid} — pilih status baru`
 
     if (role === 'KEPALA_ARMADA' && selectedShipment.rawStatus === 'STANDBY') return `${sid} — konfirmasi driver & armada sebelum ditugaskan`
     if (role === 'KEPALA_ARMADA' && selectedShipment.rawStatus === 'PENDING') return `${sid} — pilih driver, armada & pabrik`
@@ -1241,7 +1257,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   }
 
   const getSubmitLabel = () => {
-    if (!selectedShipment || isSuperAdmin) return 'Konfirmasi'
+    if (!selectedShipment || hasStatusOverride) return 'Konfirmasi'
     if (role === 'KEPALA_ARMADA' && selectedShipment.rawStatus === 'STANDBY') return 'Konfirmasi & Tugaskan'
     if (role === 'KEPALA_ARMADA' && selectedShipment.rawStatus === 'PENDING') return 'Tugaskan & Simpan'
     if (role === 'PIC_PABRIK' && selectedShipment.rawStatus === 'DITUGASKAN') return 'Konfirmasi Tiba di Pabrik'
@@ -1789,7 +1805,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
       }
     }
 
-    // ── SUPERADMIN: generic status picker ──────────────────────
+    // ── Override roles: generic status picker ──────────────────
     return (
       <div className="flex flex-col gap-5">
         <div className="flex items-center gap-3">
@@ -2201,11 +2217,14 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
           >
             <Icon name="visibility" size={16} />
           </button>
-          {/* SUPERADMIN retains the direct-assign row button; regular admins use the status modal */}
-          {user?.role === 'SUPERADMIN' && (
+          {/* Override roles get the direct-assign row button. They see the free status picker
+              instead of the scoped per-status flows, so without this there would be no path
+              left for them to attach a driver to a PENDING shipment. Scoped roles assign
+              through their own status modal. */}
+          {hasStatusOverride && (
             <button
               className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 bg-gray-100 hover:bg-dash-secondary hover:text-dash-primary transition-colors"
-              title="Tugaskan Driver (SUPERADMIN)"
+              title="Tugaskan Driver"
               onClick={(e) => { e.stopPropagation(); openAssignModal(row) }}
             >
               <Icon name="person_add" size={16} />
@@ -2250,8 +2269,8 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
               </button>
             </div>
           )}
-          {/* Creating shipments is Kepala Armada's job only */}
-          {role === 'KEPALA_ARMADA' && (
+          {/* Kepala Armada raises its own trips; Operations dispatches for clients. */}
+          {canCreateShipments && (
             <>
               {LINK_SHIPMENT_ENABLED && (
                 <button
@@ -2650,7 +2669,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
         document.body
       )}
 
-      {/* ── SUPERADMIN Assign Driver Modal ── */}
+      {/* ── Assign Driver Modal (override roles) ── */}
       {showAssignModal && assigningShipment && (
         <AdminModal
           title="Tugaskan Driver & Armada"

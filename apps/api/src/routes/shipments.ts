@@ -15,6 +15,7 @@ import prisma from "../lib/prisma"
 import { authenticate, adminOnly, AuthRequest } from "../middleware/auth"
 import { sendWhatsApp } from "../services/whatsapp"
 import { canChangeStatus, isReversal, isValidStatus } from "../lib/statusFlow"
+import { roleHas } from "../lib/rbac"
 import { findTransitConflict, mirrorFleetStatus, releaseFleetIfUnused } from "../lib/shipmentStatus"
 
 const router = Router()
@@ -1072,9 +1073,11 @@ router.patch("/:id/status", authenticate, adminOnly, async (req: AuthRequest, re
       })
     }
 
-    // "Di Pabrik" (AT_PLANT) = truck physically arrived at the plant. Only PIC Pabrik may set it
-    // (the DITUGASKAN→AT_PLANT from-state is already enforced by the forward map). SUPERADMIN keeps override.
-    if (status === "AT_PLANT" && req.user!.role !== "PIC_PABRIK" && req.user!.role !== "SUPERADMIN") {
+    // "Di Pabrik" (AT_PLANT) = truck physically arrived at the plant. Normally only PIC Pabrik
+    // may set it (the DITUGASKAN→AT_PLANT from-state is already enforced by the forward map).
+    // Roles holding `status:override` keep the escape hatch — otherwise a shipment stuck
+    // because the plant PIC is unreachable could not be moved by anyone.
+    if (status === "AT_PLANT" && req.user!.role !== "PIC_PABRIK" && !roleHas(req.user!.role, "status:override")) {
       return res.status(403).json({ message: "Hanya PIC Pabrik yang dapat menandai status Di Pabrik." })
     }
 

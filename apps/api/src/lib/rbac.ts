@@ -19,9 +19,14 @@ export type Permission =
   | "admin:manage"    // list/create admins, reset admin passwords, view internal users
 
 // Single source of truth: which roles hold which permissions.
+//
+// OPERATIONS holds `status:override` (granted 2026-09-22, user request): it is the dispatch
+// desk, so it needs to correct a shipment that a pipeline role advanced by mistake, which
+// means moving a status backwards. It deliberately does NOT hold `admin:manage` — managing
+// admin accounts stays with SUPERADMIN.
 const ROLE_PERMISSIONS: Record<string, Permission[]> = {
   SUPERADMIN:    ["status:override", "admin:manage"],
-  OPERATIONS:    [],
+  OPERATIONS:    ["status:override"],
   SUPPORT:       [],
   KEPALA_ARMADA: [],
   PIC_PABRIK:    [],
