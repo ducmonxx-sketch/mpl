@@ -137,6 +137,19 @@ model Admin {
   sessions          Session[]
 
   @@map("admins")
+  // ── 2FA / TOTP (Phase 2d) ────────────────────────────────────────────────────────────────
+  // All nullable so the feature is reversible: reverting the code leaves these unused rather
+  // than breaking anything. Enforcement keys off totpEnabledAt, so an admin is unaffected
+  // until they actually enrol.
+  //
+  // ⚠️ totpSecret is plaintext by necessity — verification recomputes the code from it, so it
+  // cannot be hashed like a password. Encryption at rest (§3 Layer 5) is the control. A DB
+  // dump is equivalent to every enrolled admin's second factor.
+  totpSecret       String?
+  totpEnabledAt    DateTime?
+  // Last accepted 30-second step, to stop the same code being replayed inside its window.
+  totpLastUsedStep Int?
+
 }
 
 // ============================================================

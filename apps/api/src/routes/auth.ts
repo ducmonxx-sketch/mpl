@@ -15,6 +15,8 @@ import { requireTurnstile } from "../lib/turnstile"
 import { startSession, endSession } from "../lib/session"
 import { checkLockout, recordAttempt } from "../lib/loginGuard"
 import { issueCsrfToken, issueCsrfTokenFromRequest } from "../lib/csrf"
+import { isTotpEnforced, generateTotpSecret, totpUri, verifyTotp } from "../lib/totp"
+import { revokeAllSessions } from "../lib/session"
 import { validateBody, registerSchema, loginSchema, emailOnlySchema, changePasswordSchema } from "../lib/validate"
 import { uploadImageField, saveUpload, deleteUpload, ImageProcessingError } from "../lib/upload"
 import { getStorage } from "../lib/storage"
@@ -180,6 +182,31 @@ router.post("/admin/login", requireTurnstile, validateBody(loginSchema), async (
     const token = generateToken(admin.id, admin.role, "admin")
     // Phase 2a: also open a server-side session. The body token stays for now so the
     // existing localStorage frontend keeps working until the 2f cutover.
+    // ── Phase 2d: second factor ──
+    // Only bites when the admin has actually enrolled AND the feature is switched on, so
+    // this is inert for everyone until both are true.
+    if (isTotpEnforced() && admin.totpEnabledAt && admin.totpSecret) {
+      const code = (req.body.totpCode ?? "").trim()
+      if (!code) {
+        // Counted as a failed attempt so the 2c lockout also throttles code guessing —
+        // 6 digits is only a million combinations, which 5-per-15-minutes makes hopeless.
+        await recordAttempt(email, req.ip, false, "admin")
+        return res.status(401).json({ message: "Kode 2FA diperlukan.", totpRequired: true })
+      }
+      const check = await verifyTotp(code, admin.totpSecret, admin.totpLastUsedStep)
+      if (!check.valid) {
+        await recordAttempt(email, req.ip, false, "admin")
+        return res.status(401).json({
+          message: check.reason === "replayed"
+            ? "Kode ini sudah dipakai. Tunggu kode berikutnya."
+            : "Kode 2FA tidak valid.",
+          totpRequired: true,
+        })
+      }
+      // Remember the accepted step so the same code can't be replayed inside its window.
+      await prisma.admin.update({ where: { id: admin.id }, data: { totpLastUsedStep: check.timeStep } })
+    }
+
     const sessionToken = await startSession(res, { id: admin.id, role: admin.role, type: "admin" }, req)
     await recordAttempt(email, req.ip, true, "admin")
     issueCsrfToken(res, sessionToken)
@@ -310,6 +337,93 @@ router.get("/csrf", async (req: AuthRequest, res: Response) => {
   const token = issueCsrfTokenFromRequest(req, res)
   if (!token) return res.status(401).json({ message: "No session." })
   res.json({ csrfToken: token })
+})
+
+// ── Admin 2FA (Phase 2d) ──────────────────────────────────────
+// Enrolment is two steps on purpose: /setup stores a secret but leaves it DISABLED, and
+// /enable only switches it on once the admin has proved a working code. Otherwise a bad
+// scan would lock them out of their own account.
+
+// POST /api/auth/admin/2fa/setup → returns the otpauth URI + the secret to display.
+// The QR is rendered by the admin UI, which keeps a qrcode dependency out of the API.
+router.post("/admin/2fa/setup", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+  try {
+    const admin = await prisma.admin.findUnique({ where: { id: req.user!.id }, select: { email: true, totpEnabledAt: true } })
+    if (!admin) return res.status(404).json({ message: "Admin not found." })
+    if (admin.totpEnabledAt) {
+      return res.status(409).json({ message: "2FA sudah aktif. Matikan dulu sebelum mendaftar ulang." })
+    }
+    const secret = generateTotpSecret()
+    await prisma.admin.update({ where: { id: req.user!.id }, data: { totpSecret: secret, totpLastUsedStep: null } })
+    res.json({
+      secret,                                   // shown as text, for people who can't scan
+      uri: await totpUri(secret, admin.email),  // the admin UI renders this as a QR
+      enabled: false,
+    })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Gagal menyiapkan 2FA." })
+  }
+})
+
+// POST /api/auth/admin/2fa/enable → prove a code, then switch it on.
+router.post("/admin/2fa/enable", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+  try {
+    const admin = await prisma.admin.findUnique({ where: { id: req.user!.id }, select: { totpSecret: true, totpEnabledAt: true } })
+    if (!admin?.totpSecret) return res.status(400).json({ message: "Jalankan setup 2FA terlebih dahulu." })
+    if (admin.totpEnabledAt) return res.status(409).json({ message: "2FA sudah aktif." })
+
+    const check = await verifyTotp(String(req.body?.code ?? ""), admin.totpSecret, null)
+    if (!check.valid) return res.status(400).json({ message: "Kode tidak valid. Coba kode terbaru dari aplikasi." })
+
+    await prisma.admin.update({
+      where: { id: req.user!.id },
+      data: { totpEnabledAt: new Date(), totpLastUsedStep: check.timeStep },
+    })
+    // A change of second factor should not leave older sessions alive elsewhere.
+    await revokeAllSessions({ id: req.user!.id, type: "admin" })
+    res.json({ message: "2FA aktif.", enabled: true })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Gagal mengaktifkan 2FA." })
+  }
+})
+
+// POST /api/auth/admin/2fa/disable → requires a current code, so a hijacked session alone
+// cannot strip the second factor.
+router.post("/admin/2fa/disable", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+  try {
+    const admin = await prisma.admin.findUnique({ where: { id: req.user!.id }, select: { totpSecret: true, totpEnabledAt: true, totpLastUsedStep: true } })
+    if (!admin?.totpEnabledAt || !admin.totpSecret) return res.status(400).json({ message: "2FA belum aktif." })
+
+    const check = await verifyTotp(String(req.body?.code ?? ""), admin.totpSecret, admin.totpLastUsedStep)
+    if (!check.valid) {
+      // "Already used" is a genuinely different failure from "wrong", and saying so avoids
+      // a confusing dead end: a code is only valid for its 30s window and cannot be reused,
+      // so enabling then immediately disabling would otherwise report a correct code as bad.
+      return res.status(400).json({
+        message: check.reason === "replayed"
+          ? "Kode ini sudah dipakai. Tunggu kode berikutnya dari aplikasi."
+          : "Kode tidak valid.",
+      })
+    }
+
+    await prisma.admin.update({
+      where: { id: req.user!.id },
+      data: { totpSecret: null, totpEnabledAt: null, totpLastUsedStep: null },
+    })
+    await revokeAllSessions({ id: req.user!.id, type: "admin" })
+    res.json({ message: "2FA dimatikan.", enabled: false })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Gagal mematikan 2FA." })
+  }
+})
+
+// GET /api/auth/admin/2fa → current state, for the Profil page to render.
+router.get("/admin/2fa", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+  const admin = await prisma.admin.findUnique({ where: { id: req.user!.id }, select: { totpEnabledAt: true } })
+  res.json({ enabled: !!admin?.totpEnabledAt, enforced: isTotpEnforced(), enabledAt: admin?.totpEnabledAt ?? null })
 })
 
 export default router

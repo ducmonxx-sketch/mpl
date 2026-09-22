@@ -110,6 +110,10 @@ export const registerSchema = z.object({
 export const loginSchema = z.object({
   email:    emailField,
   password: loginPasswordField,
+  // Admin 2FA (Phase 2d). Optional: only enrolled admins send it, and clients never do.
+  // MUST be declared here — Zod strips unknown keys, so without it the route would never
+  // see the code even when the browser sent one.
+  totpCode: z.string().trim().max(10).optional(),
 })
 
 export const emailOnlySchema = z.object({ email: emailField })
