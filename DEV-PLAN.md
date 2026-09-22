@@ -3,7 +3,16 @@
 > **Resuming?** Read this first, then [RUNBOOK.md](RUNBOOK.md) (sync + audit) and [CLAUDE.md](CLAUDE.md) (scope).
 > Last updated: **2026-09-22**. Newest work at the top; RUNBOOK §6 has per-session detail.
 
-## 🔜 NEXT SESSION — planned (not built yet), queued 2026-08-07
+## 🔜 NEXT SESSION (updated 2026-09-22) — run the audit fix plan
+A whole-project audit (per-page docs in [docs/pages/](docs/pages/)) produced a ranked fix
+plan: **[client-deployment.md](client-deployment.md)** (what/why + client-rehaul handoff)
+and **[docs/plans/admin-backend-fixes.md](docs/plans/admin-backend-fixes.md)** (step-by-step
+execution guide — start THERE; it pre-makes the decisions). Order: package 4 → 6 → 5 → 8
+(9 = dep-vuln session, ask first). Smoke suite rewritten for cookie+CSRF (50/50 baseline).
+The 2026-08-07 queue below still stands — item 1 overlaps fix 4d (Profil activity log) and
+item 3 overlaps 4d's PATCH /admin/me; do them together when running package 4.
+
+## 🔜 Queued 2026-08-07 (older queue — see note above)
 Continue client-onboarding / admin work. Three items the user queued:
 
 1. **Split activity logs by role — SUPERADMIN vs OPERATIONS.** Today the Beranda "Log Aktivitas" is SUPERADMIN-only and shows `scope=normal` (OPERATIONS/SUPPORT actions lumped together); the superadmin's own log is the deferred Profil-page item. Goal: **separate super-admin actions from operations-admin actions** in the activity view (distinct sections/filters, not one combined feed). Touches `routes/auditLogs.ts` (it already accepts `scope`/`adminId` and returns `admin.role`) + `OverviewSection.jsx` (+ maybe the Profil log). Admin-scope, frontend-heavy.

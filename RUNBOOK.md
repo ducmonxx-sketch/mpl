@@ -241,6 +241,15 @@ For each: file + line (`path:line`), what's wrong, blast radius (admin-only vs s
 
 ## 6. Session Log
 
+### 2026-09-22 (cont.) — Whole-project audit → per-page docs, fix plan, OPERATIONS create-form parity, smoke rewrite (50/50)
+- **Env resync after 2 months away:** pulled `main` `f97bf0c→ba48b2c` (~126 commits: Phase-2 cookie/CSRF/2FA auth, server-side pagination+indexes, image pipeline, magic-link onboarding, condition analytics). `npm install` → `prisma generate` → 12 pending migrations applied → reset+reseed. ⚠️ `.claude/settings.json` is now GIT-TRACKED (came in with main) — local permission churn in it should be discarded, not committed.
+- **Audit (6 parallel doc agents + health checks):** wrote **[docs/pages/](docs/pages/)** — 13 per-page docs + README index for both dashboards (endpoints, load-bearing state, couplings, gotchas, add-a-feature checklists). Added the CLAUDE.md rule: **read the page doc before building on a page; update it in the same commit.**
+- **Findings:** ranked fix plan in **[client-deployment.md](client-deployment.md)** — packages 1–3 (client) → friend's rehaul with handoff notes (🔴 package 3 = live data corruption: client create stores pcs as `weightKg`); packages 4·6·5·8·9 (admin/backend) → **[docs/plans/admin-backend-fixes.md](docs/plans/admin-backend-fixes.md)** step-by-step execution guide written for a cheaper model to run.
+- **OPERATIONS create-form parity (user request):** both creator roles now share the Armada create form (`usesArmadaCreateForm` replaced the `role === 'KEPALA_ARMADA'` checks across validation/payload/JSX); legacy generic form kept in the else-branch marked **FUTURE FEATURE PLAN**; backend `initialStatus` now keys off "driver+vehicle attached" (STANDBY + mirror) instead of the role literal. **Verified live as admin2 (cookie+CSRF): create 201 → STANDBY, fleet mirrored, delete frees.**
+- **Package 7 DONE — smoke suite resurrected:** was dead (Bearer removed by Phase 2; `ops@mpl.com` no longer seeded; seed has no clients). Rewrote to cookie-jar identities + `x-csrf-token`; suite bootstraps its own client from create-klien's `temporaryPassword`; guard test subject OPERATIONS→PIC Gudang (OPS gained `status:override`); added no-legacy-token + CSRF-enforcement asserts; trip 1 now DELIVERED before trip 2 departs (departure guard). **50/50, self-cleaning (7 records removed).**
+- **Verified:** API typecheck 0 · web build green · smoke 50/50. `npm audit`: 30 vulns (1 critical jsPDF) — package 9, ask first.
+- **Server state:** API :3001 + web :5173 running (background). **Not pushed** — commits local, awaiting user OK.
+
 ### 2026-09-17 — Laporan chart: click-a-dot drill-down to the underlying shipments
 - **Synced:** `tier1-infra`, continuation of 2026-09-16's condition-analytics work, same session context (no fresh pull needed).
 - **Built:** user attached a screenshot of the chart's hover tooltip and asked to go one level deeper — clicking a point should list the actual shipments behind that day's/month's numbers, not just the aggregate. Planned via `EnterPlanMode`/`ExitPlanMode` (multi-file, both API + UI) before touching code.
