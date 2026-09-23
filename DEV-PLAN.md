@@ -7,11 +7,22 @@
 A whole-project audit (per-page docs in [docs/pages/](docs/pages/)) produced a ranked fix
 plan: **[client-deployment.md](client-deployment.md)** (what/why + client-rehaul handoff)
 and **[docs/plans/admin-backend-fixes.md](docs/plans/admin-backend-fixes.md)** (step-by-step
-execution guide — start THERE; it pre-makes the decisions). **Packages 4 and 6 are DONE**
-(2026-09-22/23, executed on Sonnet per the plan doc — see RUNBOOK §6; user said "stop at
-package 6" for this session). **Next: package 5 (fleet + tracking integrity) → 8 (dead-code
-sweep).** 9 (dep-vuln upgrade) is its own session, ask first. Smoke suite is at **59/59**
-(cookie+CSRF, self-cleaning) — keep it there.
+execution guide — start THERE; it pre-makes the decisions). **Packages 4, 6, 5 are DONE**
+(2026-09-22/23, executed on Sonnet per the plan doc — see RUNBOOK §6). Smoke suite is at
+**66/66** (cookie+CSRF, self-cleaning) — keep it there.
+
+**Immediate TODO (package 5 cleanup, small):** update `docs/pages/admin-drivers.md`,
+`admin-armada.md`, `tracking-shared.md` for the 5a-5d changes (CLAUDE.md rule — cut short
+by a token-budget stop mid-session, code+tests are done and committed, docs are not).
+
+**Also flagged during 5d, not fixed (needs a product decision):** `TrackingSection.jsx`'s
+Admin Controls ETA-picker and proof-photo upload have been silently no-ops since
+**2026-07-15** (migration `drop_shipment_price_eta` removed the `proofPhoto`/
+`estimatedArrival` columns; `/status` never reads them). Either restore the columns or
+strip that dead UI — see `client-deployment.md` package 5 entry and `tracking-shared.md`.
+
+**Next: package 8 (dead-code sweep + real pagination).** 9 (dep-vuln upgrade) is its own
+session, ask first.
 
 ## 🔜 Queued 2026-08-07 (older queue) — 2 of 3 done, 1 still open
 1. ~~Split activity logs by role~~ — **already done** (predates this note; `auditLogs.ts`

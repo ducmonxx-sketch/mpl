@@ -13,7 +13,7 @@ import prisma from "./prisma"
 // free to take another trip while the serah-terima paperwork is finished. It must come out of
 // this list as well as gaining a RELEASE rule below — otherwise a DITURUNKAN *sibling* would
 // still count as occupying and block the group-aware release of its linked shipments.
-const OCCUPYING = ["STANDBY", "DITUGASKAN", "AT_PLANT", "TRANSIT", "DITERIMA"]
+export const OCCUPYING = ["STANDBY", "DITUGASKAN", "AT_PLANT", "TRANSIT", "DITERIMA"]
 
 // Departure guard: only ONE shipment per driver may be in TRANSIT at a time.
 // Returns the id of a conflicting (different) TRANSIT shipment, or null if clear.

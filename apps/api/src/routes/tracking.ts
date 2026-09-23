@@ -7,6 +7,7 @@
 import { Router, Response } from "express"
 import prisma from "../lib/prisma"
 import { authenticate, adminOnly, AuthRequest } from "../middleware/auth"
+import { isRecordNotFound } from "../lib/prismaErrors"
 
 const router = Router()
 
@@ -149,8 +150,22 @@ router.patch("/events/:eventId", authenticate, adminOnly, async (req: AuthReques
       data:  { currentProgressPercent: progress },
     })
 
+    // Audit log — mirrors the POST handler (which already logs ADD_SHIPMENT_EVENT);
+    // this route previously wrote none at all.
+    await prisma.adminAuditLog.create({
+      data: {
+        adminId:        req.user!.id,
+        actionType:     "UPDATE_SHIPMENT_EVENT",
+        targetTable:    "shipment_events",
+        targetRecordId: event.id,
+        changesSummary: `Updated checkpoint ${event.stepName} (status: ${event.status})`,
+      },
+    })
+
     res.json({ message: "Checkpoint updated.", event })
   } catch (err) {
+    // An unknown eventId previously fell through to a generic 500 (Prisma P2025).
+    if (isRecordNotFound(err)) return res.status(404).json({ message: "Checkpoint not found." })
     console.error(err)
     res.status(500).json({ message: "Failed to update checkpoint." })
   }

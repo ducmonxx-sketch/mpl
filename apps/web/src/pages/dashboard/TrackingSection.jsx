@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import Icon from '../../components/Icon'
 import { useToast } from '../../contexts/ToastContext'
@@ -69,42 +69,51 @@ export default function TrackingSection({ initialSearchQuery = '', isAdmin = fal
   const [timelineData, setTimelineData] = useState([])
   const [timelineLoading, setTimelineLoading] = useState(false)
 
+  // Auto-select from initialSearchQuery must fire once, not on every 8s poll — otherwise
+  // it re-opens a panel the user just closed, resets tempStatus/tempEta, and re-runs the
+  // timeline fetch + open animation every 8 seconds. Reset when the query itself changes
+  // (a fresh "Track Full" jump from another section should still auto-select).
+  const autoSelectedRef = useRef(false)
+  useEffect(() => {
+    autoSelectedRef.current = false
+  }, [initialSearchQuery])
+
+  const fetchTimeline = useCallback(async (shipmentId) => {
+    setTimelineLoading(true)
+    try {
+      const tRes = await trackingAPI.getTimeline(shipmentId)
+      const events = Array.isArray(tRes) ? tRes : (tRes?.data || tRes?.events || [])
+      setTimelineData(
+        events.map((e) => ({
+          id: e.id,
+          stepName: e.stepName || e.step_name || '',
+          location: e.location || '',
+          eventTimestamp: e.eventTimestamp || e.event_timestamp || e.timestamp || '',
+          status: e.status || '',
+          driverNotes: e.driverNotes || e.driver_notes || '',
+        }))
+      )
+    } catch {
+      setTimelineData([])
+    } finally {
+      setTimelineLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     if (selectedShipment) {
       setTempStatus(selectedShipment.rawStatus)
       setPhotoPreview(selectedShipment.proofPhoto)
       // Initialize ETA picker from raw shipment data
       setTempEta(selectedShipment.rawEstimatedArrival || '')
-
-      const fetchTimeline = async () => {
-        setTimelineLoading(true)
-        try {
-          const tRes = await trackingAPI.getTimeline(selectedShipment.id)
-          const events = Array.isArray(tRes) ? tRes : (tRes?.data || tRes?.events || [])
-          setTimelineData(
-            events.map((e) => ({
-              id: e.id,
-              stepName: e.stepName || e.step_name || '',
-              location: e.location || '',
-              eventTimestamp: e.eventTimestamp || e.event_timestamp || e.timestamp || '',
-              status: e.status || '',
-              driverNotes: e.driverNotes || e.driver_notes || '',
-            }))
-          )
-        } catch {
-          setTimelineData([])
-        } finally {
-          setTimelineLoading(false)
-        }
-      }
-      fetchTimeline()
+      fetchTimeline(selectedShipment.id)
     } else {
       setTempStatus('')
       setPhotoPreview(null)
       setTempEta('')
       setTimelineData([])
     }
-  }, [selectedShipment])
+  }, [selectedShipment, fetchTimeline])
 
   const fetchShipments = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true)
@@ -152,14 +161,18 @@ export default function TrackingSection({ initialSearchQuery = '', isAdmin = fal
 
       setShipments(mapped)
 
-      if (initialSearchQuery) {
+      if (initialSearchQuery && !autoSelectedRef.current) {
         const match = mapped.find(
           (sh) =>
             sh.id?.toString().toLowerCase().includes(initialSearchQuery.toLowerCase()) ||
             (sh.package || '').toLowerCase().includes(initialSearchQuery.toLowerCase())
         )
-        // Set without timeline; another useEffect will fetch it
-        if (match) setSelectedShipment(match)
+        // Set without timeline; another useEffect will fetch it. Only once per query —
+        // fetchShipments also runs on the 8s silent poll (see the ref's own comment above).
+        if (match) {
+          setSelectedShipment(match)
+          autoSelectedRef.current = true
+        }
       }
     } catch (err) {
       showToast(err.message || 'Gagal memuat data pengiriman', 'error')
@@ -215,14 +228,16 @@ export default function TrackingSection({ initialSearchQuery = '', isAdmin = fal
     if (newStatus !== 'DELIVERED') {
       setUpdatingStatus(true)
       try {
+        // Was unconditionally sending proofPhoto: null on every non-DELIVERED status
+        // change, wiping any existing proof photo. Only the DELIVERED flow
+        // (handleSaveDeliveredStatus) should ever touch proofPhoto.
         await shipmentsAPI.updateStatus(selectedShipment.id, {
           status: newStatus,
-          proofPhoto: null
         })
         showToast('Status diperbarui!', 'success')
         await fetchShipments()
         setSelectedShipment((prev) =>
-          prev ? { ...prev, rawStatus: newStatus, status: statusDisplayMap[newStatus] || newStatus, proofPhoto: null } : prev
+          prev ? { ...prev, rawStatus: newStatus, status: statusDisplayMap[newStatus] || newStatus } : prev
         )
       } catch (err) {
         showToast(err.message || 'Gagal memperbarui status', 'error')
@@ -311,6 +326,9 @@ export default function TrackingSection({ initialSearchQuery = '', isAdmin = fal
       setShowAddEventModal(false)
       setAddEventForm(EMPTY_ADD_EVENT_FORM)
       await fetchShipments()
+      // fetchShipments only refreshes the list/progress — the new checkpoint was
+      // previously invisible in "Riwayat Perjalanan" until deselect/reselect.
+      await fetchTimeline(selectedShipment.id)
     } catch (err) {
       showToast(err.message || 'Gagal menambahkan checkpoint', 'error')
     }

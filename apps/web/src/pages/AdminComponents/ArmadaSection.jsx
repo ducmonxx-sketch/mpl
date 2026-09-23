@@ -82,6 +82,9 @@ export default function ArmadaSection({ userRole }) {
   const [isEditMode, setIsEditMode] = useState(false)
   const [editingVehicleId, setEditingVehicleId] = useState(null)
   const [status, setStatus] = useState('AVAILABLE')
+  // The vehicle's status as loaded when the edit modal opened — used only to decide
+  // whether "Tersedia" should be disabled (backend 409s this too; this is the UI hint).
+  const [originalStatus, setOriginalStatus] = useState('AVAILABLE')
 
   // Brands state (loaded from backend) & Nested Modal
   const [availableBrands, setAvailableBrands] = useState([])
@@ -271,6 +274,7 @@ export default function ArmadaSection({ userRole }) {
     setServiceDate(serviceDateStr)
 
     setStatus(row.rawStatus || 'AVAILABLE')
+    setOriginalStatus(row.rawStatus || 'AVAILABLE')
     setShowCreateModal(true)
   }
 
@@ -1119,7 +1123,7 @@ export default function ArmadaSection({ userRole }) {
                       onChange={(e) => setStatus(e.target.value)}
                       className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-dash-secondary/20 focus:border-dash-secondary outline-none transition-all bg-gray-50 hover:bg-white focus:bg-white"
                     >
-                      <option value="AVAILABLE">Tersedia</option>
+                      <option value="AVAILABLE" disabled={originalStatus === 'IN_USE'} title={originalStatus === 'IN_USE' ? 'Kendaraan sedang digunakan — tidak bisa dibebaskan manual.' : undefined}>Tersedia</option>
                       <option value="IN_USE">Digunakan</option>
                       <option value="MAINTENANCE">Perawatan</option>
                     </select>

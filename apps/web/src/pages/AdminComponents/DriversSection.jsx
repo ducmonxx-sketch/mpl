@@ -67,6 +67,9 @@ export default function DriversSection({ userRole }) {
   const [isEditMode, setIsEditMode] = useState(false)
   const [editingDriverId, setEditingDriverId] = useState(null)
   const [status, setStatus] = useState('ACTIVE')
+  // The driver's status as loaded when the edit modal opened — used only to decide
+  // whether "Tersedia" should be disabled (backend 409s this too; this is the UI hint).
+  const [originalStatus, setOriginalStatus] = useState('ACTIVE')
 
   const fetchDrivers = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true)
@@ -159,6 +162,7 @@ export default function DriversSection({ userRole }) {
     }
     setLicenseExpiry(expiryDate)
     setStatus(row.rawStatus || 'ACTIVE')
+    setOriginalStatus(row.rawStatus || 'ACTIVE')
     setShowCreateModal(true)
   }
 
@@ -662,10 +666,17 @@ export default function DriversSection({ userRole }) {
                   {[
                     { value: 'ACTIVE', label: 'Tersedia' },
                     { value: 'UNAVAILABLE', label: 'Tidak Aktif' }
-                  ].map(opt => (
+                  ].map(opt => {
+                    // Freeing an ON_DUTY driver to Tersedia by hand would desync from the
+                    // fleet mirror while a shipment still occupies them — backend 409s this
+                    // too (fleet.ts), disabling here just avoids the round-trip.
+                    const disabled = opt.value === 'ACTIVE' && originalStatus === 'ON_DUTY'
+                    return (
                     <button
                       key={opt.value}
                       type="button"
+                      disabled={disabled}
+                      title={disabled ? 'Driver sedang bertugas — tidak bisa dibebaskan manual.' : undefined}
                       onClick={() => setStatus(opt.value)}
                       style={{
                         flex: 1,
@@ -675,14 +686,16 @@ export default function DriversSection({ userRole }) {
                         background: status === opt.value ? 'rgba(254,195,48,0.1)' : '#fff',
                         color: status === opt.value ? 'var(--dash-primary)' : '#64748b',
                         fontWeight: 800,
-                        cursor: 'pointer',
+                        cursor: disabled ? 'not-allowed' : 'pointer',
+                        opacity: disabled ? 0.5 : 1,
                         transition: 'all 0.2s',
                         outline: 'none'
                       }}
                     >
                       {opt.label}
                     </button>
-                  ))}
+                    )
+                  })}
                 </div>
               </AdminFormField>
             )}

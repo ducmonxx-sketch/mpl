@@ -112,6 +112,13 @@ async function call(name, method, path, { as, body, expect = [200, 201] } = {}) 
   await call('GET /fleet/drivers', 'GET', '/api/fleet/drivers', { as: ADMIN })
   await call('GET /fleet/vehicles', 'GET', '/api/fleet/vehicles', { as: ADMIN })
 
+  // 5b: vehicle PATCH duplicate-plate guard (create checked this; PATCH didn't and P2002'd to 500)
+  const vehicle2 = await call('POST /fleet/vehicles (dup-plate probe setup)', 'POST', '/api/fleet/vehicles', { as: ADMIN, body: { type: 'Van', licensePlate: `S${rnd}B` }, expect: [201] })
+  const VEHICLE2 = vehicle2.json.vehicle?.id
+  if (VEHICLE2 && vehicle.json.vehicle?.licensePlate) {
+    await call('PATCH /fleet/vehicles/:id (duplicate plate -> 409)', 'PATCH', `/api/fleet/vehicles/${VEHICLE2}`, { as: ADMIN, body: { licensePlate: vehicle.json.vehicle.licensePlate }, expect: [409] })
+  }
+
   // assign + status + tracking
   if (SHIP && DRIVER && VEHICLE) await call('PATCH /shipments/:id/assign', 'PATCH', `/api/shipments/${encodeURIComponent(SHIP)}/assign`, { as: ADMIN, body: { driverId: DRIVER, vehicleId: VEHICLE } })
   // /assign must mirror the fleet: SHIP went PENDING -> DITUGASKAN on assign, so the
@@ -130,6 +137,8 @@ async function call(name, method, path, { as, body, expect = [200, 201] } = {}) 
     EVENT = ev.json.event?.id
   }
   if (EVENT) await call('PATCH /tracking/events/:id', 'PATCH', `/api/tracking/events/${EVENT}`, { as: ADMIN, body: { status: 'DONE' } })
+  // 5d: unknown eventId previously fell through to a generic 500 (Prisma P2025) — now 404.
+  await call('PATCH /tracking/events/:id (bogus id -> 404)', 'PATCH', '/api/tracking/events/00000000-0000-0000-0000-000000000000', { as: ADMIN, body: { status: 'DONE' }, expect: [404] })
   // finish trip 1 → frees the driver (departure guard allows one TRANSIT per driver,
   // so the pipeline shipment below could not depart while this one is on the road)
   if (SHIP) await call('PATCH /shipments/:id/status (-> DELIVERED, frees driver)', 'PATCH', `/api/shipments/${encodeURIComponent(SHIP)}/status`, { as: ADMIN, body: { status: 'DELIVERED' } })
@@ -139,6 +148,17 @@ async function call(name, method, path, { as, body, expect = [200, 201] } = {}) 
   const SHIP2 = ship2.json.shipment?.id
   if (SHIP2 && DRIVER && VEHICLE) await call('PATCH /shipments/:id/assign (pipeline)', 'PATCH', `/api/shipments/${encodeURIComponent(SHIP2)}/assign`, { as: ADMIN, body: { driverId: DRIVER, vehicleId: VEHICLE } })
   if (SHIP2) await call('PATCH /shipments/:id/status (-> AT_PLANT)', 'PATCH', `/api/shipments/${encodeURIComponent(SHIP2)}/status`, { as: ADMIN, body: { status: 'AT_PLANT' } })
+
+  // 5a: fleet delete guards — DRIVER/VEHICLE are AT_PLANT-occupying SHIP2, so deleting
+  // either must 409 rather than silently null the shipment's FK.
+  if (DRIVER)  await call('DELETE /fleet/drivers/:id (occupied -> 409)', 'DELETE', `/api/fleet/drivers/${DRIVER}`, { as: ADMIN, expect: [409] })
+  if (VEHICLE) await call('DELETE /fleet/vehicles/:id (occupied -> 409)', 'DELETE', `/api/fleet/vehicles/${VEHICLE}`, { as: ADMIN, expect: [409] })
+  // 5c: manual status-edit guard — freeing an occupied driver/vehicle to ACTIVE/AVAILABLE
+  // by hand must also 409 (only the dangerous direction is guarded; UNAVAILABLE/MAINTENANCE
+  // stay unconditionally allowed as the substitute-driver escape hatch, not probed here).
+  if (DRIVER)  await call('PATCH /fleet/drivers/:id (free occupied to ACTIVE -> 409)', 'PATCH', `/api/fleet/drivers/${DRIVER}`, { as: ADMIN, body: { status: 'ACTIVE' }, expect: [409] })
+  if (VEHICLE) await call('PATCH /fleet/vehicles/:id (free occupied to AVAILABLE -> 409)', 'PATCH', `/api/fleet/vehicles/${VEHICLE}`, { as: ADMIN, body: { status: 'AVAILABLE' }, expect: [409] })
+
   if (SHIP2) {
     await call('PATCH /shipments/:id/plant-check', 'PATCH', `/api/shipments/${encodeURIComponent(SHIP2)}/plant-check`, {
       as: ADMIN,
@@ -231,6 +251,7 @@ async function call(name, method, path, { as, body, expect = [200, 201] } = {}) 
   if (SHIP3)      cleaned += (await del(`/api/shipments/${encodeURIComponent(SHIP3)}`)) ? 1 : 0
   if (DRIVER)     cleaned += (await del(`/api/fleet/drivers/${DRIVER}`)) ? 1 : 0
   if (VEHICLE)    cleaned += (await del(`/api/fleet/vehicles/${VEHICLE}`)) ? 1 : 0
+  if (VEHICLE2)   cleaned += (await del(`/api/fleet/vehicles/${VEHICLE2}`)) ? 1 : 0
   if (NEW_ID)     cleaned += (await del(`/api/users/${NEW_ID}`)) ? 1 : 0
   if (NEW_PIC_ID) cleaned += (await del(`/api/users/${NEW_PIC_ID}`)) ? 1 : 0
   console.log(`\n🧹 cleanup: removed ${cleaned} test record(s) (magic_link rows are one-time-use and left inert)`)

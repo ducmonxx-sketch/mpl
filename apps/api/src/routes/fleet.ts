@@ -22,6 +22,7 @@ import { Router, Response } from "express"
 import prisma from "../lib/prisma"
 import { authenticate, adminOnly, AuthRequest } from "../middleware/auth"
 import { flagIfExpired } from "../lib/expiry"
+import { OCCUPYING } from "../lib/shipmentStatus"
 
 const router = Router()
 
@@ -102,6 +103,19 @@ router.patch("/drivers/:id", authenticate, adminOnly, async (req: AuthRequest, r
     const id = req.params.id as string
     const { fullName, phoneNumber, status, licenseNumber, licenseType, licenseExpiry } = req.body
 
+    // Guard the dangerous direction only: freeing a driver to ACTIVE by hand while a
+    // shipment still occupies them would desync from the fleet mirror (lib/shipmentStatus.ts).
+    // UNAVAILABLE stays allowed unconditionally — that's the substitute-driver escape hatch.
+    if (status === "ACTIVE") {
+      const occupying = await prisma.shipment.findFirst({
+        where:  { driverId: id, status: { in: OCCUPYING as any } },
+        select: { id: true },
+      })
+      if (occupying) {
+        return res.status(409).json({ message: `Driver masih terpakai di pengiriman ${occupying.id}.` })
+      }
+    }
+
     const driver = await prisma.driver.update({
       where: { id },
       data: {
@@ -145,6 +159,14 @@ router.delete("/drivers/:id", authenticate, adminOnly, async (req: AuthRequest, 
 
     if (!driver) {
       return res.status(404).json({ message: "Driver not found." })
+    }
+
+    const occupying = await prisma.shipment.findFirst({
+      where:  { driverId: id, status: { in: OCCUPYING as any } },
+      select: { id: true },
+    })
+    if (occupying) {
+      return res.status(409).json({ message: `Driver sedang terpakai di pengiriman ${occupying.id}. Selesaikan atau pindahkan dulu.` })
     }
 
     // Unlink from shipments, clear vehicle pairing, then delete
@@ -261,6 +283,26 @@ router.patch("/vehicles/:id", authenticate, adminOnly, async (req: AuthRequest, 
     const id = req.params.id as string
     const { type, licensePlate, status, stnkExpiry, kirExpiry, serviceDate, chassisNumber, engineNumber, brand, modelName, color } = req.body
 
+    // Create checks licensePlate uniqueness (line ~217); PATCH didn't — a clashing plate
+    // fell through to a generic 500 on the Prisma P2002 unique-constraint error.
+    if (licensePlate) {
+      const clash = await prisma.vehicle.findFirst({ where: { licensePlate, id: { not: id } } })
+      if (clash) return res.status(409).json({ message: "License plate already registered to another vehicle." })
+    }
+
+    // Guard the dangerous direction only: freeing a vehicle to AVAILABLE by hand while a
+    // shipment still occupies it would desync from the fleet mirror (lib/shipmentStatus.ts).
+    // MAINTENANCE stays allowed unconditionally.
+    if (status === "AVAILABLE") {
+      const occupying = await prisma.shipment.findFirst({
+        where:  { vehicleId: id, status: { in: OCCUPYING as any } },
+        select: { id: true },
+      })
+      if (occupying) {
+        return res.status(409).json({ message: `Kendaraan masih terpakai di pengiriman ${occupying.id}.` })
+      }
+    }
+
     const vehicle = await prisma.vehicle.update({
       where: { id },
       data: {
@@ -311,6 +353,14 @@ router.delete("/vehicles/:id", authenticate, adminOnly, async (req: AuthRequest,
 
     if (!vehicle) {
       return res.status(404).json({ message: "Vehicle not found." })
+    }
+
+    const occupying = await prisma.shipment.findFirst({
+      where:  { vehicleId: id, status: { in: OCCUPYING as any } },
+      select: { id: true },
+    })
+    if (occupying) {
+      return res.status(409).json({ message: `Kendaraan sedang terpakai di pengiriman ${occupying.id}. Selesaikan atau pindahkan dulu.` })
     }
 
     // Unlink from any shipments (preserve shipment history), then delete
