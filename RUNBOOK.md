@@ -241,6 +241,13 @@ For each: file + line (`path:line`), what's wrong, blast radius (admin-only vs s
 
 ## 6. Session Log
 
+### 2026-09-25 — Committed + pushed pre-existing uncommitted working tree (KPI/loader/skeleton consolidation)
+- **User asked to "push all the changes to main branch."** Found a large uncommitted working tree already in place (not authored this session) spanning both admin and client-facing files — matches the **2026-09-25 ClientDashboardPage-rework exception** in CLAUDE.md, so in scope.
+- Verified sync first (RUNBOOK §2.1): `main` was exactly `0 ahead / 0 behind origin/main` before and immediately before push — no drift, no stash/merge needed.
+- Content: extracted shared `KPICard`/`Loader`/`Skeleton` into `apps/web/src/components/`, deleted now-dead duplicates (`AdminKPICard.jsx`, `dashboard/components/ShipmentChart.jsx`, `dashboard/components/StatusCards.jsx`), moved `ShipmentConditionChart.jsx` into `components/charts/`, opened `GET /api/shipments/condition-analytics` to authenticated clients (scoped to `clientId`, previously `adminOnly`), touched `ClientDashboardPage`/`dashboard/*` sections and 7 `docs/pages/*.md` files. Full stat: 48 files, +1104/-1500.
+- Committed `b3d58d8` and pushed straight to `main` (fast-forward, no conflicts).
+- **⚠️ Not done this pass:** did not run the full §3 Integration Audit (no cross-reference table, no live smoke test, no `npx tsc`/`vite build`) before pushing — the changes were already-written, uncommitted work from an earlier session/agent, not code authored in this pass, and the user's ask was specifically "push," not "review then push." Flag for next session: run typecheck + smoke + `vite build` against `b3d58d8` to confirm nothing regressed, and check in with the friend's agent given `ClientDashboardPage`/`dashboard/*` are higher-collision per CLAUDE.md.
+
 ### 2026-09-23 (cont.) — Package 5 (fleet + tracking integrity) executed per docs/plans/admin-backend-fixes.md
 - **5a fleet delete guards:** driver/vehicle DELETE now 409s if an OCCUPYING shipment references them (was silently orphaning the shipment's FK). Exported `OCCUPYING` from `lib/shipmentStatus.ts`.
 - **5b vehicle PATCH duplicate-plate check:** create already checked uniqueness; PATCH didn't, so a clashing plate fell through to a Prisma P2002 → generic 500. Now 409 with a clear message.
