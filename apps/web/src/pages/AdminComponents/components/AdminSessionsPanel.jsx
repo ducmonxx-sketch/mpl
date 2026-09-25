@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import Icon from '../../../components/Icon'
+import Loader from '../../../components/Loader'
 import { authAPI } from '../../../lib/api'
 import { useToast } from '../../../contexts/ToastContext'
 
@@ -115,7 +116,10 @@ export default function AdminSessionsPanel() {
       </p>
 
       {loading ? (
-        <p className="text-sm text-gray-400">Memuat...</p>
+        <div className="flex items-center gap-2 text-sm text-gray-400">
+          <Loader size="sm" />
+          Memuat...
+        </div>
       ) : sessions.length === 0 ? (
         <p className="text-sm text-gray-400">Tidak ada sesi aktif.</p>
       ) : (

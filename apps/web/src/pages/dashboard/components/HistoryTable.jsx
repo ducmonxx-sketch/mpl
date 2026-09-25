@@ -1,10 +1,7 @@
 import { useEffect, useRef } from 'react'
 import Icon from '../../../components/Icon'
 import anime from 'animejs'
-
-const STATUS_CLASS = { delivered: 'completed', failed: 'failed', cancelled: 'failed' }
-const STATUS_LABEL = { delivered: 'Selesai', failed: 'Gagal', cancelled: 'Dibatalkan' }
-const ICON_MAP = { delivered: 'check_circle', failed: 'warning', cancelled: 'close' }
+import { getHistoryStatusConfig } from '../shipmentStatus'
 
 export default function HistoryTable({ data, onViewReceipt }) {
   const tableBodyRef = useRef(null)
@@ -23,11 +20,11 @@ export default function HistoryTable({ data, onViewReceipt }) {
   }, [data])
 
   return (
-    <div className="w-full glass-card overflow-hidden rounded-2xl border border-white/20 shadow-[0_8px_32px_rgba(0,36,66,0.05)] bg-white/60 backdrop-blur-xl">
+    <div className="w-full bg-white overflow-hidden rounded-2xl border border-gray-200 shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
       <div className="overflow-x-auto">
         <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="border-b border-white/30 text-[0.65rem] uppercase tracking-wider text-slate-500 font-bold bg-white/20">
+            <tr className="border-b border-gray-200 text-[0.65rem] uppercase tracking-wider text-slate-500 font-bold bg-gray-50">
               <th className="py-4 px-6 font-semibold">ID Pengiriman</th>
               <th className="py-4 px-6 font-semibold">Tanggal</th>
               <th className="py-4 px-6 font-semibold">Rute & Paket</th>
@@ -36,13 +33,15 @@ export default function HistoryTable({ data, onViewReceipt }) {
               <th className="py-4 px-6 font-semibold text-right">Aksi</th>
             </tr>
           </thead>
-          <tbody ref={tableBodyRef} className="divide-y divide-white/20">
-            {data.map((item) => (
-              <tr 
-                key={item.id} 
-                className="group hover:bg-white/40 transition-all duration-300 ease-out opacity-0"
+          <tbody ref={tableBodyRef} className="divide-y divide-gray-100">
+            {data.map((item) => {
+              const status = getHistoryStatusConfig(item.status)
+              return (
+              <tr
+                key={item.id}
+                className="group hover:bg-gray-50 transition-all duration-300 ease-out opacity-0"
               >
-                <td className="py-4 px-6">
+                <td className={`py-4 px-6 border-l-4 ${status.accent}`}>
                   <div className="flex items-center gap-3">
                     <div className="flex items-center justify-center w-8 h-8 rounded-full bg-[var(--dash-secondary)]/20 text-[var(--dash-primary)]">
                       <Icon name="receipt" size={16} />
@@ -70,9 +69,9 @@ export default function HistoryTable({ data, onViewReceipt }) {
                   </div>
                 </td>
                 <td className="py-4 px-6">
-                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide dash-status-pill--${STATUS_CLASS[item.status]}`}>
-                    <Icon name={ICON_MAP[item.status]} size={12} />
-                    {STATUS_LABEL[item.status]}
+                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${status.pill}`}>
+                    <Icon name={status.icon} size={12} />
+                    {status.label}
                   </span>
                 </td>
                 <td className="py-4 px-6 text-right">
@@ -85,7 +84,8 @@ export default function HistoryTable({ data, onViewReceipt }) {
                   </button>
                 </td>
               </tr>
-            ))}
+              )
+            })}
           </tbody>
         </table>
       </div>

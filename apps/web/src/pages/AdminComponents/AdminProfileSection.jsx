@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import Icon from '../../components/Icon'
+import Loader from '../../components/Loader'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
 import { authAPI, auditLogsAPI, BASE_URL } from '../../lib/api'
@@ -345,7 +346,7 @@ export default function AdminProfileSection() {
           <div className="p-6">
             {isLoading ? (
               <div className="flex justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#002442]"></div>
+                <Loader size="md" />
               </div>
             ) : activityLogs.length > 0 ? (
               <div className="space-y-6">

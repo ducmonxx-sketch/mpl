@@ -38,7 +38,8 @@ export default function AdminStatusBadge({ status, type = 'shipment' }) {
   const cfg = configs[type]?.[normStatus] || { label: status, cls: 'bg-gray-100 text-gray-600 border border-gray-200' }
 
   return (
-    <span className={`adm-status-badge inline-flex items-center px-2.5 py-1 rounded-full text-[0.65rem] font-bold uppercase tracking-wider ${cfg.cls}`}>
+    <span className={`adm-status-badge inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[0.65rem] font-bold uppercase tracking-wider ${cfg.cls}`}>
+      <span className="w-1.5 h-1.5 rounded-full bg-current flex-shrink-0" />
       {cfg.label}
     </span>
   )

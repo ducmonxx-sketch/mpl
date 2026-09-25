@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import anime from 'animejs'
 import Icon from '../../components/Icon'
+import Loader from '../../components/Loader'
 import { useToast } from '../../contexts/ToastContext'
 import { useAuth } from '../../contexts/AuthContext'
 import AdminDataTable from './components/AdminDataTable'
@@ -458,11 +459,11 @@ export default function ArmadaSection({ userRole }) {
   }
 
   const filters = [
-    { id: 'all', label: 'Semua' },
-    { id: 'AVAILABLE', label: 'Tersedia' },
-    { id: 'STANDBY', label: 'Standby' },
-    { id: 'IN_USE', label: 'Digunakan' },
-    { id: 'MAINTENANCE', label: 'Perawatan' },
+    { id: 'all', label: 'Semua', dot: null },
+    { id: 'AVAILABLE', label: 'Tersedia', dot: 'bg-green-500' },
+    { id: 'STANDBY', label: 'Standby', dot: 'bg-indigo-500' },
+    { id: 'IN_USE', label: 'Digunakan', dot: 'bg-blue-500' },
+    { id: 'MAINTENANCE', label: 'Perawatan', dot: 'bg-amber-500' },
   ]
 
   const filtered = vehicles.filter((v) => {
@@ -735,7 +736,7 @@ export default function ArmadaSection({ userRole }) {
         </div>
 
         {/* Filters */}
-        <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-px">
+        <div className="flex flex-wrap items-center gap-2">
           {filters.map((f) => {
             const count =
               f.id === 'all'
@@ -745,14 +746,17 @@ export default function ArmadaSection({ userRole }) {
             return (
               <button
                 key={f.id}
-                className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${isActive ? 'border-dash-primary text-dash-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
                 onClick={() => {
                   setFilter(f.id)
                   setCurrentPage(1)
                 }}
+                className={`inline-flex items-center gap-2 pl-3.5 pr-2.5 py-2 rounded-full text-sm font-bold border transition-colors ${
+                  isActive ? 'bg-dash-primary text-white border-dash-primary' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:text-gray-800'
+                }`}
               >
-                {f.label} 
-                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${isActive ? 'bg-dash-primary/10 text-dash-primary' : 'bg-gray-100 text-gray-500'}`}>
+                {f.dot && <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isActive ? 'bg-white' : f.dot}`} />}
+                {f.label}
+                <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${isActive ? 'bg-white/20' : 'bg-gray-100 text-gray-500'}`}>
                   {count}
                 </span>
               </button>
@@ -764,9 +768,9 @@ export default function ArmadaSection({ userRole }) {
       {/* Table */}
       <div style={{ marginTop: '1.25rem' }}>
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--dash-text-muted)' }}>
-            <Icon name="sync" size={28} />
-            <p style={{ marginTop: '0.75rem', fontSize: '0.9rem' }}>Memuat data armada...</p>
+          <div className="flex flex-col items-center justify-center py-12 gap-3 text-gray-400">
+            <Loader size="lg" />
+            <p className="text-sm font-medium">Memuat data armada...</p>
           </div>
         ) : (
           <>
@@ -1143,7 +1147,10 @@ export default function ArmadaSection({ userRole }) {
                 Pasangkan driver utama untuk kendaraan ini (wajib). Driver yang sudah dipasangkan ke kendaraan lain atau tidak tersedia tidak ditampilkan.
               </p>
               {loadingDrivers ? (
-                <div className="text-center py-4 text-gray-400 text-sm">Memuat daftar driver...</div>
+                <div className="flex items-center justify-center gap-2 py-4 text-gray-400 text-sm">
+                  <Loader size="sm" />
+                  Memuat daftar driver...
+                </div>
               ) : (() => {
                 const opts = unpairedDrivers
                 if (opts.length === 0) {
@@ -1199,9 +1206,9 @@ export default function ArmadaSection({ userRole }) {
           submitLabel={pairing ? 'Menyimpan...' : 'Pasangkan Driver'}
         >
           {loadingDrivers ? (
-            <div className="text-center py-6 text-gray-400">
-              <Icon name="sync" size={24} />
-              <p className="mt-2 text-sm">Memuat daftar driver...</p>
+            <div className="flex flex-col items-center justify-center py-6 gap-2 text-gray-400">
+              <Loader size="sm" />
+              <p className="text-sm">Memuat daftar driver...</p>
             </div>
           ) : unpairedDrivers.length === 0 ? (
             <p className="text-sm text-gray-500 text-center py-4">Tidak ada driver bebas untuk dipasangkan.</p>

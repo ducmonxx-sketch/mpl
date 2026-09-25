@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import Icon from '../../components/Icon'
+import Loader from '../../components/Loader'
 import { useToast } from '../../contexts/ToastContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { shipmentsAPI, usersAPI, fleetAPI, authAPI } from '../../lib/api'
@@ -100,7 +101,15 @@ const TAB_TO_STATUSES = {
   diturunkan: ['DITURUNKAN'],
   delivered:  ['DELIVERED'],
   cancelled:  ['CANCELLED', 'FAILED'],
+  // Synthetic bucket for the "Aktif" quick-filter chip — every in-flight status. Not a
+  // real backend status, just a union used by the query param builder + count below.
+  active:     ['PENDING', 'STANDBY', 'DITUGASKAN', 'AT_PLANT', 'TRANSIT', 'DITERIMA', 'DITURUNKAN'],
 }
+
+// The 7 in-flight tab ids collapse into the "Aktif" quick-filter chip; a "Lainnya"
+// dropdown still lets an admin drill into one specific stage. Mirrors the client
+// Shipments page's ACTIVE_STATUSES/getStatusBucket pattern (dashboard/shipmentStatus.js).
+const ACTIVE_TAB_IDS = ['pending', 'standby', 'assigned', 'at_plant', 'in_transit', 'diterima', 'diturunkan']
 
 const ITEMS_PER_PAGE = 25
 // Search hits the API now, so hold off until typing settles.
@@ -193,6 +202,8 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   const [filterService, setFilterService] = useState('all')
   const [filterPlant, setFilterPlant]     = useState('all') // PIC Pabrik: Lokasi Plant (defaults to bound plant)
   const [searchQuery, setSearchQuery]     = useState('')
+  const [lainnyaOpen, setLainnyaOpen]     = useState(false)
+  const lainnyaMenuRef = useRef(null)
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [currentPage, setCurrentPage]     = useState(1)
   // Server-side list state: SHIPMENTS now holds only the current page, so the row count
@@ -509,6 +520,16 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   }, [role])
 
   useEffect(() => { fetchLinkableTrips() }, [fetchLinkableTrips])
+
+  // Close the "Lainnya" status dropdown on an outside click.
+  useEffect(() => {
+    if (!lainnyaOpen) return
+    const onClickOutside = (e) => {
+      if (lainnyaMenuRef.current && !lainnyaMenuRef.current.contains(e.target)) setLainnyaOpen(false)
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [lainnyaOpen])
 
   // Siblings of the open shipment. Fetched per selection rather than filtered out of
   // SHIPMENTS: a sibling can sit outside the loaded page, and an empty sibling set
@@ -1274,7 +1295,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
               <span className="text-sm font-bold text-gray-900">Driver &amp; Armada Saat Ini</span>
               {modalLoading ? (
                 <div className="flex items-center gap-2 p-4 text-gray-400">
-                  <Icon name="sync" size={18} className="animate-spin" />
+                  <Loader size="xs" />
                   <span className="text-xs">Memuat...</span>
                 </div>
               ) : currentShipmentVehicle ? (
@@ -1366,7 +1387,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
 
             {modalLoading ? (
               <div className="flex items-center justify-center p-8 text-gray-400 gap-2">
-                <Icon name="sync" size={20} className="animate-spin" />
+                <Loader size="sm" />
                 <span className="text-sm">Memuat data armada...</span>
               </div>
             ) : assignableVehicles.length === 0 ? (
@@ -2053,7 +2074,13 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
   const totalPages = Math.max(1, Math.ceil(totalCount / ITEMS_PER_PAGE))
 
   const filters = [
-    { id: 'all',        label: 'Semua' },
+    { id: 'all',       label: 'Semua', dot: null },
+    { id: 'active',    label: 'Aktif', dot: 'bg-blue-500' },
+    { id: 'delivered', label: 'Selesai', dot: 'bg-green-500' },
+    { id: 'cancelled', label: 'Dibatalkan', dot: 'bg-red-500' },
+  ]
+
+  const lainnyaTabs = [
     { id: 'pending',    label: 'Menunggu' },
     { id: 'standby',    label: 'Standby' },
     { id: 'assigned',   label: 'Ditugaskan' },
@@ -2061,8 +2088,6 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
     { id: 'in_transit', label: 'Dalam Perjalanan' },
     { id: 'diterima',   label: 'Diterima' },
     { id: 'diturunkan', label: 'Diturunkan' },
-    { id: 'delivered',  label: 'Selesai' },
-    { id: 'cancelled',  label: 'Dibatalkan' },
   ]
 
   // ── Table columns ─────────────────────────────────────────────
@@ -2249,27 +2274,68 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
 
       {/* Status filter tabs */}
       {!usesFieldLayout && (
-        <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-px">
+        <div className="flex flex-wrap items-center gap-2">
           {filters.map(f => {
             // Counts come from /list-meta — SHIPMENTS is one page, so counting it here
             // would show per-page numbers on every tab.
             const count = f.id === 'all'
               ? metaTotal
               : (TAB_TO_STATUSES[f.id] || []).reduce((n, st) => n + (statusCounts[st] || 0), 0)
-            const isActive = filter === f.id
+            const drilled = f.id === 'active' && ACTIVE_TAB_IDS.includes(filter) ? lainnyaTabs.find(t => t.id === filter) : null
+            const isActive = filter === f.id || !!drilled
             return (
               <button
                 key={f.id}
-                className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${isActive ? 'border-dash-primary text-dash-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
                 onClick={() => { setFilter(f.id); setCurrentPage(1) }}
+                className={`inline-flex items-center gap-2 pl-3.5 pr-2.5 py-2 rounded-full text-sm font-bold border transition-colors ${
+                  isActive
+                    ? 'bg-dash-primary text-white border-dash-primary'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:text-gray-800'
+                }`}
               >
-                {f.label}
-                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${isActive ? 'bg-dash-primary/10 text-dash-primary' : 'bg-gray-100 text-gray-500'}`}>
+                {f.dot && <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isActive ? 'bg-white' : f.dot}`} />}
+                {drilled ? drilled.label : f.label}
+                <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${isActive ? 'bg-white/20' : 'bg-gray-100 text-gray-500'}`}>
                   {count}
                 </span>
               </button>
             )
           })}
+
+          <div className="relative" ref={lainnyaMenuRef}>
+            <button
+              onClick={() => setLainnyaOpen(o => !o)}
+              className={`inline-flex items-center gap-1 pl-3.5 pr-2.5 py-2 rounded-full text-sm font-bold border transition-colors ${
+                ACTIVE_TAB_IDS.includes(filter)
+                  ? 'bg-dash-primary/10 text-dash-primary border-dash-primary/30'
+                  : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700'
+              }`}
+            >
+              Lainnya
+              <Icon name={lainnyaOpen ? 'expand_less' : 'expand_more'} size={16} />
+            </button>
+
+            {lainnyaOpen && (
+              <div className="absolute z-20 mt-2 right-0 w-56 bg-white border border-gray-200 rounded-xl shadow-lg py-1.5">
+                {lainnyaTabs.map(t => {
+                  const count = (TAB_TO_STATUSES[t.id] || []).reduce((n, st) => n + (statusCounts[st] || 0), 0)
+                  const isActive = filter === t.id
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => { setFilter(t.id); setCurrentPage(1); setLainnyaOpen(false) }}
+                      className={`w-full flex items-center justify-between gap-2 px-3.5 py-2 text-sm font-semibold text-left transition-colors ${
+                        isActive ? 'bg-gray-50 text-dash-primary' : 'text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
+                      {t.label}
+                      <span className="text-xs font-bold text-gray-400">{count}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -2277,7 +2343,7 @@ export default function ShipmentsSection({ onTrackFull, highlightShipmentId, use
       <div>
         {loading ? (
           <div className="flex flex-col items-center justify-center p-12 text-gray-400 gap-3 border border-dashed border-gray-300 rounded-2xl bg-gray-50/50">
-            <Icon name="sync" size={32} className="animate-spin" />
+            <Loader size="lg" />
             <p className="text-sm font-medium">Memuat data pengiriman...</p>
           </div>
         ) : (

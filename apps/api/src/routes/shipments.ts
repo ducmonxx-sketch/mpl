@@ -322,14 +322,16 @@ router.get("/stats", authenticate, async (req: AuthRequest, res: Response) => {
 })
 
 // ── GET /api/shipments/condition-analytics ────────────────────
-// Admin-only. Perfect-vs-defective unit counts for DELIVERED shipments, keyed off
-// completionDate. ?range=month|quarter|ytd (default month):
+// Perfect-vs-defective unit counts for DELIVERED shipments, keyed off completionDate.
+// Admins see the whole fleet; clients (non-admin) are scoped to their own shipments
+// only, same `clientId` pattern as GET /stats above. ?range=month|quarter|ytd (default month):
 //   - month/quarter: DAILY buckets, first date to last date of the covered month(s).
 //   - ytd: MONTHLY buckets, January through the current month.
 // ?category=all|Unit|Cargo|Container filters to one of the 3 service lines (default all).
-router.get("/condition-analytics", authenticate, adminOnly, async (req: AuthRequest, res: Response) => {
+router.get("/condition-analytics", authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const { range = "month", category = "all" } = req.query
+    const isAdmin = req.user?.type === "admin"
     const now = new Date()
     const monthLabels = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"]
 
@@ -349,6 +351,7 @@ router.get("/condition-analytics", authenticate, adminOnly, async (req: AuthRequ
         status: "DELIVERED",
         completionDate: { gte: startDate, lte: endDate },
         ...(category !== "all" && { shippingCategory: category as string }),
+        ...(!isAdmin && { clientId: req.user!.id }),
       },
       select: {
         completionDate: true,

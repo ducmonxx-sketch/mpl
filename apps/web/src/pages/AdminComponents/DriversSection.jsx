@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import Icon from '../../components/Icon'
+import Loader from '../../components/Loader'
 import { useToast } from '../../contexts/ToastContext'
 import AdminDataTable from './components/AdminDataTable'
 import AdminStatusBadge from './components/AdminStatusBadge'
@@ -228,11 +229,11 @@ export default function DriversSection({ userRole }) {
   }
 
   const filters = [
-    { id: 'all', label: 'Semua' },
-    { id: 'available', label: 'Tersedia' },
-    { id: 'standby', label: 'Standby' },
-    { id: 'on_duty', label: 'On Duty' },
-    { id: 'inactive', label: 'Tidak Aktif' },
+    { id: 'all', label: 'Semua', dot: null },
+    { id: 'available', label: 'Tersedia', dot: 'bg-green-500' },
+    { id: 'standby', label: 'Standby', dot: 'bg-indigo-500' },
+    { id: 'on_duty', label: 'On Duty', dot: 'bg-blue-500' },
+    { id: 'inactive', label: 'Tidak Aktif', dot: 'bg-red-500' },
   ]
 
   const filtered = drivers.filter((d) => {
@@ -416,7 +417,7 @@ export default function DriversSection({ userRole }) {
         </div>
 
         {/* Filters */}
-        <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-px">
+        <div className="flex flex-wrap items-center gap-2">
           {filters.map((f) => {
             const count =
               f.id === 'all'
@@ -426,14 +427,17 @@ export default function DriversSection({ userRole }) {
             return (
               <button
                 key={f.id}
-                className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${isActive ? 'border-dash-primary text-dash-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
                 onClick={() => {
                   setFilter(f.id)
                   setCurrentPage(1)
                 }}
+                className={`inline-flex items-center gap-2 pl-3.5 pr-2.5 py-2 rounded-full text-sm font-bold border transition-colors ${
+                  isActive ? 'bg-dash-primary text-white border-dash-primary' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:text-gray-800'
+                }`}
               >
-                {f.label} 
-                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${isActive ? 'bg-dash-primary/10 text-dash-primary' : 'bg-gray-100 text-gray-500'}`}>
+                {f.dot && <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isActive ? 'bg-white' : f.dot}`} />}
+                {f.label}
+                <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${isActive ? 'bg-white/20' : 'bg-gray-100 text-gray-500'}`}>
                   {count}
                 </span>
               </button>
@@ -445,9 +449,9 @@ export default function DriversSection({ userRole }) {
       {/* Table */}
       <div style={{ marginTop: '1.25rem' }}>
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--dash-text-muted)' }}>
-            <Icon name="sync" size={28} />
-            <p style={{ marginTop: '0.75rem', fontSize: '0.9rem' }}>Memuat data driver...</p>
+          <div className="flex flex-col items-center justify-center py-12 gap-3 text-gray-400">
+            <Loader size="lg" />
+            <p className="text-sm font-medium">Memuat data driver...</p>
           </div>
         ) : (
           <>

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import AdminKPICard from './components/AdminKPICard'
+import KPICard from '../../components/KPICard'
+import Loader from '../../components/Loader'
 import AdminDataTable from './components/AdminDataTable'
 import AdminStatusBadge from './components/AdminStatusBadge'
 import Icon from '../../components/Icon'
@@ -273,8 +274,8 @@ export default function OverviewSection({ onChangeNav, onNavigateToShipment, use
 
   if (loading) {
     return (
-      <div className="flex flex-col justify-center items-center min-h-[400px] text-gray-500">
-        <div className="w-8 h-8 border-4 border-gray-200 border-t-[#fec330] rounded-full animate-spin mb-4" />
+      <div className="flex flex-col justify-center items-center min-h-[400px] text-gray-500 gap-4">
+        <Loader size="lg" />
         <p className="text-sm font-medium">Memuat data beranda...</p>
       </div>
     )
@@ -303,13 +304,13 @@ export default function OverviewSection({ onChangeNav, onNavigateToShipment, use
           
           {/* KPI Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
-            <AdminKPICard icon="local_shipping" label="Pengiriman Aktif" sublabel="Dalam Perjalanan" value={String(kpiData.activeShipments)} trend={`${kpiData.unassignedDrivers} menunggu`} color="primary" delay={0.05} onClick={() => onChangeNav?.('shipments')} />
-            <AdminKPICard icon="receipt" label="Total Pengiriman" sublabel="Semua Transaksi" value={String(kpiData.total || 0)} color="gold" delay={0.1} onClick={() => onChangeNav?.('shipments')} />
+            <KPICard hero icon="local_shipping" label="Pengiriman Aktif" sublabel="Dalam Perjalanan" value={String(kpiData.activeShipments)} trend={`${kpiData.unassignedDrivers} menunggu`} delay={0.05} onClick={() => onChangeNav?.('shipments')} />
+            <KPICard icon="receipt" label="Total Pengiriman" sublabel="Semua Transaksi" value={String(kpiData.total || 0)} color="gold" delay={0.1} onClick={() => onChangeNav?.('shipments')} />
             {!['KEPALA_ARMADA', 'PIC_PABRIK', 'PIC_GUDANG'].includes(userRole) && (
-              <AdminKPICard icon="people" label="Total Klien" sublabel="Perusahaan Terdaftar" value={String(kpiData.totalClients)} color="green" delay={0.15} onClick={() => onChangeNav?.('clients')} />
+              <KPICard icon="people" label="Total Klien" sublabel="Perusahaan Terdaftar" value={String(kpiData.totalClients)} color="green" delay={0.15} onClick={() => onChangeNav?.('clients')} />
             )}
             {!['PIC_PABRIK', 'PIC_GUDANG'].includes(userRole) && (
-              <AdminKPICard icon="directions_car" label="Driver Tersedia" sublabel="Standby" value={String(kpiData.availableDrivers)} color="primary" delay={0.2} onClick={() => onChangeNav?.('drivers')} />
+              <KPICard icon="directions_car" label="Driver Tersedia" sublabel="Standby" value={String(kpiData.availableDrivers)} color="primary" delay={0.2} onClick={() => onChangeNav?.('drivers')} />
             )}
           </div>
 
@@ -382,8 +383,8 @@ export default function OverviewSection({ onChangeNav, onNavigateToShipment, use
               </div>
 
               {activityLoading && activities.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-10 text-gray-400">
-                  <div className="w-6 h-6 border-4 border-gray-200 border-t-[#fec330] rounded-full animate-spin mb-3" />
+                <div className="flex flex-col items-center justify-center py-10 text-gray-400 gap-3">
+                  <Loader size="md" />
                   <p className="text-sm">Memuat aktivitas...</p>
                 </div>
               ) : activities.length === 0 ? (

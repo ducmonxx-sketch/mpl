@@ -41,7 +41,7 @@
 - Users/drivers fetch failure is swallowed as "non-critical" (L237): those KPIs silently show 0.
 
 ## How to add a feature cleanly
-- [ ] New KPI card: add to the grid L306–315, follow existing `AdminKPICard` props (icon/label/value/onClick), gate by `userRole` array-includes like L309/L312.
+- [ ] New KPI card: add to the grid L306–315, follow existing `KPICard` props (icon/label/value/onClick), gate by `userRole` array-includes like L309/L312. **`KPICard` moved to `src/components/KPICard.jsx` (2026-09-25)** — it's shared with the client dashboard's `DashboardSection.jsx` now, so a prop-shape change here affects both.
 - [ ] New feed action type: add the icon rule to `ACTIVITY_VISUALS` (L36–43, specific before generic) AND the translation to `SUMMARY_RULES` (L86–112) matching the backend template verbatim.
 - [ ] New endpoint: add the fn to the right block of `apps/web/src/lib/api.js` (auditLogsAPI L433–437, adminsAPI L440–452 pattern: JSDoc + thin `api.get/post` wrapper).
 - [ ] New role tab: extend `ROLE_TABS`/`ROLE_TAB_SUBTITLE` (L23–32); roles string is passed straight to `?role=` (comma-separated, validated against `admin.role` in Prisma).

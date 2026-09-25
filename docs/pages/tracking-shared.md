@@ -1,5 +1,19 @@
-# Tracking / Pelacakan (SHARED: admin nav `tracking` + client nav `tracking`)
-**File:** `apps/web/src/pages/dashboard/TrackingSection.jsx` (739 lines) · **Roles:** all admin roles + clients; behavior differences via isAdmin/userRole props
+# Tracking / Pelacakan (admin nav `tracking` only — client nav removed 2026-09-25)
+**File:** `apps/web/src/pages/dashboard/TrackingSection.jsx` (739 lines) · **Roles:** all admin roles.
+
+> ⚠️ **Client `tracking` nav removed 2026-09-25.** This component is no longer mounted
+> by `ClientDashboardPage.jsx` — the client sidebar's "Pelacakan" item and the
+> `tracking` case in its nav switch are gone. The client experience was "compressed"
+> into `ShipmentCard.jsx` (`pages/dashboard/components/ShipmentCard.jsx`): expanding a
+> card now lazy-fetches the **full** `trackingAPI.getTimeline` checkpoint list inline
+> (previously it showed only the latest checkpoint; before that, fake hardcoded text —
+> see `client-shipments.md`). The file below still describes the **admin** experience
+> (`isAdmin={true}` at `AdminDashboardPage.jsx`) — still a live, shared-contract
+> component, just single-mount now. `props.isAdmin`/`userRole` guards below are
+> therefore always true/admin in practice, but were left in the component rather than
+> stripped, since removing them would be a structural change to a shared file beyond
+> what was asked. Do not remove the `isAdmin` branching without confirming the client
+> side truly never needs this component mounted again.
 
 ## What it does
 - Lists all shipments the caller can see (`shipmentsAPI.list()`), mapped into display shape with Indonesian status labels (`statusDisplayMap`, L12–18) and formatted ETA (L116–125).
@@ -29,13 +43,13 @@ Proof photos are base64 data-URIs stored on the shipment (`proofPhoto`), compres
 - Checkpoint add: `handleAddEvent` (L302) posts the form, defaults `eventTimestamp` to now if empty (L308).
 
 ## Cross-page couplings
-⚠️ **SHARED CONTRACT** — this one component is mounted by both dashboards:
-- Admin: `AdminDashboardPage.jsx:251` → `<TrackingSection initialSearchQuery={trackingId} isAdmin={true} userRole={displayRole} />`
-- Client: `ClientDashboardPage.jsx:186` → `<TrackingSection initialSearchQuery={trackingId} />` (so `isAdmin=false`, `userRole=undefined`)
-- Everything outside `isAdmin && …` guards (L363, L556, L649) is client-visible: header, search bar, list, detail panel, timeline, proof photo. Changing the mapping in `fetchShipments` (L109–169), the timeline rendering, `statusDisplayMap`, or the props signature (L52) changes the client experience too.
+⚠️ **SHARED CONTRACT** (component-level — only one mount site left as of 2026-09-25):
+- Admin: `AdminDashboardPage.jsx:251` → `<TrackingSection initialSearchQuery={trackingId} isAdmin={true} userRole={displayRole} />` — the only mount site now.
+- ~~Client: `ClientDashboardPage.jsx:186`~~ — **removed 2026-09-25**. The client no longer mounts this component at all; see the notice at the top of this doc. `ClientDashboardPage.jsx` no longer imports `TrackingSection` or carries a `trackingId`/nav-`tracking`-case for it.
+- Everything outside `isAdmin && …` guards (L363, L556, L649) still exists in the code (header, search bar, list, detail panel, timeline, proof photo) but is now only ever seen by admins, since there's no second mount site rendering it with `isAdmin={false}` anymore. Treat changes here as **admin-only impact** going forward — no client regression risk from touching this file.
 - `userRole === 'KEPALA_ARMADA'` hides Admin Controls entirely (L556) — role checks are string-compared against `displayRole` from AdminDashboardPage.
-- Backend routes shared by both: `GET /api/shipments` and `GET /api/tracking/:shipmentId` (client ownership enforced server-side, tracking.ts L39). The write routes are `adminOnly`.
-- Also shared upstream: `trackingId` state in each dashboard page routes other sections ("Track Full") into this component via `initialSearchQuery`.
+- Backend routes still shared: `GET /api/shipments` and `GET /api/tracking/:shipmentId` — the client dashboard reads `GET /api/tracking/:shipmentId` too, but now from `ShipmentCard.jsx`, not from this component. Client ownership enforced server-side (tracking.ts L39). The write routes are `adminOnly`.
+- The `trackingId`/"Track Full" pattern this doc used to describe no longer exists on the client side — it was replaced by `highlightShipmentId` + `navigateToShipment` in `ClientDashboardPage.jsx`, which jump to the `shipments` nav and auto-expand a `ShipmentCard` instead of opening this component. Admin's own `trackingId`/"Track Full" wiring to this component is unaffected.
 
 ## Gotchas
 - **Status label collision:** `STATUS_OPTIONS` labels both `FAILED` and `CANCELLED` as "Dibatalkan" (L26–27), while `statusDisplayMap` shows `FAILED` as "Gagal" (L16). The admin `FILTER_TABS` `FAILED` tab is also labeled "Dibatalkan" (L35) and there is no CANCELLED tab.
@@ -48,9 +62,9 @@ Proof photos are base64 data-URIs stored on the shipment (`proofPhoto`), compres
 - Backend event PATCH writes no audit log (unlike POST) and 500s (not 404s) on unknown `eventId` (tracking.ts L128–157).
 
 ## How to add a feature cleanly
-1. Decide audience first. **Admin-only features must be gated behind `isAdmin` (and `userRole` if role-specific) without changing client-visible behavior** — follow the existing guards at L363 (tabs), L556 (controls), L649 (modal).
+1. This component is admin-only in practice now (single mount site) — new features here don't need an `isAdmin` guard purely for client-safety anymore, though the existing guards (L363, L556, L649) still work correctly and don't need to be removed either.
 2. New state: add `useState` near L55–70; reset it in the `selectedShipment` effect's else-branch (L101–106) and in `handleCloseDetail` (L344–348) if it's per-shipment.
-3. New endpoint call: add to `trackingAPI`/`shipmentsAPI` in `apps/web/src/lib/api.js` (L343–356 / L270–341); keep `encodeURIComponent` on path params. Backend changes go in `apps/api/src/routes/tracking.ts` — keep `authenticate` on reads, `authenticate, adminOnly` on writes, and the client-ownership check (tracking.ts L39–41) intact.
-4. Don't change the props signature (L52) or the shipment mapping keys (L127–150) without checking BOTH mount sites (`AdminDashboardPage.jsx:251`, `ClientDashboardPage.jsx:186`) and anything feeding `initialSearchQuery`.
-5. If you touch timeline data, preserve the camel/snake normalization (L85–92) — events historically arrive in both shapes.
-6. Verify: `cd apps/api && npm run typecheck`; `cd apps/web && npx vite build`. Then smoke both dashboards: admin (any role incl. KEPALA_ARMADA) and a client login on the same shipment.
+3. New endpoint call: add to `trackingAPI`/`shipmentsAPI` in `apps/web/src/lib/api.js`; keep `encodeURIComponent` on path params. Backend changes go in `apps/api/src/routes/tracking.ts` — keep `authenticate` on reads, `authenticate, adminOnly` on writes, and the client-ownership check (tracking.ts L39–41) intact, since `GET /:shipmentId` is still hit by the client dashboard from `ShipmentCard.jsx`.
+4. If you're tempted to re-add a client mount of this whole component, don't — the client's tracking UI now lives in `ShipmentCard.jsx` (see `client-shipments.md`) and was deliberately compressed there instead of restoring a separate page. Extend that component instead.
+5. If you touch timeline data at the API level (`GET /api/tracking/:shipmentId` response shape), check both consumers: this component's normalization (L85–92, handles camel/snake) and `ShipmentCard.jsx`'s plain `data.events` read (expects camelCase only).
+6. Verify: `cd apps/api && npm run typecheck`; `cd apps/web && npx vite build`. Then smoke the admin dashboard's Tracking tab (any role incl. KEPALA_ARMADA) and, separately, a client login expanding a shipment card on the Shipments tab.

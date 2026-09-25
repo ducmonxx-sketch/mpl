@@ -17,20 +17,24 @@ materially, update its doc in the same commit.**
 | `armada` | Armada — vehicle CRUD, pairing, docs expiry | [admin-armada.md](admin-armada.md) |
 | `users` | Admin accounts (SUPERADMIN oversight) | [admin-users.md](admin-users.md) |
 | `profile` | Profil — avatar, password, sessions | [admin-profile.md](admin-profile.md) |
-| `tracking` | Pelacakan (shared component) | [tracking-shared.md](tracking-shared.md) |
+| `tracking` | Pelacakan (was shared, admin-only mount since 2026-09-25) | [tracking-shared.md](tracking-shared.md) |
 
 ## Client dashboard (`/client/dashboard`, `ClientDashboardPage.jsx`)
 
-⚠️ Client pages are **shared contracts** — admin-scope sessions must not modify them
-(note implications for follow-up instead; see CLAUDE.md).
+Client-facing side work is in scope under the 2026-09-25 CLAUDE.md exception (the
+ClientDashboardPage rework) — still coordinate with the friend's agent before pushing
+`main`, since this remains a higher-collision area.
 
 | Nav id | Page | Doc |
 |---|---|---|
 | `dashboard` | Dashboard — stats + chart | [client-dashboard.md](client-dashboard.md) |
-| `shipments` | Pengiriman Saya (+ CreateShipmentModal) | [client-shipments.md](client-shipments.md) |
-| `tracking` | Pelacakan (same shared component) | [tracking-shared.md](tracking-shared.md) |
+| `shipments` | Pengiriman Saya (+ CreateShipmentModal, + full tracking timeline per card) | [client-shipments.md](client-shipments.md) |
 | `history` | Riwayat + Excel export + receipt | [client-history.md](client-history.md) |
 | `settings` | Pengaturan (largely a stub) | [client-settings.md](client-settings.md) |
+
+> `tracking` was removed from the client nav on 2026-09-25 — its content was compressed
+> into the `shipments` page's `ShipmentCard`. The shared `TrackingSection.jsx` component
+> is still admin-only now; see [tracking-shared.md](tracking-shared.md).
 
 ## Reading order for a new session
 1. [context.md](../../context.md) — schema, routes, status flow (project root)

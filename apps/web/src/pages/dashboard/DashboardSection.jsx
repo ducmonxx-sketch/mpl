@@ -1,20 +1,22 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import Icon from '../../components/Icon'
+import KPICard from '../../components/KPICard'
+import ShipmentConditionChart from '../../components/charts/ShipmentConditionChart'
 import { useToast } from '../../contexts/ToastContext'
 import { shipmentsAPI } from '../../lib/api'
 import * as XLSX from 'xlsx'
-import ShipmentChart from './components/ShipmentChart'
-import StatusCards from './components/StatusCards'
 import RecentHistory from './components/RecentHistory'
+import { KPISkeletonRow, ChartSkeleton, ListSkeletonRows } from '../../components/Skeleton'
 
 export default function DashboardSection() {
   const { showToast } = useToast()
   const [activeTab, setActiveTab] = useState('monthly')
   const [isHistoryExpanded, setIsHistoryExpanded] = useState(false)
   const [stats, setStats] = useState(null)
-  const [allShipments, setAllShipments] = useState([])
   const [recentShipments, setRecentShipments] = useState([])
   const [loading, setLoading] = useState(true)
+  const [conditionRange, setConditionRange] = useState('month')
+  const conditionChartRef = useRef(null)
 
   // Fetch stats from API when period changes
   useEffect(() => {
@@ -26,7 +28,6 @@ export default function DashboardSection() {
           shipmentsAPI.list(),
         ])
         setStats(statsData)
-        setAllShipments(shipmentsData.shipments || [])
         // Get the 5 most recent for history
         const recent = (shipmentsData.shipments || []).slice(0, 5)
         setRecentShipments(recent)
@@ -38,60 +39,6 @@ export default function DashboardSection() {
     }
     fetchData()
   }, [activeTab])
-
-  // Map API period to chart display format
-  const chart = useMemo(() => {
-    if (!stats || !allShipments) return null
-
-    const periodLabels = {
-      daily: { labels: ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'] },
-      weekly: { labels: ['Mg 1', 'Mg 2', 'Mg 3', 'Mg 4'] },
-      monthly: { labels: ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'] },
-      yearly: { labels: ['2021', '2022', '2023', '2024', '2025', '2026'] },
-    }
-
-    const config = periodLabels[activeTab] || periodLabels.monthly
-    
-    // Aggregation logic
-    const counts = new Array(config.labels.length).fill(0)
-    const now = new Date()
-
-    allShipments.forEach(s => {
-      const d = new Date(s.createdAt)
-      if (activeTab === 'monthly' && d.getFullYear() === now.getFullYear()) {
-        counts[d.getMonth()]++
-      } else if (activeTab === 'yearly') {
-        const idx = config.labels.indexOf(d.getFullYear().toString())
-        if (idx !== -1) counts[idx]++
-      } else if (activeTab === 'daily') {
-        let dayIdx = d.getDay() - 1
-        if (dayIdx === -1) dayIdx = 6
-        const diffTime = Math.abs(now - d)
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-        if (diffDays <= 7) counts[dayIdx]++
-      } else if (activeTab === 'weekly') {
-        const dateDate = d.getDate()
-        const week = Math.min(Math.floor((dateDate - 1) / 7), 3)
-        if (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) {
-          counts[week]++
-        }
-      }
-    })
-
-    const maxCount = Math.max(...counts, 1)
-    const dataPoints = counts.map((count) => ({
-      value: count,
-      heightPercent: Math.max(5, (count / maxCount) * 100)
-    }))
-
-    return {
-      labels: config.labels,
-      dataPoints,
-      highlightIndex: config.labels.length - 1,
-      metric: `${stats.total}`,
-      change: `${stats.delivered} terkirim, ${stats.transit} transit`,
-    }
-  }, [stats, activeTab, allShipments])
 
   // Map recent shipments to display format
   const recentHistory = useMemo(() => {
@@ -122,15 +69,8 @@ export default function DashboardSection() {
 
   const displayedHistory = isHistoryExpanded ? recentHistory : recentHistory.slice(0, 3)
 
-  // Status cards from stats
-  const statusCardsData = stats ? {
-    total: stats.total,
-    delivered: stats.delivered,
-    transit: stats.transit,
-    failed: stats.failed,
-    pending: stats.pending,
-    cancelled: stats.cancelled,
-  } : null
+  const transitPercent = stats?.total ? Math.round(((stats.transit || 0) / stats.total) * 100) : 0
+  const periodSublabel = activeTab === 'daily' ? 'Hari Ini' : activeTab === 'yearly' ? 'Tahun Ini' : 'Periode Ini'
 
   const handleDownload = () => {
     try {
@@ -159,13 +99,13 @@ export default function DashboardSection() {
     }
   }
 
-  if (loading && !chart) {
+  if (loading && !stats) {
     return (
-      <div className="dash-content" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <div style={{ textAlign: 'center', color: '#64748b' }}>
-          <div style={{ width: 32, height: 32, border: '3px solid #e2e8f0', borderTopColor: '#fec330', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
-          <p style={{ fontSize: '0.9rem' }}>Memuat data dasbor...</p>
-          <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+      <div className="dash-content flex flex-col gap-6">
+        <KPISkeletonRow count={4} />
+        <ChartSkeleton />
+        <div className="rounded-2xl bg-white border border-gray-200 p-6">
+          <ListSkeletonRows count={3} />
         </div>
       </div>
     )
@@ -206,10 +146,14 @@ export default function DashboardSection() {
         </div>
       </section>
 
-      <div className="dash-bento">
-        {chart && <ShipmentChart chart={chart} activeTab={activeTab} />}
-        <StatusCards apiStats={statusCardsData} />
+      <div className="grid grid-cols-2 lg:grid-cols-[1.35fr_1fr_1fr_1fr] gap-4 md:gap-6">
+        <KPICard hero icon="sync" label="Dalam Perjalanan" sublabel={`${transitPercent}% dari total`} value={String(stats?.transit ?? 0)} delay={0.05} />
+        <KPICard icon="inventory_2" label="Total Pengiriman" sublabel={periodSublabel} value={String(stats?.total ?? 0)} color="gold" delay={0.1} />
+        <KPICard icon="check_circle" label="Terkirim" sublabel={periodSublabel} value={String(stats?.delivered ?? 0)} color="green" delay={0.15} />
+        <KPICard icon="warning" label="Perlu Perhatian" sublabel="Paket Bermasalah" value={String(stats?.failed ?? 0)} color={stats?.failed ? 'red' : 'primary'} delay={0.2} />
       </div>
+
+      <ShipmentConditionChart range={conditionRange} onRangeChange={setConditionRange} chartRef={conditionChartRef} />
 
       {/* ── Bottom: History only (map removed) ── */}
       <RecentHistory

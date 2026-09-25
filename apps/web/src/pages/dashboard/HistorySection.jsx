@@ -6,9 +6,13 @@ import { shipmentsAPI } from '../../lib/api'
 import HistoryTabs from './components/HistoryTabs'
 import HistoryTable from './components/HistoryTable'
 import ReceiptModal from './components/ReceiptModal'
+import { HISTORY_STATUS_CONFIG } from './shipmentStatus'
+import { ListSkeletonRows } from '../../components/Skeleton'
 
-const TABS = { all: 'Semua', delivered: 'Selesai', failed: 'Gagal', cancelled: 'Dibatalkan' }
-const STATUS_LABEL = { delivered: 'Terkirim', failed: 'Gagal', cancelled: 'Dibatalkan' }
+const TABS = {
+  all: 'Semua',
+  ...Object.fromEntries(Object.entries(HISTORY_STATUS_CONFIG).map(([key, cfg]) => [key, cfg.label])),
+}
 
 export default function HistorySection() {
   const { showToast } = useToast()
@@ -18,66 +22,14 @@ export default function HistorySection() {
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(true)
 
-  // Fetch completed shipments
+  // Fetch completed shipments — one comma-separated status filter (backend supports it,
+  // shipments.ts:102-106) instead of three parallel requests merged client-side.
   useEffect(() => {
     async function fetchHistory() {
       setLoading(true)
       try {
-        // Fetch all completed status shipments
-        const [delivered, failed, cancelled] = await Promise.all([
-          shipmentsAPI.list({ status: 'DELIVERED' }),
-          shipmentsAPI.list({ status: 'FAILED' }),
-          shipmentsAPI.list({ status: 'CANCELLED' }),
-        ])
-
-        let all = [
-          ...(delivered.shipments || []),
-          ...(failed.shipments || []),
-          ...(cancelled.shipments || []),
-        ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-
-        if (all.length === 0) {
-          all = [
-            {
-              id: 'MPL-882194',
-              packageType: 'Alat Berat - Excavator PC200',
-              originLocation: 'Jakarta (Tanjung Priok)',
-              destinationLocation: 'Surabaya (Tanjung Perak)',
-              status: 'DELIVERED',
-              createdAt: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
-              completionDate: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString()
-            },
-            {
-              id: 'MPL-882195',
-              packageType: 'Sparepart Mesin Industri',
-              originLocation: 'Bandung',
-              destinationLocation: 'Semarang',
-              status: 'FAILED',
-              createdAt: new Date(Date.now() - 1000 * 60 * 60 * 72).toISOString(),
-              completionDate: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString()
-            },
-            {
-              id: 'MPL-882196',
-              packageType: 'Pipa Baja Besi',
-              originLocation: 'Medan',
-              destinationLocation: 'Palembang',
-              status: 'CANCELLED',
-              createdAt: new Date(Date.now() - 1000 * 60 * 60 * 120).toISOString(),
-              completionDate: new Date(Date.now() - 1000 * 60 * 60 * 100).toISOString()
-            },
-            {
-              id: 'MPL-882197',
-              packageType: 'Material Konstruksi',
-              originLocation: 'Makassar',
-              destinationLocation: 'Manado',
-              status: 'DELIVERED',
-              createdAt: new Date(Date.now() - 1000 * 60 * 60 * 240).toISOString(),
-              completionDate: new Date(Date.now() - 1000 * 60 * 60 * 200).toISOString()
-            }
-          ]
-        }
-
-        setHistory(all)
+        const data = await shipmentsAPI.list({ status: 'DELIVERED,FAILED,CANCELLED' })
+        setHistory(data.shipments || [])
       } catch (err) {
         console.error('Failed to fetch history:', err)
       } finally {
@@ -106,6 +58,8 @@ export default function HistorySection() {
         ? completedAt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
         : '-',
       duration,
+      proofUrl: s.serahTerimaUrl || null,
+      handoverNotes: s.handoverNotes || null,
     }
   })
 
@@ -123,7 +77,7 @@ export default function HistorySection() {
         'Deskripsi': h.desc,
         'Asal': h.origin,
         'Tujuan': h.dest,
-        'Status': STATUS_LABEL[h.status] || h.status,
+        'Status': HISTORY_STATUS_CONFIG[h.status]?.label || h.status,
         'Tanggal': h.date,
         'Selesai': h.completedAt,
         'Durasi': h.duration
@@ -142,7 +96,7 @@ export default function HistorySection() {
   return (
     <div className="flex flex-col gap-6">
       {/* Header */}
-      <section className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 bg-white/40 backdrop-blur-md p-6 rounded-2xl border border-white/50 shadow-sm">
+      <section className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 bg-white p-6 rounded-2xl border border-gray-200 shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
         <div>
           <h2 className="text-3xl font-extrabold text-[var(--dash-primary)] tracking-tight mb-1">Riwayat Pengiriman</h2>
           <p className="text-slate-600 text-sm font-medium">Catatan lengkap semua pengiriman yang telah selesai.</p>
@@ -175,15 +129,19 @@ export default function HistorySection() {
       {/* History Table */}
       <div>
         {loading ? (
-          <div className="flex flex-col items-center justify-center p-16 glass-card rounded-2xl text-slate-400">
-            <div className="w-8 h-8 border-4 border-slate-200 border-t-[var(--dash-secondary)] rounded-full animate-spin mb-4" />
-            <p className="font-semibold text-slate-600">Memuat riwayat...</p>
+          <div className="bg-white border border-gray-200 rounded-2xl p-4">
+            <ListSkeletonRows count={5} />
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-16 glass-card rounded-2xl text-slate-400">
-            <Icon name="history" size={48} />
-            <p className="mt-4 font-semibold text-slate-600">
+          <div className="flex flex-col items-center text-center py-16 px-6 bg-white border border-dashed border-gray-200 rounded-2xl">
+            <div className="w-14 h-14 rounded-2xl bg-gray-50 text-gray-300 flex items-center justify-center mb-4">
+              <Icon name="history" size={28} />
+            </div>
+            <p className="text-sm font-bold text-gray-600">
               {searchQuery ? 'Tidak ada riwayat yang cocok dengan pencarian.' : 'Belum ada riwayat pengiriman.'}
+            </p>
+            <p className="text-xs text-gray-400 mt-1">
+              {searchQuery ? 'Coba kata kunci lain.' : 'Riwayat akan muncul di sini setelah pengiriman selesai.'}
             </p>
           </div>
         ) : (
@@ -199,7 +157,11 @@ export default function HistorySection() {
         <ReceiptModal
           item={activeReceiptItem}
           onClose={() => setActiveReceiptId(null)}
-          onDownload={() => showToast('Manifes PDF berhasil diunduh.', 'success')}
+          // No PDF generation exists — this opens the real handover proof file instead of
+          // the old fake "success" toast that downloaded nothing. ReceiptModal disables
+          // the button entirely when there's no proofUrl, so this is only ever called
+          // when one exists.
+          onDownload={() => window.open(activeReceiptItem.proofUrl, '_blank', 'noopener,noreferrer')}
         />
       )}
     </div>

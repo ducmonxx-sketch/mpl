@@ -2,10 +2,10 @@ import Icon from '../../../components/Icon'
 
 export default function SecurityAccess({ onUpdateCredentials }) {
   return (
-    <div className="relative w-full glass-card overflow-hidden rounded-3xl border border-white/20 shadow-[0_8px_32px_rgba(0,36,66,0.05)] bg-white/60 backdrop-blur-xl">
+    <div className="relative w-full bg-white rounded-3xl border border-gray-200 shadow-[0_2px_10px_rgba(0,0,0,0.02)] overflow-hidden">
       <div className="p-8">
         <div className="flex items-center gap-4 mb-8">
-          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-slate-200/50 text-slate-600">
+          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-[var(--dash-primary)]/10 text-[var(--dash-primary)]">
             <Icon name="shield" size={24} />
           </div>
           <div>

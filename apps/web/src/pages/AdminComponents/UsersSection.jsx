@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import Icon from '../../components/Icon'
+import Loader from '../../components/Loader'
 import { useToast } from '../../contexts/ToastContext'
 import AdminDataTable from './components/AdminDataTable'
 import AdminModal from './components/AdminModal'
@@ -267,7 +268,10 @@ export default function UsersSection() {
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>Memuat data admin...</div>
+        <div className="flex flex-col items-center justify-center py-12 gap-3 text-gray-400">
+          <Loader size="lg" />
+          <p className="text-sm font-medium">Memuat data admin...</p>
+        </div>
       ) : (
         <div style={{ marginTop: '1rem' }}>
           <AdminDataTable columns={columns} data={admins} onRowClick={setSelectedAdmin} />

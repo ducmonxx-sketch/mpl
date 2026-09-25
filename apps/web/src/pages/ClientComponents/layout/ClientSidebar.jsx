@@ -7,7 +7,6 @@ export const NAV_GROUPS = [
     items: [
       { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
       { id: 'shipments', label: 'Pengiriman', icon: 'local_shipping' },
-      { id: 'tracking', label: 'Pelacakan', icon: 'location_on' },
       { id: 'history', label: 'Riwayat', icon: 'history' },
     ]
   },

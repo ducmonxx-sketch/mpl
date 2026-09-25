@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import Icon from '../../../components/Icon'
+import Loader from '../../../components/Loader'
 import { shipmentsAPI } from '../../../lib/api'
 import { useToast } from '../../../contexts/ToastContext'
 
@@ -193,7 +194,10 @@ export default function ServiceLineSummary({ range, chartRef }) {
         </div>
 
         {loading ? (
-          <div className="flex items-center justify-center h-16 text-gray-400 text-sm">Memuat data...</div>
+          <div className="flex items-center justify-center gap-2 h-16 text-gray-400 text-sm">
+            <Loader size="sm" />
+            Memuat data...
+          </div>
         ) : grandTotal === 0 ? (
           <div className="flex items-center justify-center h-16 text-gray-400 text-sm">Belum ada pengiriman selesai pada periode ini.</div>
         ) : (

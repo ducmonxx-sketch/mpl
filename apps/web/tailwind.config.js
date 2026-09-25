@@ -36,6 +36,20 @@ export default {
                 slow: "500ms",   // section-level reveals, overlay fades
                 zoom: "2000ms",  // deliberate slow photo hover-zoom (hero/about images)
             },
+            keyframes: {
+                "loader-glide": {
+                    "0%": { transform: "translateX(-100%)" },
+                    "100%": { transform: "translateX(300%)" },
+                },
+                "loader-shimmer": {
+                    "0%": { backgroundPosition: "200% 0" },
+                    "100%": { backgroundPosition: "-200% 0" },
+                },
+            },
+            animation: {
+                "loader-glide": "loader-glide 1.6s cubic-bezier(0.65,0,0.35,1) infinite",
+                "loader-shimmer": "loader-shimmer 2.5s linear infinite",
+            },
         },
     },
     plugins: [],

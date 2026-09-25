@@ -1,5 +1,5 @@
 # Laporan (admin · nav id `laporan`)
-**File:** `apps/web/src/pages/AdminComponents/ReportSection.jsx` (43 lines) — thin shell over `components/ShipmentConditionChart.jsx` (169), `components/ServiceLineSummary.jsx` (232), `components/ConditionDetailPage.jsx` (159). · **Roles:** SUPERADMIN/OPERATIONS/SUPPORT. Pipeline roles (KEPALA_ARMADA/PIC_PABRIK/PIC_GUDANG) never see it: the sidebar hides `laporan` for them (`AdminSidebar.jsx` L57–62) AND `AdminDashboardPage.jsx` L241–244 re-routes `laporan` to `OverviewSection` for those roles (defense in depth). No per-role differences inside the section itself.
+**File:** `apps/web/src/pages/AdminComponents/ReportSection.jsx` (43 lines) — thin shell over `src/components/charts/ShipmentConditionChart.jsx` (169, **moved from `AdminComponents/components/` on 2026-09-25** — now shared with the client dashboard's `DashboardSection.jsx`), `components/ServiceLineSummary.jsx` (232), `components/ConditionDetailPage.jsx` (159). · **Roles:** SUPERADMIN/OPERATIONS/SUPPORT. Pipeline roles (KEPALA_ARMADA/PIC_PABRIK/PIC_GUDANG) never see it: the sidebar hides `laporan` for them (`AdminSidebar.jsx` L57–62) AND `AdminDashboardPage.jsx` L241–244 re-routes `laporan` to `OverviewSection` for those roles (defense in depth). No per-role differences inside the section itself.
 
 ## What it does
 - Condition/success analytics for the shipment pipeline, split out of Beranda (header comment, ReportSection L6–14).
@@ -14,7 +14,8 @@
 | `shipmentsAPI.getConditionAnalytics(range, category)` | `GET /api/shipments/condition-analytics` | chart buckets (ShipmentConditionChart L81); called 3× in parallel, once per category, by ServiceLineSummary L71 |
 | `shipmentsAPI.getConditionDetail(period, category)` | `GET /api/shipments/condition-analytics/detail` | drill-down shipment list (ConditionDetailPage L27) |
 
-Both endpoints are `authenticate, adminOnly` (shipments.ts L319, L397). Detail validates `period` against `/^\d{4}-\d{2}(-\d{2})?$/` → 400 otherwise (L400–402) and caps at 200 rows (`take: 200`, L427) while returning the true `total`.
+`/condition-analytics/detail` is still `authenticate, adminOnly` (shipments.ts L408) and validates `period` against `/^\d{4}-\d{2}(-\d{2})?$/` → 400 otherwise, caps at 200 rows (`take: 200`) while returning the true `total`.
+**`/condition-analytics` itself is no longer admin-only (2026-09-25)** — it's `authenticate` only now, scoped by `clientId` for non-admins (same `isAdmin` pattern as `/stats`), so the client dashboard's chart can call it for the caller's own shipments. Admins still see fleet-wide data (no `clientId` filter applied for `req.user.type === 'admin'`).
 
 ## Key state & flows
 - ReportSection: `range` (`'month'|'quarter'|'ytd'`, L16), `drillDown` (`{ period, label, category } | null`, L17), `chartRef` (L18) — owned here because the summary card's PDF export snapshots the sibling chart's SVG.
@@ -28,6 +29,7 @@ Both endpoints are `authenticate, adminOnly` (shipments.ts L319, L397). Detail v
 - `onNavigateToShipment` threads AdminDashboardPage → ReportSection → ConditionDetailPage (L142): jumps to the real record in Pengiriman via `shipmentHighlightId` — same mechanism Overview uses.
 - Data source: `plantCheck.lku[].arrivedDefective` — the arrival-condition flag ticked at handover (shipments.ts L344, L977 comment). Changing the plant-check/LKU schema breaks both endpoints.
 - `shippingCategory` vocabulary (`'Unit'|'Cargo'|'Container'`) is shared with ShipmentsSection.jsx (ShipmentConditionChart L58–65); labels are Indonesian, values stay English.
+- `ShipmentConditionChart` now lives at `src/components/charts/ShipmentConditionChart.jsx` and is also rendered by the client dashboard's `DashboardSection.jsx` — see [client-dashboard.md](client-dashboard.md).
 - SVG→PNG rasterization technique is duplicated from ShipmentsSection's Surat Jalan generator (ServiceLineSummary L21).
 
 ## Gotchas
@@ -39,8 +41,9 @@ Both endpoints are `authenticate, adminOnly` (shipments.ts L319, L397). Detail v
 
 ## How to add a feature cleanly
 - [ ] New report card: add it under the fragment in ReportSection L36–39; take `range` as a prop so all cards describe the same period; keep per-card filters local (chart's `category` pattern).
-- [ ] New analytics endpoint: follow shipments.ts L313–390 (authenticate + adminOnly, bucket loop with null-for-future); add the api.js fn next to `getConditionAnalytics`/`getConditionDetail` (api.js L279–285).
+- [ ] New analytics endpoint: follow shipments.ts's `/condition-analytics` (authenticate + isAdmin-conditional clientId scoping, bucket loop with null-for-future) or `/condition-analytics/detail` (authenticate + adminOnly) depending on whether clients should reach it; add the api.js fn next to `getConditionAnalytics`/`getConditionDetail` (api.js L279–285).
 - [ ] New drill-down column: extend `columns` in ConditionDetailPage L38–75 and select the field in the detail endpoint (shipments.ts L429–436).
 - [ ] Extending the PDF: it must stay single-page A4; the table starts at dynamic `y` after the chart image (ServiceLineSummary L153).
-- [ ] Do NOT break: the `laporan` pipeline-role fall-through in AdminDashboardPage L241–244, the `period` regex contract of `/detail`, or `chartRef` ownership in ReportSection (siblings depend on it).
+- [ ] `ShipmentConditionChart` is shared with the client dashboard — a prop-shape change (e.g. requiring `onPointClick`) breaks `DashboardSection.jsx`, which intentionally omits it (no drill-down for clients). Keep new props optional.
+- [ ] Do NOT break: the `laporan` pipeline-role fall-through in AdminDashboardPage L241–244, the `period` regex contract of `/detail`, the `clientId` scoping on `/condition-analytics`, or `chartRef` ownership in ReportSection (siblings depend on it).
 - [ ] Verify: `cd apps/api && npm run typecheck` then `cd apps/web && npx vite build`.

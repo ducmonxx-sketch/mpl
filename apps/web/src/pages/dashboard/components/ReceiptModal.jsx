@@ -1,17 +1,13 @@
 import { useEffect, useRef } from 'react'
 import anime from 'animejs'
 import Icon from '../../../components/Icon'
-
-const STATUS_LABEL = { delivered: 'Terkirim', failed: 'Gagal', cancelled: 'Dibatalkan' }
-const STATUS_CLASS = { delivered: 'text-[#005312] bg-[#005312]/10', failed: 'text-[#ba1a1a] bg-[#ba1a1a]/10', cancelled: 'text-[#ba1a1a] bg-[#ba1a1a]/10' }
+import { getHistoryStatusConfig } from '../shipmentStatus'
 
 export default function ReceiptModal({ item, onClose, onDownload }) {
   const h = item
+  const status = getHistoryStatusConfig(h.status)
   const modalRef = useRef(null)
   const overlayRef = useRef(null)
-  
-  // Mock image for Proof of Delivery
-  const proofImage = "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?q=80&w=600&auto=format&fit=crop"
 
   useEffect(() => {
     // Entrance animations
@@ -89,7 +85,7 @@ export default function ReceiptModal({ item, onClose, onDownload }) {
             </button>
           </div>
 
-          <div className="flex items-center justify-between p-4 bg-[var(--dash-primary)]/5 rounded-2xl border border-[var(--dash-primary)]/10">
+          <div className={`flex items-center justify-between p-4 bg-[var(--dash-primary)]/5 rounded-2xl border border-[var(--dash-primary)]/10 border-l-4 ${status.accent}`}>
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 flex items-center justify-center bg-white rounded-xl shadow-sm text-[var(--dash-primary)]">
                 <Icon name="local_shipping" size={24} />
@@ -99,8 +95,9 @@ export default function ReceiptModal({ item, onClose, onDownload }) {
                 <p className="text-lg font-black text-[var(--dash-primary)] tracking-tight">{h.id}</p>
               </div>
             </div>
-            <div className={`px-4 py-2 text-xs font-black uppercase tracking-wider rounded-xl shadow-inner ${STATUS_CLASS[h.status]}`}>
-              {STATUS_LABEL[h.status]}
+            <div className={`inline-flex items-center gap-1.5 px-4 py-2 text-xs font-black uppercase tracking-wider rounded-xl shadow-inner ${status.pill}`}>
+              <span className="w-1.5 h-1.5 rounded-full bg-current flex-shrink-0" />
+              {status.label}
             </div>
           </div>
         </div>
@@ -134,35 +131,47 @@ export default function ReceiptModal({ item, onClose, onDownload }) {
             </div>
           </div>
 
-          {/* Proof of Delivery Image (Hardcoded) */}
+          {/* Proof of Delivery — real serahTerimaUrl recorded by Kepala Gudang at handover,
+              not the stock photo this modal used to show regardless of the real shipment. */}
           <div className="mb-4 receipt-anim">
             <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
               <Icon name="photo_camera" size={16} /> Bukti Pengiriman (Proof of Delivery)
             </h4>
-            <div className="relative w-full h-48 rounded-2xl overflow-hidden group border-2 border-slate-100 shadow-sm">
-              <img 
-                src={proofImage} 
-                alt="Proof of Delivery" 
-                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">
-                <p className="text-white text-xs font-bold uppercase tracking-wider drop-shadow-md">
-                  Diunggah oleh Kurir
-                </p>
+            {h.proofUrl ? (
+              <div className="relative w-full h-48 rounded-2xl overflow-hidden group border-2 border-slate-100 shadow-sm">
+                <img
+                  src={h.proofUrl}
+                  alt="Bukti serah terima"
+                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                  onError={(e) => { e.currentTarget.style.display = 'none' }}
+                />
+                {h.handoverNotes && (
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">
+                    <p className="text-white text-xs font-bold drop-shadow-md">
+                      {h.handoverNotes}
+                    </p>
+                  </div>
+                )}
               </div>
-            </div>
+            ) : (
+              <div className="w-full h-32 rounded-2xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 gap-1">
+                <Icon name="image" size={28} />
+                <p className="text-xs font-semibold">Belum ada bukti pengiriman yang diunggah.</p>
+              </div>
+            )}
           </div>
 
         </div>
         
         {/* Footer Actions */}
         <div className="p-8 pt-4 shrink-0 bg-slate-50/80 border-t border-slate-100 receipt-anim">
-          <button 
-            onClick={onDownload} 
-            className="w-full py-4 flex items-center justify-center gap-2 bg-[var(--dash-secondary)] text-[var(--dash-primary)] text-sm font-black uppercase tracking-wider rounded-xl shadow-[0_4px_20px_rgba(254,195,48,0.3)] hover:shadow-[0_8px_30px_rgba(254,195,48,0.4)] hover:-translate-y-0.5 active:scale-95 transition-all duration-300"
+          <button
+            onClick={onDownload}
+            disabled={!h.proofUrl}
+            className="w-full py-4 flex items-center justify-center gap-2 bg-[var(--dash-secondary)] text-[var(--dash-primary)] text-sm font-black uppercase tracking-wider rounded-xl shadow-[0_4px_20px_rgba(254,195,48,0.3)] hover:shadow-[0_8px_30px_rgba(254,195,48,0.4)] hover:-translate-y-0.5 active:scale-95 transition-all duration-300 disabled:opacity-40 disabled:pointer-events-none disabled:shadow-none disabled:translate-y-0"
           >
-            <Icon name="download" size={20} /> 
-            Unduh Dokumen PDF
+            <Icon name="download" size={20} />
+            {h.proofUrl ? 'Lihat Bukti Pengiriman' : 'Dokumen Belum Tersedia'}
           </button>
         </div>
 

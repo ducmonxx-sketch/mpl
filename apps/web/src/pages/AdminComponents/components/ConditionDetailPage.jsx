@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import Icon from '../../../components/Icon'
+import Loader from '../../../components/Loader'
 import AdminDataTable from './AdminDataTable'
 import { shipmentsAPI } from '../../../lib/api'
 
@@ -103,7 +104,10 @@ export default function ConditionDetailPage({ period, label, category, onBack, o
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center h-32 text-gray-400 text-sm">Memuat data...</div>
+        <div className="flex items-center justify-center gap-2 h-32 text-gray-400 text-sm">
+          <Loader size="sm" />
+          Memuat data...
+        </div>
       ) : error ? (
         <div className="flex items-center justify-center h-32 text-gray-400 text-sm">Gagal memuat detail pengiriman.</div>
       ) : (

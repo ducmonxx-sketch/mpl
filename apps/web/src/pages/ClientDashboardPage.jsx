@@ -3,10 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import anime from 'animejs'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
-import { shipmentsAPI } from '../lib/api'
+import { shipmentsAPI, notificationsAPI } from '../lib/api'
 import DashboardSection from './dashboard/DashboardSection'
 import ShipmentsSection from './dashboard/ShipmentsSection'
-import TrackingSection from './dashboard/TrackingSection'
 import HistorySection from './dashboard/HistorySection'
 import SettingsSection from './dashboard/SettingsSection'
 import CreateShipmentModal from '../components/ClientComponents/CreateShipmentModal'
@@ -56,7 +55,7 @@ export default function ClientDashboardPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [showSearchDropdown, setShowSearchDropdown] = useState(false)
   const [searchResults, setSearchResults] = useState([])
-  const [trackingId, setTrackingId] = useState('')
+  const [highlightShipmentId, setHighlightShipmentId] = useState('')
   const searchWrapperRef = useRef(null)
 
   // Refresh trigger for child sections after shipment creation
@@ -64,63 +63,65 @@ export default function ClientDashboardPage() {
 
   // Notification state
   const [showNotifPanel, setShowNotifPanel] = useState(false)
-  const [notifications, setNotifications] = useState([
-    {
-      id: 1,
-      category: 'shipment',
-      title: 'Pengiriman Dalam Perjalanan',
-      message: 'Pengiriman SHP-9821 sedang dalam perjalanan menuju gudang transit di Surabaya.',
-      isRead: false,
-      createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-      linkTo: 'tracking',
-      linkId: 'SHP-9821'
-    },
-    {
-      id: 3,
-      category: 'alert',
-      title: 'Kendala Cuaca',
-      message: 'Pengiriman SHP-1123 mengalami sedikit penundaan akibat cuaca buruk di area tujuan.',
-      isRead: true,
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
-      linkTo: 'tracking',
-      linkId: 'SHP-1123'
-    },
-    {
-      id: 4,
-      category: 'tracking',
-      title: 'Pengiriman Selesai',
-      message: 'Pengiriman SHP-8472 telah berhasil diterima oleh Budi Santoso.',
-      isRead: true,
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
-      linkTo: 'history',
-      linkId: 'SHP-8472'
+  const [notifications, setNotifications] = useState([])
+  const [unreadCount, setUnreadCount] = useState(0)
+  // There is no DELETE endpoint for notifications — "delete" only dismisses locally, so we
+  // must filter dismissed ids out of every poll or they'd reappear on the next fetch.
+  const dismissedIdsRef = useRef(new Set())
+
+  useEffect(() => {
+    async function fetchNotifications() {
+      try {
+        const data = await notificationsAPI.list()
+        const visible = (data.notifications || []).filter(n => !dismissedIdsRef.current.has(n.id))
+        setNotifications(visible)
+        setUnreadCount(visible.filter(n => !n.isRead).length)
+      } catch (err) {
+        console.error('Failed to fetch notifications:', err)
+      }
     }
-  ])
+    fetchNotifications()
+    const interval = setInterval(fetchNotifications, 8000)
+    return () => clearInterval(interval)
+  }, [])
 
-  const unreadCount = notifications.filter(n => !n.isRead).length
-
-  const handleMarkAllRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, isRead: true })))
+  const handleMarkAllRead = async () => {
+    try {
+      await notificationsAPI.markAllRead()
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })))
+      setUnreadCount(0)
+    } catch {}
   }
 
-  const handleMarkRead = (id) => {
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n))
+  const handleMarkRead = async (id) => {
+    try {
+      await notificationsAPI.markRead(id)
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n))
+      setUnreadCount(prev => Math.max(0, prev - 1))
+    } catch {}
   }
 
   const handleDeleteNotif = async (id) => {
     try {
+      dismissedIdsRef.current.add(id)
+      const removed = notifications.find(n => n.id === id)
       setNotifications(prev => prev.filter(n => n.id !== id))
-      showToast('Notifikasi berhasil dihapus', 'success')
+      if (removed && !removed.isRead) setUnreadCount(prev => Math.max(0, prev - 1))
+      showToast('Notifikasi berhasil disembunyikan', 'success')
     } catch {
       showToast('Gagal menghapus notifikasi', 'error')
     }
   }
 
   const handleNotifNavigate = (navId, linkId) => {
-    if (linkId && navId === 'tracking') {
-      navigateToTracking(linkId)
+    if (!navId) return
+    // 'tracking' is a legacy notification link target (the nav was removed and folded
+    // into Shipments) — remap it so any old, not-yet-migrated notification still resolves.
+    const targetNav = navId === 'tracking' ? 'shipments' : navId
+    if (linkId && targetNav === 'shipments') {
+      navigateToShipment(linkId)
     } else {
-      handleNavChange(navId)
+      handleNavChange(targetNav)
     }
     setShowNotifPanel(false)
   }
@@ -169,9 +170,11 @@ export default function ClientDashboardPage() {
     return () => clearTimeout(timer)
   }, [searchQuery])
 
-  const navigateToTracking = (id) => {
-    setTrackingId(id)
-    setActiveNav('tracking')
+  // Jumps to Shipments and auto-expands the given shipment's card — replaces the old
+  // separate Tracking nav (removed 2026-09-25; its timeline view moved into ShipmentCard).
+  const navigateToShipment = (id) => {
+    setHighlightShipmentId(id)
+    setActiveNav('shipments')
   }
 
   const handleShipmentCreated = () => {
@@ -182,8 +185,7 @@ export default function ClientDashboardPage() {
   const renderSection = () => {
     switch (activeNav) {
       case 'dashboard': return <DashboardSection key={refreshKey} />
-      case 'shipments': return <ShipmentsSection key={refreshKey} onCreateShipment={() => setCreateModalOpen(true)} onTrackFull={navigateToTracking} onChangeNav={setActiveNav} />
-      case 'tracking': return <TrackingSection initialSearchQuery={trackingId} />
+      case 'shipments': return <ShipmentsSection key={refreshKey} onCreateShipment={() => setCreateModalOpen(true)} highlightId={highlightShipmentId} />
       case 'history': return <HistorySection key={refreshKey} />
       case 'settings': return <SettingsSection />
       default: return <DashboardSection key={refreshKey} />
@@ -193,7 +195,7 @@ export default function ClientDashboardPage() {
   const handleSearchSelect = (id) => {
     setShowSearchDropdown(false)
     setSearchQuery('')
-    navigateToTracking(id)
+    navigateToShipment(id)
   }
 
   const handleLogout = () => {
@@ -202,7 +204,7 @@ export default function ClientDashboardPage() {
 
   const handleNavChange = (id) => {
     setActiveNav(id)
-    if (id !== 'tracking') setTrackingId('')
+    if (id !== 'shipments') setHighlightShipmentId('')
     if (isMobile) setSidebarOpen(false)
   }
 

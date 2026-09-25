@@ -136,9 +136,11 @@ export default function ClientNotificationPanel({
                       {notif.message}
                     </p>
                     
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[0.65rem] font-bold uppercase tracking-wider ${style.bg} ${style.text}`}>
-                      {CATEGORY_LABELS[notif.category] || notif.category}
-                    </span>
+                    {notif.category && (
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[0.65rem] font-bold uppercase tracking-wider ${style.bg} ${style.text}`}>
+                        {CATEGORY_LABELS[notif.category] || notif.category}
+                      </span>
+                    )}
                   </div>
                 </div>
               )

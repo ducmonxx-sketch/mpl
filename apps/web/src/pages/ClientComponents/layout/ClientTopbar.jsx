@@ -18,10 +18,19 @@ export default function ClientTopbar({
   handleMarkAllRead,
   handleMarkRead,
   handleDeleteNotif,
-  handleNotifNavigate
+  handleNotifNavigate,
+  displayName,
+  displayRole,
+  onProfileClick
 }) {
+  const initials = (displayName || '')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map(w => w[0]?.toUpperCase())
+    .join('') || 'K'
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between px-8 py-6 bg-[#f8f9fa]/80 backdrop-blur-xl border-b border-gray-200 shadow-[0_4px_30px_rgba(0,0,0,0.03)]">
+    <header className="sticky top-0 z-30 flex items-center justify-between px-4 py-4 md:px-8 md:py-6 bg-[#f8f9fa]/80 backdrop-blur-xl border-b border-gray-200 shadow-[0_4px_30px_rgba(0,0,0,0.03)]">
       
       {/* ── Left side: Mobile menu & Search ── */}
       <div className="flex items-center gap-4 flex-1">
@@ -99,6 +108,20 @@ export default function ClientTopbar({
             />
           )}
         </div>
+
+        {/* Profile */}
+        <button
+          onClick={onProfileClick}
+          className="flex items-center gap-3 pl-1 pr-1 py-1 rounded-full hover:bg-gray-100 transition-colors group"
+        >
+          <div className="hidden sm:flex flex-col items-end leading-tight">
+            <span className="text-sm font-bold text-[#002442] truncate max-w-[140px]">{displayName}</span>
+            <span className="text-xs text-gray-400 truncate max-w-[140px]">{displayRole}</span>
+          </div>
+          <div className="w-10 h-10 rounded-full bg-[#fec330] text-[#002442] flex items-center justify-center text-sm font-black flex-shrink-0 transition-transform group-hover:scale-105">
+            {initials}
+          </div>
+        </button>
 
       </div>
     </header>

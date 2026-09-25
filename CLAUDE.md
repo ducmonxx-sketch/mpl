@@ -32,6 +32,14 @@ routes, `api.js`, `AuthContext`, `TrackingSection`). Never force-push `main`.
 > **Temporary exception (2026-09-15, user-approved):** landing-page SEO work
 > (robots.txt, sitemap.xml, meta tags) in `apps/web` is in scope until this
 > exception is removed. All other client-facing-side restrictions still apply.
+>
+> **Exception (2026-09-25, user-approved):** the `ClientDashboardPage` rework
+> (folding in admin-dashboard functionality + UI changes) is in scope. ⚠️
+> `ClientDashboardPage` is owned by the friend's agent on the client-facing
+> side — coordinate / sync before pushing `main`, since this is a
+> higher-collision area. All other client-facing-side restrictions
+> (landing page, `api.js`/`AuthContext` outside the Phase-2f cutover, etc.)
+> still apply.
 
 ## Coding standards & review agents (from ECC, curated)
 Follow the coding/security standards in **[.claude/rules/](.claude/rules/)** for TypeScript

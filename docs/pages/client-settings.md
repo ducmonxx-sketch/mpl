@@ -1,13 +1,14 @@
 # Pengaturan Akun (client · nav id `settings`)
-**File:** `apps/web/src/pages/dashboard/SettingsSection.jsx` (27 lines) · **Roles:** clients only — verification enforced at login (`auth.ts:101-110`).
+**File:** `apps/web/src/pages/dashboard/SettingsSection.jsx` (~27 lines) · **Roles:** clients only — verification enforced at login (`auth.ts:101-110`).
 
-**Status: largely a UI stub.** The layout and components exist, but almost nothing persists to the backend.
+**Status: largely a UI stub.** The layout and components exist, but almost nothing persists to the backend. **Visual redesign only, 2026-09-25** — restyled `CompanyProfile` as a profile "hero" (banner + overlapping avatar + read-only info grid, verified badge) and re-skinned `SecurityAccess` to match; every behavior below (including the fake/non-persisting ones) is intentionally unchanged from before the redesign — this pass touched markup/classes only, no state, handlers, or API calls.
 
 ## What it does
-- Renders a header plus two cards: `CompanyProfile` (191 lines) and `SecurityAccess` (59 lines), both under `apps/web/src/pages/dashboard/components/`.
-- `CompanyProfile`: read-only profile fields (all inputs `disabled`, labelled "Hanya Admin yang dapat mengubah profil", `CompanyProfile.jsx:77`) + a company-logo upload with crop (`LogoStudioModal`), a 2MB size check, and a 7-day change cooldown.
-- `SecurityAccess`: current/new password inputs and a "Perbarui Kredensial" button.
+- Renders a header plus two cards: `CompanyProfile` (~165 lines) and `SecurityAccess` (~60 lines), both under `apps/web/src/pages/dashboard/components/`.
+- `CompanyProfile`: a profile-hero card — gradient banner, company logo avatar overlapping it, company name + a "Terverifikasi" badge (reads the already-fetched `userData.verificationStatus`, always true for anyone who can reach this page since login already rejects non-VERIFIED accounts — purely decorative, not a new gate), contact-person subtitle, then a read-only info grid (was disabled `<input>` fields; now plain label/value display blocks — same data, clearer that it's non-editable). Logo upload still works exactly as before: click avatar → file input → 2MB check → `LogoStudioModal` crop → local-state-only apply, 7-day cooldown.
+- `SecurityAccess`: current/new password inputs and a "Perbarui Kredensial" button — unchanged behavior, re-skinned to the flat white card style (was a glassmorphism/blur card, now matches `CompanyProfile` and the rest of the redesigned client dashboard).
 - Reached via sidebar nav or by clicking the profile in the topbar (`ClientDashboardPage.jsx:247`).
+- `DangerZone.jsx` and `NotificationSettings.jsx` exist in the same `components/` folder but are **not imported by this page or anywhere else** — orphaned, left untouched (out of scope for a redesign of what's actually rendered).
 
 ## Data & endpoints
 | api.js fn | HTTP route | Purpose |
@@ -29,8 +30,8 @@ Backend-ready but unused here: `usersAPI.getMe` / `updateMe` / `updateSettings` 
 ## Gotchas
 - **Password change is fake:** the success toast fires without any request (`SettingsSection.jsx:23`) — and there is currently **no backend endpoint** for a client self-service password change: `updateMeSchema` only allows `fullName`/`companyName`/`phoneNumber` (`apps/api/src/lib/validate.ts:186-190`); passwords change only via admin-generated reset links (`users.ts:552`).
 - **Logo upload is fake:** state-only, not persisted (`CompanyProfile.jsx:49-54`); the 7-day cooldown is also state-only.
-- Hardcoded placeholder data shown as real: NIB `912000-834-291` (`CompanyProfile.jsx:137`) and office address (`CompanyProfile.jsx:173`); field fallbacks like "Ananditha Putri" / "ops@mahkotaputra.com" render when `user` fields are missing (`CompanyProfile.jsx:128-165`).
-- Disabled inputs use `defaultValue={user…}` — if `user` loads after mount, `defaultValue` does not update; stale/fallback values can stick until remount.
+- Hardcoded placeholder data shown as real: NIB `912000-834-291` and office address; field fallbacks like "Ananditha Putri" / "ops@mahkotaputra.com" render when `user` fields are missing. Unchanged by the 2026-09-25 redesign (explicitly out of scope — visual pass only), still worth fixing per "What's missing" below.
+- ~~Disabled inputs use `defaultValue`, stale if `user` loads after mount~~ — **incidentally fixed by the 2026-09-25 redesign**: the info grid is now plain `<div>{value}</div>` display (an `InfoField` helper), not `<input defaultValue>`, so it re-renders with `userData` on every prop change like any normal JSX value. Not the goal of that pass, just a side effect of no longer using disabled form inputs for read-only display.
 
 ## What's missing (to de-stub)
 - Wire `SecurityAccess` to a real password-change endpoint — one must be built first (with current-password verification); `PATCH /api/users/me` does not accept a password field today.

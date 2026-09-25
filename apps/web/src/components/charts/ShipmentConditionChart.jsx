@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
-import { shipmentsAPI } from '../../../lib/api'
+import { shipmentsAPI } from '../../lib/api'
 
 // A validated darker gold for the data line itself — the raw brand gold (--dash-secondary,
 // #fec330) is too light to read well as a thin stroke (fails a lightness/contrast check

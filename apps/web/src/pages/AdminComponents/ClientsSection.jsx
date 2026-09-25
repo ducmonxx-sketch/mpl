@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import Icon from '../../components/Icon'
+import Loader from '../../components/Loader'
 import { useToast } from '../../contexts/ToastContext'
 import AdminDataTable from './components/AdminDataTable'
 import AdminPagination from './components/AdminPagination'
@@ -403,9 +404,9 @@ export default function ClientsSection({ userRole }) {
     .map(name => ({ value: name, label: name }))
 
   const filters = [
-    { id: 'all', label: 'Semua' },
-    { id: 'verified', label: 'Terverifikasi' },
-    { id: 'unverified', label: 'Belum Terverifikasi' },
+    { id: 'all', label: 'Semua', dot: null },
+    { id: 'verified', label: 'Terverifikasi', dot: 'bg-green-500' },
+    { id: 'unverified', label: 'Belum Terverifikasi', dot: 'bg-amber-500' },
   ]
 
   const filtered = CLIENTS.filter(c => {
@@ -615,7 +616,7 @@ export default function ClientsSection({ userRole }) {
         </div>
 
         {/* Filters */}
-        <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-px">
+        <div className="flex flex-wrap items-center gap-2">
           {filters.map((f) => {
             const count =
               f.id === 'all'
@@ -625,14 +626,17 @@ export default function ClientsSection({ userRole }) {
             return (
               <button
                 key={f.id}
-                className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${isActive ? 'border-dash-primary text-dash-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
                 onClick={() => {
                   setFilter(f.id)
                   setCurrentPage(1)
                 }}
+                className={`inline-flex items-center gap-2 pl-3.5 pr-2.5 py-2 rounded-full text-sm font-bold border transition-colors ${
+                  isActive ? 'bg-dash-primary text-white border-dash-primary' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:text-gray-800'
+                }`}
               >
-                {f.label} 
-                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${isActive ? 'bg-dash-primary/10 text-dash-primary' : 'bg-gray-100 text-gray-500'}`}>
+                {f.dot && <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isActive ? 'bg-white' : f.dot}`} />}
+                {f.label}
+                <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${isActive ? 'bg-white/20' : 'bg-gray-100 text-gray-500'}`}>
                   {count}
                 </span>
               </button>
@@ -642,7 +646,10 @@ export default function ClientsSection({ userRole }) {
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>Memuat data klien...</div>
+        <div className="flex flex-col items-center justify-center py-12 gap-3 text-gray-400">
+          <Loader size="lg" />
+          <p className="text-sm font-medium">Memuat data klien...</p>
+        </div>
       ) : (
         <div style={{ marginTop: '1.25rem' }}>
           <AdminDataTable

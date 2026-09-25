@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import ShipmentConditionChart from './components/ShipmentConditionChart'
+import ShipmentConditionChart from '../../components/charts/ShipmentConditionChart'
 import ServiceLineSummary from './components/ServiceLineSummary'
 import ConditionDetailPage from './components/ConditionDetailPage'
 

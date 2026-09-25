@@ -10,7 +10,7 @@ export default function SettingsSection() {
   return (
     <div className="flex flex-col gap-6 w-full max-w-5xl mx-auto">
       {/* Header */}
-      <section className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 bg-white/40 backdrop-blur-md p-6 rounded-2xl border border-white/50 shadow-sm">
+      <section className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 bg-white p-6 rounded-2xl border border-gray-200 shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
         <div>
           <h2 className="text-3xl font-extrabold text-[var(--dash-primary)] tracking-tight mb-1">Pengaturan Akun</h2>
           <p className="text-slate-600 text-sm font-medium">Kelola profil perusahaan dan keamanan kredensial Anda.</p>
